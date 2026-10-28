@@ -1,0 +1,1502 @@
+[
+  {
+    "name": "Abbey Road Chambers",
+    "url": "https://www.waves.com/plugins/abbey-road-chambers",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road EMI TG12345 Channel",
+    "url": "https://www.waves.com/plugins/emi-tg12345",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road J37 Tape",
+    "url": "https://www.waves.com/plugins/j37-tape",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road King’s Microphones",
+    "url": "https://www.waves.com/plugins/the-king-s-microphones",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road REDD Consoles",
+    "url": "https://www.waves.com/plugins/redd",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road Reel ADT",
+    "url": "https://www.waves.com/plugins/reel-adt",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road Reverb Plates",
+    "url": "https://www.waves.com/plugins/abbey-road-reverb-plates",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road RS124 Compressor",
+    "url": "https://www.waves.com/plugins/abbey-road-rs124-compressor",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road RS56 Passive EQ",
+    "url": "https://www.waves.com/plugins/rs56",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road Saturator",
+    "url": "https://www.waves.com/plugins/abbey-road-saturator",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road Studio 3",
+    "url": "https://www.waves.com/plugins/abbey-road-studio-3",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road TG Mastering Chain",
+    "url": "https://www.waves.com/plugins/abbey-road-tg-mastering-chain",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Abbey Road Vinyl",
+    "url": "https://www.waves.com/plugins/abbey-road-vinyl",
+    "category": "Abbey Road",
+    "tagline": ""
+  },
+  {
+    "name": "Aphex Vintage Aural Exciter",
+    "url": "https://www.waves.com/plugins/aphex-vintage-aural-exciter",
+    "category": "Harmonics",
+    "tagline": "Add brightness and clarity to any track, without EQing"
+  },
+  {
+    "name": "API 2500",
+    "url": "https://www.waves.com/plugins/api-2500",
+    "category": "Compressors",
+    "tagline": "Versatile vintage compressor with switchable topologies"
+  },
+  {
+    "name": "API 550",
+    "url": "https://www.waves.com/plugins/api-550",
+    "category": "Equalizers",
+    "tagline": "Sweeten your mixes and masters with proportional-Q curves"
+  },
+  {
+    "name": "API 560",
+    "url": "https://www.waves.com/plugins/api-560",
+    "category": "Equalizers",
+    "tagline": "High-end API sound quality in a graphic equalizer"
+  },
+  {
+    "name": "Atlas Reverb",
+    "url": "https://www.waves.com/plugins/atlas-reverb",
+    "category": "Reverb",
+    "tagline": "Pure algorithmic reverb built with the classic DSP approach"
+  },
+  {
+    "name": "AudioTrack",
+    "url": "https://www.waves.com/plugins/audiotrack",
+    "category": "Compressors",
+    "tagline": "Channel strip with 4-band EQ, compressor, gate"
+  },
+  {
+    "name": "B360 Ambisonics Encoder",
+    "url": "https://www.waves.com/plugins/b360-ambisonics-encoder",
+    "category": "Surround",
+    "tagline": ""
+  },
+  {
+    "name": "Bass Fingers",
+    "url": "https://www.waves.com/plugins/bass-fingers",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Bass Rider",
+    "url": "https://www.waves.com/plugins/bass-rider",
+    "category": "Bass",
+    "tagline": "Mix with Consistent Bass Levels—Automatically "
+  },
+  {
+    "name": "Bass Slapper",
+    "url": "https://www.waves.com/plugins/bass-slapper",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Berzerk Distortion",
+    "url": "https://www.waves.com/plugins/berzerk-distortion",
+    "category": "Saturation & Distortion",
+    "tagline": "Intense over-the-top distortion playground"
+  },
+  {
+    "name": "Brauer Motion",
+    "url": "https://www.waves.com/plugins/brauer-motion",
+    "category": "Effects",
+    "tagline": "Create moving, 3D-like spherical auto-panning effects"
+  },
+  {
+    "name": "BSS DPR-402",
+    "url": "https://www.waves.com/plugins/bss-dpr-402",
+    "category": "Compressors",
+    "tagline": "Frequency-selective compressor, limiter & de-esser: Great for explosive drum sound "
+  },
+  {
+    "name": "Butch Vig Vocals",
+    "url": "https://www.waves.com/plugins/butch-vig-vocals",
+    "category": "Signature Series",
+    "tagline": "Vocal multi-effect by the producer for Nirvana and Foo Fighters"
+  },
+  {
+    "name": "C1 Compressor",
+    "url": "https://www.waves.com/plugins/c1-compressor",
+    "category": "Compressors",
+    "tagline": "Compression, expansion, gating, dynamic filtering in one plugin "
+  },
+  {
+    "name": "C360 Surround Compressor",
+    "url": "https://www.waves.com/plugins/c360-surround-compressor",
+    "category": "Surround",
+    "tagline": "Soft-knee compression with limiting and linking for 5.1 Surround"
+  },
+  {
+    "name": "C4 Multiband Compressor",
+    "url": "https://www.waves.com/plugins/c4-multiband-compressor",
+    "category": "Compressors",
+    "tagline": "4-band multiband dynamics and equalization"
+  },
+  {
+    "name": "C6 Multiband Compressor",
+    "url": "https://www.waves.com/plugins/c6-multiband-compressor",
+    "category": "Compressors",
+    "tagline": "6 bands of multi-function dynamics and focused EQ"
+  },
+  {
+    "name": "Center",
+    "url": "https://www.waves.com/plugins/center",
+    "category": "Stereo Imaging",
+    "tagline": "Fine-tune stereo tracks by separately controlling center and sides"
+  },
+  {
+    "name": "CLA Bass",
+    "url": "https://www.waves.com/plugins/cla-bass",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for modern rock/pop bass"
+  },
+  {
+    "name": "CLA Drums",
+    "url": "https://www.waves.com/plugins/cla-drums",
+    "category": "Signature Series",
+    "tagline": "Multi-effects for 6 different drum miking positions"
+  },
+  {
+    "name": "CLA EchoSphere",
+    "url": "https://www.waves.com/plugins/cla-echosphere",
+    "category": "Effects",
+    "tagline": "Plate reverb with slapback echo, optimized for lead vocals"
+  },
+  {
+    "name": "CLA Effects",
+    "url": "https://www.waves.com/plugins/cla-effects",
+    "category": "Signature Series",
+    "tagline": "Multi-effects for adding a modern, polished luster"
+  },
+  {
+    "name": "CLA Epic",
+    "url": "https://www.waves.com/plugins/cla-epic",
+    "category": "Effects",
+    "tagline": "Complete reverbs & delays by Chris Lord-Alge"
+  },
+  {
+    "name": "CLA Guitars",
+    "url": "https://www.waves.com/plugins/cla-guitars",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for instant gratification"
+  },
+  {
+    "name": "CLA MixDown",
+    "url": "https://www.waves.com/plugins/cla-mixdown",
+    "category": "Signature Series",
+    "tagline": "Four crucial processors, optimized for the mix bus"
+  },
+  {
+    "name": "CLA MixHub",
+    "url": "https://www.waves.com/plugins/cla-mixhub",
+    "category": "Channel Strips",
+    "tagline": "Mix with classic console sound and a fast, efficient workflow"
+  },
+  {
+    "name": "CLA Nx",
+    "url": "https://www.waves.com/plugins/cla-nx",
+    "category": "Headphone Mixing",
+    "tagline": ""
+  },
+  {
+    "name": "CLA Unplugged",
+    "url": "https://www.waves.com/plugins/cla-unplugged",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for acoustic instruments"
+  },
+  {
+    "name": "CLA Vocals",
+    "url": "https://www.waves.com/plugins/cla-vocals",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for vocals"
+  },
+  {
+    "name": "CLA-2A Compressor / Limiter",
+    "url": "https://www.waves.com/plugins/cla-2a-compressor-limiter",
+    "category": "Compressors",
+    "tagline": "Smooth, warm, natural-sounding tube compression"
+  },
+  {
+    "name": "CLA-3A Compressor / Limiter",
+    "url": "https://www.waves.com/plugins/cla-3a-compressor-limiter",
+    "category": "Compressors",
+    "tagline": "Solid-state compression for classic 70s bass, drum sound"
+  },
+  {
+    "name": "CLA-76 Compressor / Limiter",
+    "url": "https://www.waves.com/plugins/cla-76-compressor-limiter",
+    "category": "Compressors",
+    "tagline": "Super-fast FET compression with legendary tone"
+  },
+  {
+    "name": "Clarity Vx®",
+    "url": "https://www.waves.com/plugins/clarity-vx",
+    "category": "Noise Reduction",
+    "tagline": "AI-powered noise removal for vocals and voice"
+  },
+  {
+    "name": "Clarity Vx® DeReverb",
+    "url": "https://www.waves.com/plugins/clarity-vx-dereverb",
+    "category": "Reverb Removal",
+    "tagline": "Instant AI room & reverb removal for voice"
+  },
+  {
+    "name": "Clarity Vx® DeReverb Pro",
+    "url": "https://www.waves.com/plugins/clarity-vx-dereverb-pro",
+    "category": "Reverb Removal",
+    "tagline": "Advanced AI reverb removal for dialogue & vocals"
+  },
+  {
+    "name": "Clarity Vx® Pro",
+    "url": "https://www.waves.com/plugins/clarity-vx-pro",
+    "category": "Noise Reduction",
+    "tagline": ""
+  },
+  {
+    "name": "Clarix LB",
+    "url": "https://www.waves.com/plugins/clarix-lb",
+    "category": "Live",
+    "tagline": ""
+  },
+  {
+    "name": "Clavinet",
+    "url": "https://www.waves.com/plugins/clavinet",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Cobalt Saphira",
+    "url": "https://www.waves.com/plugins/cobalt-saphira",
+    "category": "Harmonics",
+    "tagline": "Add harmonic color with total surgical control"
+  },
+  {
+    "name": "Codex Wavetable Synth",
+    "url": "https://www.waves.com/plugins/codex",
+    "category": "Synths",
+    "tagline": "Monster synth with a massive sonic palette"
+  },
+  {
+    "name": "COSMOS Sample Finder",
+    "url": "https://www.waves.com/plugins/cosmos-sample-finder",
+    "category": "Sampling",
+    "tagline": ""
+  },
+  {
+    "name": "CR8 Creative Sampler",
+    "url": "https://www.waves.com/plugins/cr8-creative-sampler",
+    "category": "Sampling",
+    "tagline": ""
+  },
+  {
+    "name": "Curves AQ",
+    "url": "https://www.waves.com/plugins/curves-aq",
+    "category": "Equalizers",
+    "tagline": "The world’s first autonomous EQ"
+  },
+  {
+    "name": "Curves Equator",
+    "url": "https://www.waves.com/plugins/curves-equator",
+    "category": "Equalizers",
+    "tagline": "Smarter resonance suppression & frequency unmasking"
+  },
+  {
+    "name": "Curves Resolve",
+    "url": "https://www.waves.com/plugins/curves-resolve",
+    "category": "Equalizers",
+    "tagline": "Solve mix conflicts – automatically."
+  },
+  {
+    "name": "dbx® 160 Compressor / Limiter",
+    "url": "https://www.waves.com/plugins/dbx-160-compressor-limiter",
+    "category": "Modeling",
+    "tagline": "The classic fast-attack VCA compressor, perfect for drums and bass"
+  },
+  {
+    "name": "DeBreath",
+    "url": "https://www.waves.com/plugins/debreath",
+    "category": "Vocals",
+    "tagline": "Easily remove breath sounds from vocals and narration"
+  },
+  {
+    "name": "DeEsser",
+    "url": "https://www.waves.com/plugins/deesser",
+    "category": "Vocals",
+    "tagline": "Gently minimizes vocal sibilance and harshness"
+  },
+  {
+    "name": "Doppler",
+    "url": "https://www.waves.com/plugins/doppler",
+    "category": "Effects",
+    "tagline": "Doppler effects for film, sound design, and music"
+  },
+  {
+    "name": "Dorrough Stereo",
+    "url": "https://www.waves.com/plugins/dorrough-stereo",
+    "category": "Meters",
+    "tagline": "Precision measurement system for audio levels "
+  },
+  {
+    "name": "Dorrough Surround",
+    "url": "https://www.waves.com/plugins/dorrough-surround",
+    "category": "Meters",
+    "tagline": "Precision audio metering for 5.0 and 5.1 surround "
+  },
+  {
+    "name": "Doubler",
+    "url": "https://www.waves.com/plugins/doubler",
+    "category": "Delay",
+    "tagline": "4-voice doubler/imager with modulation and detuning "
+  },
+  {
+    "name": "Eddie Kramer Bass Channel",
+    "url": "https://www.waves.com/plugins/eddie-kramer-bass-channel",
+    "category": "Signature Series",
+    "tagline": "Bass multi-effect for the sounds of classic rock"
+  },
+  {
+    "name": "Eddie Kramer Drum Channel",
+    "url": "https://www.waves.com/plugins/eddie-kramer-drum-channel",
+    "category": "Signature Series",
+    "tagline": "Multi-effect for classic rock drum sounds "
+  },
+  {
+    "name": "Eddie Kramer Effects Channel",
+    "url": "https://www.waves.com/plugins/eddie-kramer-effects-channel",
+    "category": "Signature Series",
+    "tagline": "Classic tape delay & plate reverb multi-effect"
+  },
+  {
+    "name": "Eddie Kramer Guitar Channel",
+    "url": "https://www.waves.com/plugins/eddie-kramer-guitar-channel",
+    "category": "Signature Series",
+    "tagline": "Electric guitar multi-FX from the legendary producer for Hendrix and Zeppelin"
+  },
+  {
+    "name": "Eddie Kramer Vocal Channel",
+    "url": "https://www.waves.com/plugins/eddie-kramer-vocal-channel",
+    "category": "Signature Series",
+    "tagline": "Multi-effect plugin with two classic rock vocal attitudes"
+  },
+  {
+    "name": "Electric 200 Piano",
+    "url": "https://www.waves.com/plugins/electric-200-piano",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Electric 88 Piano",
+    "url": "https://www.waves.com/plugins/electric-88-piano",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Electric Grand 80 Piano",
+    "url": "https://www.waves.com/plugins/electric-grand-80-piano",
+    "category": "Virtual Instruments",
+    "tagline": "The electric/acoustic sound that defined 80s production"
+  },
+  {
+    "name": "Element 2.0 Virtual Analog Synth",
+    "url": "https://www.waves.com/plugins/element",
+    "category": "Synths",
+    "tagline": "Subtractive analog synth with effects and sequencer"
+  },
+  {
+    "name": "eMo D5 Dynamics",
+    "url": "https://www.waves.com/plugins/emo-d5-dynamics",
+    "category": "Compressors",
+    "tagline": "Multiple dynamics processor, for stage or studio"
+  },
+  {
+    "name": "eMo F2 Filter",
+    "url": "https://www.waves.com/plugins/emo-f2-filter",
+    "category": "Live",
+    "tagline": "High/lowpass utility filter for stage or studio"
+  },
+  {
+    "name": "eMo Generator",
+    "url": "https://www.waves.com/plugins/emo-generator",
+    "category": "Live",
+    "tagline": "Analyze, synthesize, test, set up, ring out, and mix"
+  },
+  {
+    "name": "eMo Q4 Equalizer",
+    "url": "https://www.waves.com/plugins/emo-q4-equalizer",
+    "category": "Live",
+    "tagline": "4-band paragraphic EQ optimized for the stage "
+  },
+  {
+    "name": "Enigma",
+    "url": "https://www.waves.com/plugins/enigma",
+    "category": "Effects",
+    "tagline": "Time delay, frequency-shift, and filtering effects"
+  },
+  {
+    "name": "F6 Floating-Band Dynamic EQ",
+    "url": "https://www.waves.com/plugins/f6-floating-band-dynamic-eq",
+    "category": "Equalizers",
+    "tagline": "Surgical dynamic equalizer with 6 fully adjustable bands"
+  },
+  {
+    "name": "Feedback Hunter",
+    "url": "https://www.waves.com/plugins/feedback-hunter",
+    "category": "Live",
+    "tagline": "Optimize stage monitors and PA systems faster than ever"
+  },
+  {
+    "name": "Flow Motion FM Synth",
+    "url": "https://www.waves.com/plugins/flow-motion-fm-synth",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Gemstones",
+    "url": "https://www.waves.com/plugins/gemstones",
+    "category": "Effects",
+    "tagline": ""
+  },
+  {
+    "name": "GEQ Graphic Equalizer",
+    "url": "https://www.waves.com/plugins/geq-graphic-equalizer",
+    "category": "Equalizers",
+    "tagline": "Two filter designs, 30 bands, parametric EQ, RTA, and more"
+  },
+  {
+    "name": "Grand Rhapsody Piano",
+    "url": "https://www.waves.com/plugins/grand-rhapsody-piano",
+    "category": "Virtual Instruments",
+    "tagline": ""
+  },
+  {
+    "name": "Greg Wells MixCentric",
+    "url": "https://www.waves.com/plugins/greg-wells-mixcentric",
+    "category": "Signature Series",
+    "tagline": "Mix bus finalizer: EQ, compression, saturation combined in one knob"
+  },
+  {
+    "name": "Greg Wells PianoCentric",
+    "url": "https://www.waves.com/plugins/greg-wells-pianocentric",
+    "category": "Signature Series",
+    "tagline": "Make pianos and keys sit perfectly in the mix"
+  },
+  {
+    "name": "Greg Wells ToneCentric",
+    "url": "https://www.waves.com/plugins/greg-wells-tonecentric",
+    "category": "Harmonics",
+    "tagline": "Add rich analog tone with tube-based harmonic enhancement"
+  },
+  {
+    "name": "Greg Wells VoiceCentric",
+    "url": "https://www.waves.com/plugins/greg-wells-voicecentric",
+    "category": "Signature Series",
+    "tagline": "Vocal mixing made easy by Adele, Dua Lipa producer"
+  },
+  {
+    "name": "GTR Solo",
+    "url": "https://www.waves.com/plugins/gtr-solo",
+    "category": "Guitar",
+    "tagline": ""
+  },
+  {
+    "name": "GTR3",
+    "url": "https://www.waves.com/plugins/gtr3",
+    "category": "Guitar",
+    "tagline": ""
+  },
+  {
+    "name": "GTR3 Amps",
+    "url": "https://www.waves.com/plugins/gtr3-amps",
+    "category": "Saturation & Distortion",
+    "tagline": "Versatile amp sims, cabinets, and mics for guitar and bass"
+  },
+  {
+    "name": "GTR3 Stomps",
+    "url": "https://www.waves.com/plugins/gtr3-stomps",
+    "category": "Effects",
+    "tagline": "Stompbox guitar effects complement amp sims"
+  },
+  {
+    "name": "GTR3 ToolRack",
+    "url": "https://www.waves.com/plugins/gtr3-toolrack",
+    "category": "Effects",
+    "tagline": "Studio or live performance host for GTR3 modules"
+  },
+  {
+    "name": "GTR3 Tuner",
+    "url": "https://www.waves.com/plugins/gtr3-tuner",
+    "category": "Effects",
+    "tagline": "Precision tuning reference for stringed instruments"
+  },
+  {
+    "name": "H-Comp Hybrid Compressor",
+    "url": "https://www.waves.com/plugins/h-comp-hybrid-compressor",
+    "category": "Compressors",
+    "tagline": "Modern performance with vintage compression sound"
+  },
+  {
+    "name": "H-Delay Hybrid Delay",
+    "url": "https://www.waves.com/plugins/h-delay-hybrid-delay",
+    "category": "Delay",
+    "tagline": "The complete toolbox for classic delay effects"
+  },
+  {
+    "name": "H-EQ Hybrid Equalizer",
+    "url": "https://www.waves.com/plugins/h-eq-hybrid-equalizer",
+    "category": "Equalizers",
+    "tagline": "7-band EQ with vintage tone and surgical abilities"
+  },
+  {
+    "name": "H-Reverb Hybrid Reverb",
+    "url": "https://www.waves.com/plugins/h-reverb-hybrid-reverb",
+    "category": "Reverb",
+    "tagline": "Lush reverb sounds with unlimited tweakability"
+  },
+  {
+    "name": "IDR360 Bit Re-Quantizer",
+    "url": "https://www.waves.com/plugins/idr360-bit-re-quantizer",
+    "category": "Surround",
+    "tagline": "Reduce audio bit depth and add noise-shaped dither"
+  },
+  {
+    "name": "IDX Intelligent Dynamics",
+    "url": "https://www.waves.com/plugins/idx-intelligent-dynamics",
+    "category": "Compressors",
+    "tagline": "Smart energy optimizer for instant punch & focus in your tracks"
+  },
+  {
+    "name": "Immersive Wrapper",
+    "url": "https://www.waves.com/plugins/immersive-wrapper",
+    "category": "Headphone Mixing",
+    "tagline": ""
+  },
+  {
+    "name": "Infected Mushroom Pusher",
+    "url": "https://www.waves.com/plugins/infected-mushroom-pusher",
+    "category": "Synths",
+    "tagline": "Instant sonic enhancer for mastering and mixing"
+  },
+  {
+    "name": "InPhase",
+    "url": "https://www.waves.com/plugins/inphase",
+    "category": "Effects",
+    "tagline": "Easily fix phase issues in your mix"
+  },
+  {
+    "name": "InPhase LT",
+    "url": "https://www.waves.com/plugins/inphase-lt",
+    "category": "Effects",
+    "tagline": "Simplified phase alignment and correction tool"
+  },
+  {
+    "name": "InTrigger Drum Replacer",
+    "url": "https://www.waves.com/plugins/intrigger-drum-replacer",
+    "category": "Effects",
+    "tagline": "Intelligent drum triggering: Click Learn. Pick sample. Done."
+  },
+  {
+    "name": "IR-L Convolution Reverb",
+    "url": "https://www.waves.com/plugins/ir-l-convolution-reverb",
+    "category": "Reverb",
+    "tagline": "Streamlined convolution reverb with impulse library "
+  },
+  {
+    "name": "IR-Live Convolution Reverb",
+    "url": "https://www.waves.com/plugins/ir-live-convolution-reverb",
+    "category": "Reverb",
+    "tagline": "Authentic reverb capturing real-world acoustic spaces, for both studio production and live sound"
+  },
+  {
+    "name": "IR1 Convolution Reverb",
+    "url": "https://www.waves.com/plugins/ir1-convolution-reverb",
+    "category": "Reverb",
+    "tagline": "Reproduce the acoustic environments of world-famous venues"
+  },
+  {
+    "name": "IR360 Convolution Reverb",
+    "url": "https://www.waves.com/plugins/ir360-convolution-reverb",
+    "category": "Reverb",
+    "tagline": "Surround convolution reverb for spatial emulation"
+  },
+  {
+    "name": "JJP Bass",
+    "url": "https://www.waves.com/plugins/jjp-bass",
+    "category": "Signature Series",
+    "tagline": "Parallel multi-effects for electric and synth bass"
+  },
+  {
+    "name": "JJP Cymbals & Percussion",
+    "url": "https://www.waves.com/plugins/jjp-cymbals-percussion",
+    "category": "Signature Series",
+    "tagline": "Multi-effects with layers of parallel processing"
+  },
+  {
+    "name": "JJP Drums",
+    "url": "https://www.waves.com/plugins/jjp-drums",
+    "category": "Signature Series",
+    "tagline": "Multi-effect processing for kick, snare, toms"
+  },
+  {
+    "name": "JJP Guitars",
+    "url": "https://www.waves.com/plugins/jjp-guitars",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for articulated guitar sounds"
+  },
+  {
+    "name": "JJP Strings & Keys",
+    "url": "https://www.waves.com/plugins/jjp-strings-keys",
+    "category": "Signature Series",
+    "tagline": "Multi-effects optimized for strings, string samples, pads and keyboards"
+  },
+  {
+    "name": "JJP Vocals",
+    "url": "https://www.waves.com/plugins/jjp-vocals",
+    "category": "Signature Series",
+    "tagline": "Multi-effect with parallel processing for vocals"
+  },
+  {
+    "name": "Kaleidoscopes",
+    "url": "https://www.waves.com/plugins/kaleidoscopes",
+    "category": "Effects",
+    "tagline": "Super-suite of colorful modulation effects"
+  },
+  {
+    "name": "Key Detector",
+    "url": "https://www.waves.com/plugins/key-detector",
+    "category": "Vocals",
+    "tagline": "Find the key of any sample, track or full mix with AI precision"
+  },
+  {
+    "name": "Kramer HLS Channel",
+    "url": "https://www.waves.com/plugins/kramer-hls-channel",
+    "category": "Modeling",
+    "tagline": "Channel strip from the renowned Helios console"
+  },
+  {
+    "name": "Kramer Master Tape",
+    "url": "https://www.waves.com/plugins/kramer-master-tape",
+    "category": "Modeling",
+    "tagline": "Classic American analog tape saturation"
+  },
+  {
+    "name": "Kramer PIE Compressor",
+    "url": "https://www.waves.com/plugins/kramer-pie-compressor",
+    "category": "Compressors",
+    "tagline": "Models the Pye compressor used at Olympic Studios"
+  },
+  {
+    "name": "L1 Ultramaximizer",
+    "url": "https://www.waves.com/plugins/l1-ultramaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "Mono/stereo limiter with refined resolution control"
+  },
+  {
+    "name": "L2 Ultramaximizer",
+    "url": "https://www.waves.com/plugins/l2-ultramaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "Classic look-ahead brickwall peak limiter and level maximizer"
+  },
+  {
+    "name": "L3 Multimaximizer",
+    "url": "https://www.waves.com/plugins/l3-multimaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "5-band dynamics control with linear-phase crossover"
+  },
+  {
+    "name": "L3 Ultramaximizer",
+    "url": "https://www.waves.com/plugins/l3-ultramaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "Multiband technology with a streamlined interface"
+  },
+  {
+    "name": "L3-16 Multimaximizer",
+    "url": "https://www.waves.com/plugins/l3-16-multimaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "16 virtual bands for the ultimate in maximization"
+  },
+  {
+    "name": "L3-LL Multimaximizer",
+    "url": "https://www.waves.com/plugins/l3-ll-multimaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "Low-latency, 5-band multimaximizer"
+  },
+  {
+    "name": "L3-LL Ultramaximizer",
+    "url": "https://www.waves.com/plugins/l3-ll-ultramaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "Ultra-low latency with 5-band level maximization"
+  },
+  {
+    "name": "L360 Surround Limiter",
+    "url": "https://www.waves.com/plugins/l360-surround-limiter",
+    "category": "Surround",
+    "tagline": "Brickwall peak limiting maximizes surround sound"
+  },
+  {
+    "name": "L4 Ultramaximizer",
+    "url": "https://www.waves.com/plugins/l4-ultramaximizer",
+    "category": "Mastering & Limiters",
+    "tagline": "The limiter for a new era of loud"
+  },
+  {
+    "name": "LFE360 Low-Pass Filter",
+    "url": "https://www.waves.com/plugins/lfe360-low-pass-filter",
+    "category": "Surround",
+    "tagline": "LFE channel tool for surround and 5.1 mixing"
+  },
+  {
+    "name": "Linear Phase EQ",
+    "url": "https://www.waves.com/plugins/linear-phase-eq",
+    "category": "Equalizers",
+    "tagline": "EQ your masters and buses without phase issues"
+  },
+  {
+    "name": "Linear Phase Multiband Compressor",
+    "url": "https://www.waves.com/plugins/linear-phase-multiband-compressor",
+    "category": "Compressors",
+    "tagline": "Compress your masters without phasing or coloration"
+  },
+  {
+    "name": "LoAir",
+    "url": "https://www.waves.com/plugins/loair",
+    "category": "Surround",
+    "tagline": "Subharmonic generator for stereo and surround sources"
+  },
+  {
+    "name": "Lofi Space",
+    "url": "https://www.waves.com/plugins/lofi-space",
+    "category": "Effects",
+    "tagline": "Lofi-style reverb and delay plugin"
+  },
+  {
+    "name": "M360 Surround Manager & Mixdown",
+    "url": "https://www.waves.com/plugins/m360-surround-manager-mixdown",
+    "category": "Surround",
+    "tagline": "5.0/5.1 surround calibration & bass management tool"
+  },
+  {
+    "name": "Magma BB Tubes",
+    "url": "https://www.waves.com/plugins/bb-tubes",
+    "category": "Saturation & Distortion",
+    "tagline": "Beautiful to Beastly Tube Saturation"
+  },
+  {
+    "name": "Magma Lil Tube",
+    "url": "https://www.waves.com/plugins/lil-tube",
+    "category": "Saturation & Distortion",
+    "tagline": "Instant analog tube saturation "
+  },
+  {
+    "name": "Magma Springs",
+    "url": "https://www.waves.com/plugins/magma-springs",
+    "category": "Reverb",
+    "tagline": "Spring reverb – 7 types, endless style."
+  },
+  {
+    "name": "Magma StressBox",
+    "url": "https://www.waves.com/plugins/magma-stressbox",
+    "category": "Compressors",
+    "tagline": "Shape musical tension & feel – with one knob"
+  },
+  {
+    "name": "Magma Tube Channel Strip",
+    "url": "https://www.waves.com/plugins/magma-tube-channel-strip",
+    "category": "Channel Strips",
+    "tagline": "Sculpt your tracks with the rich analog Magma sound"
+  },
+  {
+    "name": "Manny Marroquin Delay",
+    "url": "https://www.waves.com/plugins/manny-marroquin-delay",
+    "category": "Signature Series",
+    "tagline": "Delay-based multi-effect with 4 parallel processors"
+  },
+  {
+    "name": "Manny Marroquin Distortion",
+    "url": "https://www.waves.com/plugins/manny-marroquin-distortion",
+    "category": "Saturation & Distortion",
+    "tagline": "Parallel distortion with compression and 4-band EQ"
+  },
+  {
+    "name": "Manny Marroquin EQ",
+    "url": "https://www.waves.com/plugins/manny-marroquin-eq",
+    "category": "Signature Series",
+    "tagline": "6-band EQ with vintage models and modern workflow"
+  },
+  {
+    "name": "Manny Marroquin Reverb",
+    "url": "https://www.waves.com/plugins/manny-marroquin-reverb",
+    "category": "Signature Series",
+    "tagline": "Re-creates Manny’s complete reverb signal chain"
+  },
+  {
+    "name": "Manny Marroquin Tone Shaper",
+    "url": "https://www.waves.com/plugins/manny-marroquin-tone-shaper",
+    "category": "Harmonics",
+    "tagline": "Easily change the tonality of a track to match the full mix"
+  },
+  {
+    "name": "Manny Marroquin Triple D",
+    "url": "https://www.waves.com/plugins/manny-marroquin-triple-d",
+    "category": "Signature Series",
+    "tagline": "Minimize boxy, sibilant, and harsh vocal sounds"
+  },
+  {
+    "name": "Maserati ACG",
+    "url": "https://www.waves.com/plugins/maserati-acg",
+    "category": "Signature Series",
+    "tagline": "Acoustic guitar multi-FX by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati B72",
+    "url": "https://www.waves.com/plugins/maserati-b72",
+    "category": "Signature Series",
+    "tagline": "Bass fattener by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati DRM",
+    "url": "https://www.waves.com/plugins/maserati-drm",
+    "category": "Signature Series",
+    "tagline": "Drum enhancer by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati GRP",
+    "url": "https://www.waves.com/plugins/maserati-grp",
+    "category": "Signature Series",
+    "tagline": "Multi-FX for groups by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati GTi",
+    "url": "https://www.waves.com/plugins/maserati-gti",
+    "category": "Signature Series",
+    "tagline": "Guitar mixing FX by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati HMX",
+    "url": "https://www.waves.com/plugins/maserati-hmx",
+    "category": "Saturation & Distortion",
+    "tagline": "Keyboard enhancer by Grammy®-winning mixer Tony Maserati"
+  },
+  {
+    "name": "Maserati VX1",
+    "url": "https://www.waves.com/plugins/maserati-vx1",
+    "category": "Signature Series",
+    "tagline": "Vocal enhancer by Beyoncé mixer Tony Maserati"
+  },
+  {
+    "name": "MaxxBass",
+    "url": "https://www.waves.com/plugins/maxxbass",
+    "category": "Bass",
+    "tagline": "Enhance bass and add low end, even on small speakers"
+  },
+  {
+    "name": "MaxxVolume",
+    "url": "https://www.waves.com/plugins/maxxvolume",
+    "category": "Mastering & Limiters",
+    "tagline": "4 dynamic processors combined for fast control"
+  },
+  {
+    "name": "MDMX Distortion Modules",
+    "url": "https://www.waves.com/plugins/mdmx-distortion-modules",
+    "category": "Saturation & Distortion",
+    "tagline": "3 distortions based on classic hardware effects "
+  },
+  {
+    "name": "MetaFilter",
+    "url": "https://www.waves.com/plugins/metafilter",
+    "category": "Effects",
+    "tagline": "Analog filter tones with super-creative modulation"
+  },
+  {
+    "name": "MetaFlanger",
+    "url": "https://www.waves.com/plugins/metaflanger",
+    "category": "Effects",
+    "tagline": "Vintage tape flanging, phasing, and chorusing "
+  },
+  {
+    "name": "MondoMod",
+    "url": "https://www.waves.com/plugins/mondomod",
+    "category": "Effects",
+    "tagline": "Use diverse modulation FX, separately or together"
+  },
+  {
+    "name": "Morphoder",
+    "url": "https://www.waves.com/plugins/morphoder",
+    "category": "Effects",
+    "tagline": "Classic vocoder, melodic percussion, and special FX"
+  },
+  {
+    "name": "MultiMod Rack",
+    "url": "https://www.waves.com/plugins/multimod-rack",
+    "category": "Saturation & Distortion",
+    "tagline": "Multiband rack hosts 3 Waves distortion plugins"
+  },
+  {
+    "name": "MV2",
+    "url": "https://www.waves.com/plugins/mv2",
+    "category": "Mastering & Limiters",
+    "tagline": "Dual high-level/low-level compressor"
+  },
+  {
+    "name": "MV360",
+    "url": "https://www.waves.com/plugins/mv360",
+    "category": "Surround",
+    "tagline": "Dual-function compression for 5.0/5.1 surround"
+  },
+  {
+    "name": "NLS Non-Linear Summer",
+    "url": "https://www.waves.com/plugins/nls-non-linear-summer",
+    "category": "Modeling",
+    "tagline": "Mix through 3 high-end analog consoles"
+  },
+  {
+    "name": "NS1 Noise Suppressor",
+    "url": "https://www.waves.com/plugins/ns1-noise-suppressor",
+    "category": "Post Production",
+    "tagline": "Single-control noise suppression for voice"
+  },
+  {
+    "name": "Nx Germano Studios New York",
+    "url": "https://www.waves.com/plugins/nx-germano-studios-new-york",
+    "category": "Headphone Mixing",
+    "tagline": ""
+  },
+  {
+    "name": "Nx Ocean Way Nashville",
+    "url": "https://www.waves.com/plugins/nx-ocean-way-nashville",
+    "category": "Headphone Mixing",
+    "tagline": ""
+  },
+  {
+    "name": "Nx – Virtual Mix Room over Headphones",
+    "url": "https://www.waves.com/plugins/nx",
+    "category": "Stereo Imaging",
+    "tagline": "Virtual acoustic mix room for mixing on headphones"
+  },
+  {
+    "name": "OneKnob Brighter",
+    "url": "https://www.waves.com/plugins/oneknob-brighter",
+    "category": "OneKnob",
+    "tagline": "Add instant brightness and clarity to any track"
+  },
+  {
+    "name": "OneKnob Driver",
+    "url": "https://www.waves.com/plugins/oneknob-driver",
+    "category": "Saturation & Distortion",
+    "tagline": "Saturate your tracks, from light overdrive to full-on distortion"
+  },
+  {
+    "name": "OneKnob Filter",
+    "url": "https://www.waves.com/plugins/oneknob-filter",
+    "category": "OneKnob",
+    "tagline": "Create smooth filter sweeps on loops, vocals, instruments or complete tracks"
+  },
+  {
+    "name": "OneKnob Louder",
+    "url": "https://www.waves.com/plugins/oneknob-louder",
+    "category": "OneKnob",
+    "tagline": "Give tracks, buses, and mixes more power and impact"
+  },
+  {
+    "name": "OneKnob Phatter",
+    "url": "https://www.waves.com/plugins/oneknob-phatter",
+    "category": "OneKnob",
+    "tagline": "Boost the low end and add weight to thin tracks"
+  },
+  {
+    "name": "OneKnob Pressure",
+    "url": "https://www.waves.com/plugins/oneknob-pressure",
+    "category": "OneKnob",
+    "tagline": "Squash your tracks, or compress lightly—with a single knob"
+  },
+  {
+    "name": "OneKnob Pumper",
+    "url": "https://www.waves.com/plugins/oneknob-pumper",
+    "category": "OneKnob",
+    "tagline": "Create instant pumping/ducking effects without having to sidechain"
+  },
+  {
+    "name": "OneKnob Wetter",
+    "url": "https://www.waves.com/plugins/oneknob-wetter",
+    "category": "OneKnob",
+    "tagline": "Dial in quick reverb for instant depth and dimension"
+  },
+  {
+    "name": "OVox Vocal ReSynthesis",
+    "url": "https://www.waves.com/plugins/ovox-vocal-resynthesis",
+    "category": "Vocals",
+    "tagline": ""
+  },
+  {
+    "name": "PAZ Analyzer",
+    "url": "https://www.waves.com/plugins/paz-analyzer",
+    "category": "Meters",
+    "tagline": "Displays stereo positioning, frequency spread, and peak/RMS levels"
+  },
+  {
+    "name": "Playlist Rider",
+    "url": "https://www.waves.com/plugins/playlist-rider",
+    "category": "Live",
+    "tagline": "Auto-adjusts consistent levels for multiple audio sources in real time"
+  },
+  {
+    "name": "Primary Source Expander",
+    "url": "https://www.waves.com/plugins/pse-primary-source-expander",
+    "category": "Live",
+    "tagline": "Reduce mic bleed in live shows—instantly"
+  },
+  {
+    "name": "PRS SuperModels",
+    "url": "https://www.waves.com/plugins/prs-supermodels",
+    "category": "Saturation & Distortion",
+    "tagline": "Guitar Amp Simulation: Stunning Realism Meets Superior Tone"
+  },
+  {
+    "name": "PS22 Stereo Maker",
+    "url": "https://www.waves.com/plugins/ps22-stereo-maker",
+    "category": "Stereo Imaging",
+    "tagline": "Convert mono to stereo, or widen the stereo image"
+  },
+  {
+    "name": "PuigChild Compressor",
+    "url": "https://www.waves.com/plugins/puigchild-compressor",
+    "category": "Modeling",
+    "tagline": "The Ultimate Tube Compressor/Limiter "
+  },
+  {
+    "name": "PuigTec EQs",
+    "url": "https://www.waves.com/plugins/puigtec-eqs",
+    "category": "Modeling",
+    "tagline": "Two classic EQs for silky highs, punchy lows, and rich mids"
+  },
+  {
+    "name": "Q-Clone",
+    "url": "https://www.waves.com/plugins/q-clone",
+    "category": "Modeling",
+    "tagline": "Convert any hardware EQ curve into a plugin preset"
+  },
+  {
+    "name": "Q10 Equalizer",
+    "url": "https://www.waves.com/plugins/q10-equalizer",
+    "category": "Equalizers",
+    "tagline": "10-band parametric EQ with 6 curves per band "
+  },
+  {
+    "name": "R360 Surround Reverb",
+    "url": "https://www.waves.com/plugins/r360-surround-reverb",
+    "category": "Surround",
+    "tagline": "Lush reverb created for 5.0 and 5.1 surround"
+  },
+  {
+    "name": "Renaissance Axx",
+    "url": "https://www.waves.com/plugins/renaissance-axx",
+    "category": "Compressors",
+    "tagline": "Compressor optimized for guitars and all stringed instruments"
+  },
+  {
+    "name": "Renaissance Bass",
+    "url": "https://www.waves.com/plugins/renaissance-bass",
+    "category": "Bass",
+    "tagline": "Rich bass enhancement for music and voice"
+  },
+  {
+    "name": "Renaissance Channel",
+    "url": "https://www.waves.com/plugins/renaissance-channel",
+    "category": "Compressors",
+    "tagline": "Channel strip with dynamics, 4-band EQ and sidechain "
+  },
+  {
+    "name": "Renaissance Compressor",
+    "url": "https://www.waves.com/plugins/renaissance-compressor",
+    "category": "Compressors",
+    "tagline": "Classic, multi-application compressor and expander"
+  },
+  {
+    "name": "Renaissance DeEsser",
+    "url": "https://www.waves.com/plugins/renaissance-deesser",
+    "category": "Vocals",
+    "tagline": "Modern de-esser with extensive visual feedback "
+  },
+  {
+    "name": "Renaissance Equalizer",
+    "url": "https://www.waves.com/plugins/renaissance-equalizer",
+    "category": "Equalizers",
+    "tagline": "6-band equalizer with multiple curve options "
+  },
+  {
+    "name": "Renaissance Reverb",
+    "url": "https://www.waves.com/plugins/renaissance-reverb",
+    "category": "Reverb",
+    "tagline": "Smooth algorithmic reverb, 12 reverb types, 265 presets"
+  },
+  {
+    "name": "Renaissance Vox",
+    "url": "https://www.waves.com/plugins/renaissance-vox",
+    "category": "Vocals",
+    "tagline": "Classic compressor/limiter optimized for vocals "
+  },
+  {
+    "name": "Retro Fi",
+    "url": "https://www.waves.com/plugins/retro-fi",
+    "category": "Effects",
+    "tagline": "True analog lofi magic"
+  },
+  {
+    "name": "S1 Stereo Imager",
+    "url": "https://www.waves.com/plugins/s1-stereo-imager",
+    "category": "Stereo Imaging",
+    "tagline": "Widen your stereo image and correct the stereo balance"
+  },
+  {
+    "name": "S360 Surround Imager & Panner",
+    "url": "https://www.waves.com/plugins/s360-surround-imager-panner",
+    "category": "Surround",
+    "tagline": "Manipulate surround imaging, panning, and space"
+  },
+  {
+    "name": "Scheps 73",
+    "url": "https://www.waves.com/plugins/scheps-73",
+    "category": "Equalizers",
+    "tagline": "Classic 1073 EQ emulation, created with Andrew Scheps"
+  },
+  {
+    "name": "Scheps Omni Channel 2",
+    "url": "https://www.waves.com/plugins/scheps-omni-channel",
+    "category": "Channel Strips",
+    "tagline": "The perfect channel strip, created with Andrew Scheps: Now expanded with new features"
+  },
+  {
+    "name": "Scheps Parallel Particles",
+    "url": "https://www.waves.com/plugins/scheps-parallel-particles",
+    "category": "Signature Series",
+    "tagline": "Add instant thickness, bite, air, and deep subs to your tracks"
+  },
+  {
+    "name": "Sibilance",
+    "url": "https://www.waves.com/plugins/sibilance",
+    "category": "Vocals",
+    "tagline": "De-essing with Organic ReSynthesis technology "
+  },
+  {
+    "name": "Silk Vocal",
+    "url": "https://www.waves.com/plugins/silk-vocal",
+    "category": "Vocals",
+    "tagline": "Smart EQ & dynamics for vocals"
+  },
+  {
+    "name": "Smack Attack",
+    "url": "https://www.waves.com/plugins/smack-attack-transient-shaper",
+    "category": "Compressors",
+    "tagline": "Emphasize, tame, and shape drums and percussion"
+  },
+  {
+    "name": "SoundShifter",
+    "url": "https://www.waves.com/plugins/soundshifter",
+    "category": "Pitch & Time",
+    "tagline": "Time- and pitch-stretch audio with multiple options "
+  },
+  {
+    "name": "Space Rider",
+    "url": "https://www.waves.com/plugins/space-rider",
+    "category": "Reverb",
+    "tagline": "Spatial effects suite with ‘secret weapon’ dynamic Rider"
+  },
+  {
+    "name": "Spherix Immersive Compressor & Limiter",
+    "url": "https://www.waves.com/plugins/spherix-immersive-compressor-limiter",
+    "category": "Surround",
+    "tagline": "Dynamics designed for 7.1.4/7.1.2 mixing "
+  },
+  {
+    "name": "SSL E-Channel",
+    "url": "https://www.waves.com/plugins/ssl-e-channel",
+    "category": "SSL",
+    "tagline": ""
+  },
+  {
+    "name": "SSL EV2 Channel",
+    "url": "https://www.waves.com/plugins/ssl-ev2-channel",
+    "category": "SSL",
+    "tagline": ""
+  },
+  {
+    "name": "SSL G-Channel",
+    "url": "https://www.waves.com/plugins/ssl-g-channel",
+    "category": "SSL",
+    "tagline": ""
+  },
+  {
+    "name": "SSL G-Equalizer",
+    "url": "https://www.waves.com/plugins/ssl-g-equalizer",
+    "category": "SSL",
+    "tagline": ""
+  },
+  {
+    "name": "SSL G-Master Buss Compressor",
+    "url": "https://www.waves.com/plugins/ssl-g-master-buss-compressor",
+    "category": "SSL",
+    "tagline": ""
+  },
+  {
+    "name": "StudioVerse Audio Effects",
+    "url": "https://www.waves.com/plugins/studioverse-audio-effects",
+    "category": "StudioVerse",
+    "tagline": ""
+  },
+  {
+    "name": "StudioVerse Instruments",
+    "url": "https://www.waves.com/plugins/studioverse-instruments",
+    "category": "StudioVerse",
+    "tagline": ""
+  },
+  {
+    "name": "StudioVerse: Mix Unlock",
+    "url": "https://www.waves.com/plugins/studioverse-mix-unlock",
+    "category": "StudioVerse",
+    "tagline": ""
+  },
+  {
+    "name": "Sub Align",
+    "url": "https://www.waves.com/plugins/sub-align",
+    "category": "Live",
+    "tagline": "Align PA system subs and tops for phase integrity"
+  },
+  {
+    "name": "Submarine",
+    "url": "https://www.waves.com/plugins/submarine",
+    "category": "Post Production",
+    "tagline": "Add bigger, deeper subs to your tracks"
+  },
+  {
+    "name": "SuperTap",
+    "url": "https://www.waves.com/plugins/supertap",
+    "category": "Delay",
+    "tagline": "Flexible delays inspired by analog tape echo"
+  },
+  {
+    "name": "Sync Vx",
+    "url": "https://www.waves.com/plugins/sync-vx",
+    "category": "Vocals",
+    "tagline": "Match the time & pitch of multiple vocal tracks, for tighter vocal productions"
+  },
+  {
+    "name": "Torque",
+    "url": "https://www.waves.com/plugins/torque",
+    "category": "Pitch & Time",
+    "tagline": "Tune the pitch of drums, in your recordings or live"
+  },
+  {
+    "name": "TRACT SPL Meter",
+    "url": "https://www.waves.com/plugins/tract-spl-meter",
+    "category": "Meters",
+    "tagline": "Sound pressure level monitoring and logging directly inside Waves live hosts"
+  },
+  {
+    "name": "TRACT System Calibration",
+    "url": "https://www.waves.com/plugins/tract-system-calibration",
+    "category": "Live",
+    "tagline": "PA measurement, system calibration and SPL monitoring in one complete suite"
+  },
+  {
+    "name": "Trans-X",
+    "url": "https://www.waves.com/plugins/transx",
+    "category": "Compressors",
+    "tagline": "Control percussive sounds with detailed transient shaping"
+  },
+  {
+    "name": "TrueVerb",
+    "url": "https://www.waves.com/plugins/trueverb",
+    "category": "Reverb",
+    "tagline": "Lush reverb with detailed control over early reflections "
+  },
+  {
+    "name": "UltraPitch",
+    "url": "https://www.waves.com/plugins/ultrapitch",
+    "category": "Pitch & Time",
+    "tagline": "Harmonies and formant shifting for monophonic audio"
+  },
+  {
+    "name": "UM225 / UM226",
+    "url": "https://www.waves.com/plugins/um225-um226",
+    "category": "Surround",
+    "tagline": "Upmix stereo tracks to 5.0 or 5.1 surround"
+  },
+  {
+    "name": "V-Comp",
+    "url": "https://www.waves.com/plugins/v-comp",
+    "category": "Modeling",
+    "tagline": "2254-type analog-modeled compressor with vintage transformer sound "
+  },
+  {
+    "name": "V-EQ3",
+    "url": "https://www.waves.com/plugins/v-eq3",
+    "category": "Modeling",
+    "tagline": "Vintage EQ with rich analog tone, modeled from 1066 and 1073 consoles"
+  },
+  {
+    "name": "V-EQ4",
+    "url": "https://www.waves.com/plugins/v-eq4",
+    "category": "Modeling",
+    "tagline": "Larger-than-life sound, with flexibility to match"
+  },
+  {
+    "name": "Vitamin Sonic Enhancer",
+    "url": "https://www.waves.com/plugins/vitamin",
+    "category": "Harmonics",
+    "tagline": "Add excitement, spark and definition to any track, while mixing or mastering"
+  },
+  {
+    "name": "Vocal Bender",
+    "url": "https://www.waves.com/plugins/vocal-bender",
+    "category": "Vocals",
+    "tagline": "Real-time vocal pitch & formant manipulation"
+  },
+  {
+    "name": "Vocal Rider®",
+    "url": "https://www.waves.com/plugins/vocal-rider",
+    "category": "Vocals",
+    "tagline": "Get consistent vocal levels—automatically and fast"
+  },
+  {
+    "name": "Voltage Amps",
+    "url": "https://www.waves.com/plugins/voltage-amps",
+    "category": "Modeling",
+    "tagline": "7 iconic guitar and bass amps, optimized for instant tone gratification"
+  },
+  {
+    "name": "VU Meter",
+    "url": "https://www.waves.com/plugins/vu-meter",
+    "category": "Meters",
+    "tagline": "Industry-standard meter to reliably see average audio levels"
+  },
+  {
+    "name": "W43 Noise Reduction Plugin",
+    "url": "https://www.waves.com/plugins/w43-noise-reduction-plugin",
+    "category": "Post Production",
+    "tagline": "Reduce ambient noise in audio-for-video productions"
+  },
+  {
+    "name": "Waves Harmony",
+    "url": "https://www.waves.com/plugins/waves-harmony",
+    "category": "Vocals",
+    "tagline": "Real-time vocal harmony playground "
+  },
+  {
+    "name": "Waves Stream",
+    "url": "https://www.waves.com/plugins/waves-stream",
+    "category": "Streaming",
+    "tagline": ""
+  },
+  {
+    "name": "Waves Tune",
+    "url": "https://www.waves.com/plugins/waves-tune",
+    "category": "Pitch & Time",
+    "tagline": "Surgical vocal pitch correction"
+  },
+  {
+    "name": "Waves Tune LT",
+    "url": "https://www.waves.com/plugins/waves-tune-lt",
+    "category": "Pitch & Time",
+    "tagline": "Simplified vocal pitch correction and re-tuning "
+  },
+  {
+    "name": "Waves Tune Real-Time",
+    "url": "https://www.waves.com/plugins/waves-tune-real-time",
+    "category": "Vocals",
+    "tagline": "Instant vocal pitch correction, in the studio or live"
+  },
+  {
+    "name": "WLM Plus Loudness Meter",
+    "url": "https://www.waves.com/plugins/wlm-loudness-meter",
+    "category": "Meters",
+    "tagline": "Precision level measurement plugin with true peak limiter "
+  },
+  {
+    "name": "WNS Noise Suppressor",
+    "url": "https://www.waves.com/plugins/wns-noise-suppressor",
+    "category": "Post Production",
+    "tagline": "Reduce background noise with dialog and vocals "
+  },
+  {
+    "name": "X-Click",
+    "url": "https://www.waves.com/plugins/x-click",
+    "category": "Post Production",
+    "tagline": "Minimize strong clicks in digital or vinyl media"
+  },
+  {
+    "name": "X-Crackle",
+    "url": "https://www.waves.com/plugins/x-crackle",
+    "category": "Post Production",
+    "tagline": "Minimize low-level crackles and surface noise"
+  },
+  {
+    "name": "X-FDBK",
+    "url": "https://www.waves.com/plugins/x-fdbk",
+    "category": "Live",
+    "tagline": "Automatic feedback elimination for clearer live sound "
+  },
+  {
+    "name": "X-Hum",
+    "url": "https://www.waves.com/plugins/x-hum",
+    "category": "Post Production",
+    "tagline": "Remove 50/60 Hz hum, DC offset, and low rumble"
+  },
+  {
+    "name": "X-Noise",
+    "url": "https://www.waves.com/plugins/x-noise",
+    "category": "Post Production",
+    "tagline": "Focused, noiseprint-based noise reduction"
+  },
+  {
+    "name": "Z-Noise",
+    "url": "https://www.waves.com/plugins/z-noise",
+    "category": "Post Production",
+    "tagline": "Noiseprint-based noise reduction for music"
+  }
+]
