@@ -100,7 +100,7 @@ public:
             const double A = forwardMax.push (a);
 
             // 4.2 gate (expander 1:2)
-            const double d = gateDetector.process (A);
+            const double d = gateDetector.process (A, gateActive);
             const double gg = gateActive ? GateDetector::gain (d, gateThreshold) : 1.0;
 
             // 4.3 / 4.4 compressor target (from the ungated level, D4) and program-dependent release

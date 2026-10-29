@@ -26,20 +26,22 @@ public:
         decayDbPerSample = releaseDbPerSecond / sampleRate;
         fullDecay = std::pow (10.0, -decayDbPerSample / 20.0);
         softRatio = std::pow (10.0, softFloorDb / 20.0);
+        softExponent = -decayDbPerSample / softFloorDb;
         reset();
     }
 
     void reset() noexcept { d = 0.0; }
 
-    // Feeds the forward-max level A[n] and returns the detector value d[n].
-    double process (double A) noexcept
+    // Feeds the forward-max level A[n] and returns the detector value d[n]. `exact` = false skips the soft floor
+    // (used while the gate is switched off, when only the detector state has to be kept up to date).
+    double process (double A, bool exact = true) noexcept
     {
         double decayed;
-        if (A > 0.0 && d < A * softRatio)
+        if (exact && A > 0.0 && d > A && d < A * softRatio)
         {
             // within the soft floor: rate proportional to the remaining distance in dB
-            const double distDb = 20.0 * std::log10 (std::max (d, A) / A);
-            decayed = d * std::pow (10.0, -decayDbPerSample * (distDb / softFloorDb) / 20.0);
+            // decay factor fullDecay^(distDb / softFloorDb) with distDb = 20 log10(d / A)  ==  (d / A)^softExponent
+            decayed = d * std::pow (d / A, softExponent);
         }
         else
         {
@@ -58,7 +60,7 @@ public:
     }
 
 private:
-    double decayDbPerSample = 63.0 / 48000.0, fullDecay = 1.0, softRatio = 2.0;
+    double decayDbPerSample = 63.0 / 48000.0, fullDecay = 1.0, softRatio = 2.0, softExponent = 0.0;
     double d = 0.0;
 };
 

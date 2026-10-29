@@ -36,11 +36,14 @@ struct ReleaseLaw
         double attackMs, attackWarp, releaseMs, releaseWarp;
     };
     // releaseMs = 0: instantaneous release
-    static constexpr Envelope charge { 111.894, 0.03, 0.0, 1.0 };
-    static constexpr Envelope medium { 117.501, -0.006, 27.867, 1.313 };
-    static constexpr Envelope slow1 { 206.882, -0.247, 58.261, -1.362 };
-    static constexpr Envelope slow2 { 216.423, 0.04, 394.772, -0.63 };
+    static constexpr Envelope charge { 102.045, -0.066, 0.0, 1.0 };
+    static constexpr Envelope medium { 103.922, -0.037, 26.668, 0.988 };
+    static constexpr Envelope slow1 { 192.063, -0.511, 52.693, -1.98 };
+    static constexpr Envelope slow2 { 148.833, 0.046, 419.965, -0.642 };
     static constexpr double holdMs = 12.0;
+    // The envelopes (all time constants >= 26 ms) are updated at a control rate of about 6 kHz; the fast path
+    // stays per sample. Each control step sees the maximum level of its block, so nothing is missed.
+    static constexpr double controlRateHz = 6000.0;
 };
 
 class ReleaseStage
@@ -49,6 +52,8 @@ public:
     void prepare (double sampleRate)
     {
         fs = sampleRate;
+        decimation = std::max (1, int (std::lround (fs / ReleaseLaw::controlRateHz)));
+        controlRate = fs / decimation;
         configure (charge, ReleaseLaw::charge);
         configure (medium, ReleaseLaw::medium);
         configure (slow1, ReleaseLaw::slow1);
@@ -62,33 +67,50 @@ public:
         hold.reset (0.0);
         charge.level = medium.level = slow1.level = slow2.level = 0.0;
         q = 1.0;
+        zSlow = 1.0;
+        blockA = blockHeld = 0.0;
+        counter = 0;
     }
 
     // A: forward-max level of the aligned sample; km1 = k - 1 (>= 0). Returns q[n] (<= 1).
     double process (double A, double km1) noexcept
     {
         const double held = hold.push (A);
+        blockA = std::max (blockA, A);
+        blockHeld = std::max (blockHeld, held);
+        if (++counter >= decimation)
+        {
+            controlStep (km1);
+            counter = 0;
+            blockA = blockHeld = 0.0;
+        }
         if (km1 <= 0.0)
         {
-            // no compression: envelopes track the level so that a later Compression change starts consistently
-            charge.level = A;
-            medium.level = A;
-            slow1.level = held;
-            slow2.level = held;
             q = 1.0;
             return q;
         }
-        const double zh = 1.0 + km1 * A;
-        const double zm = step (medium, step (charge, zh, km1), km1);
-        const double z1 = step (slow1, 1.0 + km1 * held, km1);
-        const double z2 = step (slow2, z1, km1);
-        q = 1.0 / std::max (zh, std::max (zm, z2));
+        q = 1.0 / std::max (1.0 + km1 * A, zSlow);
         return q;
     }
 
     double getState() const noexcept { return q; }
 
 private:
+    void controlStep (double km1) noexcept
+    {
+        if (km1 <= 0.0)
+        {
+            // no compression: envelopes track the level so that a later Compression change starts consistently
+            charge.level = medium.level = blockA;
+            slow1.level = slow2.level = blockHeld;
+            zSlow = 1.0;
+            return;
+        }
+        const double zm = step (medium, step (charge, 1.0 + km1 * blockA, km1), km1);
+        const double z2 = step (slow2, step (slow1, 1.0 + km1 * blockHeld, km1), km1);
+        zSlow = std::max (zm, z2);
+    }
+
     struct State
     {
         double ca = 0.0, cr = 0.0, la = 1.0, lr = 1.0;
@@ -97,8 +119,8 @@ private:
 
     void configure (State& s, const ReleaseLaw::Envelope& e) noexcept
     {
-        s.ca = onePoleCoeff (e.attackMs, fs);
-        s.cr = e.releaseMs > 0.0 ? onePoleCoeff (e.releaseMs, fs) : 1.0;
+        s.ca = onePoleCoeff (e.attackMs, controlRate);
+        s.cr = e.releaseMs > 0.0 ? onePoleCoeff (e.releaseMs, controlRate) : 1.0;
         s.la = e.attackWarp;
         s.lr = e.releaseWarp;
     }
@@ -137,7 +159,9 @@ private:
         return z;
     }
 
-    double fs = 48000.0;
+    double fs = 48000.0, controlRate = 6000.0;
+    int decimation = 8, counter = 0;
+    double blockA = 0.0, blockHeld = 0.0, zSlow = 1.0;
     SlidingMax hold;
     State charge, medium, slow1, slow2;
     double q = 1.0;
