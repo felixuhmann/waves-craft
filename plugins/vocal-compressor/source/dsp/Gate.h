@@ -1,4 +1,4 @@
-// Craft Vocal Compressor - gate level detector and gain (spec r1 section 4.2, decision D5).
+// Craft Vocal Compressor - gate level detector and gain (spec r2 section 4.2, decision D5).
 // Host-independent: no JUCE dependency.
 #pragma once
 
@@ -8,60 +8,55 @@
 namespace craft::vocal
 {
 
-// Downward expander 1:2, hard knee:
-//   d[n]  = max(A[n], decay(d[n-1]))      A = forward max over the look-ahead window (computed by the engine)
-//   gg[n] = min(1, d[n] / T)
-// decay: 63 dB/s (exponential in amplitude). Over the last `softFloorDb` above the current level A the decay rate is
-// reduced in proportion to the remaining distance (an exponential approach in dB), which rounds the corner where the
-// closing gate meets its final value as in the closing trajectories of section 9.6 (see IMPLEMENTATION_NOTES.md).
-// Steady signals are unaffected: with constant A the detector equals A exactly.
+// Downward expander 1:2, hard knee, detector in dB (spec r2 section 4.2, implemented literally):
+//   L_A = 20 log10(A[n])                  A = forward max over the look-ahead window (computed by the engine)
+//   D   = L_d[n-1] - L_A
+//   D <= 0 : L_d[n] = L_A                                  instant attack
+//   D >  0 : L_d[n] = L_A + max(0, D - S(D) / fs)          release toward the current level
+//   S(D) = 21.57 + 44.19 (1 - exp(-D / 8.03)) dB/s
+//   gg[n] = min(1, 10^((L_d[n] - Gate) / 20))
 class GateDetector
 {
 public:
-    static constexpr double releaseDbPerSecond = 63.0;
-    static constexpr double softFloorDb = 5.0;
+    static constexpr double rateBase = 21.57;  // dB/s just above the level
+    static constexpr double rateRange = 44.19; // + this far above it (total 65.76 dB/s)
+    static constexpr double rateDistance = 8.03; // dB
+    static constexpr double floorDb = -300.0;  // level used for digital silence
 
     void prepare (double sampleRate) noexcept
     {
-        decayDbPerSample = releaseDbPerSecond / sampleRate;
-        fullDecay = std::pow (10.0, -decayDbPerSample / 20.0);
-        softRatio = std::pow (10.0, softFloorDb / 20.0);
-        softExponent = -decayDbPerSample / softFloorDb;
+        fs = sampleRate;
         reset();
     }
 
-    void reset() noexcept { d = 0.0; }
+    void reset() noexcept { levelDb = floorDb; }
 
-    // Feeds the forward-max level A[n] and returns the detector value d[n]. `exact` = false skips the soft floor
-    // (used while the gate is switched off, when only the detector state has to be kept up to date).
-    double process (double A, bool exact = true) noexcept
+    // Release rate in dB/s at a distance of D dB above the current level.
+    static double rate (double distanceDb) noexcept
     {
-        double decayed;
-        if (exact && A > 0.0 && d > A && d < A * softRatio)
-        {
-            // within the soft floor: rate proportional to the remaining distance in dB
-            // decay factor fullDecay^(distDb / softFloorDb) with distDb = 20 log10(d / A)  ==  (d / A)^softExponent
-            decayed = d * std::pow (d / A, softExponent);
-        }
-        else
-        {
-            decayed = d * fullDecay;
-        }
-        d = std::max (A, decayed);
-        return d;
+        return rateBase + rateRange * (1.0 - std::exp (-distanceDb / rateDistance));
     }
 
-    double getLevel() const noexcept { return d; }
-
-    // Gain for threshold T (linear amplitude, > 0).
-    static double gain (double detector, double thresholdLin) noexcept
+    // Feeds the forward-max level A[n] (linear) and returns the detector level L_d[n] in dB.
+    double process (double A) noexcept
     {
-        return detector >= thresholdLin ? 1.0 : detector / thresholdLin;
+        const double la = A > 1.0e-15 ? 20.0 * std::log10 (A) : floorDb;
+        const double d = levelDb - la;
+        levelDb = d <= 0.0 ? la : la + std::max (0.0, d - rate (d) / fs);
+        return levelDb;
+    }
+
+    double getLevelDb() const noexcept { return levelDb; }
+
+    // Gain for threshold `thresholdDb` given the detector level in dB.
+    static double gain (double detectorDb, double thresholdDb) noexcept
+    {
+        return detectorDb >= thresholdDb ? 1.0 : std::pow (10.0, (detectorDb - thresholdDb) / 20.0);
     }
 
 private:
-    double decayDbPerSample = 63.0 / 48000.0, fullDecay = 1.0, softRatio = 2.0, softExponent = 0.0;
-    double d = 0.0;
+    double fs = 48000.0;
+    double levelDb = floorDb;
 };
 
 } // namespace craft::vocal

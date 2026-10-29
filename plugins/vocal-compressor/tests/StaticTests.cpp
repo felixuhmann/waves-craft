@@ -120,8 +120,8 @@ TEST_CASE ("Single isolated samples obey the static law (9.1)", "[static]")
 TEST_CASE ("Look-ahead attack ramp matches 9.2 at 44.1 / 48 / 96 kHz", "[attack]")
 {
     const int offsets[] = { -70, -64, -60, -56, -48, -40, -32, -24, -16, -8, -4, -1, 0, 8 };
-    const double t36[] = { 31.80, 31.80, 31.73, 31.52, 30.64, 28.98, 26.15, 21.86, 15.92, 7.81, 3.22, 0.99, 0.40, 0.00 };
-    const double t18[] = { 17.42, 17.42, 17.37, 17.21, 16.51, 15.16, 12.93, 9.79, 6.03, 2.35, 0.95, 0.39, 0.21, 0.00 };
+    const double t36[] = { 31.80, 31.80, 31.73, 31.52, 30.65, 28.98, 26.15, 21.88, 15.92, 7.81, 3.22, 0.65, 0.25, 0.00 };
+    const double t18[] = { 17.42, 17.42, 17.37, 17.21, 16.51, 15.16, 12.93, 9.80, 6.03, 2.35, 0.95, 0.30, 0.18, 0.00 };
 
     const double fs = GENERATE (44100.0, 48000.0, 96000.0);
     const int scale = fs > 50000.0 ? 2 : 1; // "doubled lengths at 96 kHz"
@@ -136,11 +136,7 @@ TEST_CASE ("Look-ahead attack ramp matches 9.2 at 44.1 / 48 / 96 kHz", "[attack]
         for (int j = 0; j < 14; ++j)
         {
             INFO ("fs " << fs << " comp " << comp << " n " << offsets[j]);
-            // n = -1 and 0 sit on the zero crossing where the step happens (x[0] = 0, |x[-1]| = 0.0013), where the
-            // tabulated ratio is ill-conditioned; the structure that reproduces every other point to 0.01 dB gives
-            // 0.65 / 0.25 dB there (see IMPLEMENTATION_NOTES.md, assumption A3)
-            const double tol = (offsets[j] == -1 || offsets[j] == 0) ? 0.4 : 0.25;
-            CHECK_THAT (gainDb (r, pre + long (offsets[j]) * scale), WithinAbs (ref[j], tol));
+            CHECK_THAT (gainDb (r, pre + long (offsets[j]) * scale), WithinAbs (ref[j], 0.25));
         }
     }
 }

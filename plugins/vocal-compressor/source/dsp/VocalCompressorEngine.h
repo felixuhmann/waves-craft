@@ -47,6 +47,9 @@ public:
         reset();
     }
 
+    // Development / fitting aid: replaces the release constants; call before prepare().
+    void setReleaseLaw (const ReleaseLaw& l) { release.setLaw (l); }
+
     int getLatencySamples() const noexcept { return config.lookahead; }
     int getNumChannels() const noexcept { return channels; }
     const LookaheadConfig& getConfig() const noexcept { return config; }
@@ -100,8 +103,8 @@ public:
             const double A = forwardMax.push (a);
 
             // 4.2 gate (expander 1:2)
-            const double d = gateDetector.process (A, gateActive);
-            const double gg = gateActive ? GateDetector::gain (d, gateThreshold) : 1.0;
+            const double d = gateDetector.process (A);
+            const double gg = gateActive ? GateDetector::gain (d, gateThresholdDb) : 1.0;
 
             // 4.3 / 4.4 compressor target (from the ungated level, D4) and program-dependent release
             const double q = release.process (A, km1);
@@ -165,7 +168,7 @@ private:
         {
             const double db = gateDb.next();
             gateActive = db > gateOffDb;
-            gateThreshold = std::pow (10.0, db / 20.0);
+            gateThresholdDb = db;
         }
         if (force || ! gainDb.isSettled())
             gainLin = std::pow (10.0, gainDb.next() / 20.0);
@@ -183,7 +186,7 @@ private:
     ReleaseStage release;
     Smoother compressionDb, gateDb, gainDb;
 
-    double k = 1.0, km1 = 0.0, gateThreshold = 1.0e-7, gainLin = 1.0;
+    double k = 1.0, km1 = 0.0, gateThresholdDb = gateOffDb, gainLin = 1.0;
     bool gateActive = false;
 
     bool bypassed = false;
