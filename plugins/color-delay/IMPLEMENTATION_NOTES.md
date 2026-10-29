@@ -267,7 +267,7 @@ them generically (product zip `craft-colour-delay-<version>-<platform>.zip`). Ed
 ## Status
 
 r3: Windows x64 Release build (MSVC 2022, VST3 + CLAP + Standalone, no warnings in this plug-in) and all 35 unit tests
-pass. `tools/hoststress` (from main) ran 4 + 3 min against the VST3 (44.1/48/96 kHz, mono/stereo in, float/double,
+pass. `tools/hoststress` (from main) ran 4 + 3 min (r2) and 2.5 min with editor (r3) against the VST3 (44.1/48/96 kHz, mono/stereo in, float/double,
 blocks 1…4096, random automation, state restores, editor open/close): 0 failures (also on Linux / GCC 13 for the DSP core); `ci/package.py` produces `craft-colour-delay-<version>-windows-x64.zip`.
 The Linux plug-in targets were not built locally; they use the same portable CMake as the other Craft plug-ins and are
 covered by CI.
