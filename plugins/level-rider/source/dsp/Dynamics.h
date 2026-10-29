@@ -34,13 +34,16 @@ struct StaticLaw
 };
 
 // ---------------------------------------------------------------------------------------------
-// Section 6 constants (Slow / Fast).
+// Section 6 constants (Slow / Fast). The spec's structure is non-binding and its constants are a starting point
+// (Slow 71 ms / 50 ms / 0.94 s / 0.45 s / 52 ms, Fast 2.1 ms / 450 ms / 1.30 s / 0.79 s / 15 ms). Because this
+// detector reads the analytic (ripple-free) power instead of the plain block mean square, the constants were
+// re-fitted to the normative tables T2 / T3 (least squares, see IMPLEMENTATION_NOTES.md).
 struct Ballistics
 {
     double attack, hold, release, up, down;
 
-    static Ballistics slow() noexcept { return { 0.071, 0.050, 0.94, 0.45, 0.052 }; }
-    static Ballistics fast() noexcept { return { 0.0021, 0.450, 1.30, 0.79, 0.015 }; }
+    static Ballistics slow() noexcept { return { 0.0399, 0.0780, 1.004, 0.492, 0.0430 }; }
+    static Ballistics fast() noexcept { return { 0.00162, 0.471, 1.111, 0.766, 0.0166 }; }
 };
 
 // Level detector on the weighted mean power of 1 ms blocks: attack when the block power exceeds the state,

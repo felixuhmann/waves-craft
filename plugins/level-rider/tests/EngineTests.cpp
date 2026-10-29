@@ -62,27 +62,62 @@ TEST_CASE ("Output is a pure gain, identical on both channels, with zero latency
         }
     CHECK (worst < 1e-12);
 
-    // residual against a per-5 ms scalar gain (least squares per window) <= -120 dB
-    const size_t win = 240;
+    // Residual against the per-block gain (section 3: one gain per 1 ms block, interpolated per sample):
+    // least-squares fit of (a + b n) * x per 48-sample block, <= -120 dB. Nothing but that gain reaches the output.
+    const size_t win = 48;
     double resid = 0.0, energy = 0.0;
     for (size_t p = 0; p + win <= r.inL.size(); p += win)
     {
-        double xy = 0.0, xx = 0.0;
+        double s00 = 0, s01 = 0, s11 = 0, y0 = 0, y1 = 0;
         for (size_t i = p; i < p + win; ++i)
         {
-            xy += r.inL[i] * r.outL[i];
-            xx += r.inL[i] * r.inL[i];
+            const double x = r.inL[i], t = double (i - p);
+            s00 += x * x;
+            s01 += x * x * t;
+            s11 += x * x * t * t;
+            y0 += x * r.outL[i];
+            y1 += x * t * r.outL[i];
         }
-        const double k = xy / xx;
+        const double det = s00 * s11 - s01 * s01;
+        const double a = (y0 * s11 - y1 * s01) / det, b = (y1 * s00 - y0 * s01) / det;
         for (size_t i = p; i < p + win; ++i)
         {
-            const double d = r.outL[i] - k * r.inL[i];
+            const double d = r.outL[i] - (a + b * double (i - p)) * r.inL[i];
             resid += d * d;
             energy += r.outL[i] * r.outL[i];
         }
     }
     INFO ("residual " << 10.0 * std::log10 (resid / energy) << " dB");
     CHECK (10.0 * std::log10 (resid / energy) <= -120.0);
+}
+
+TEST_CASE ("A settled gain is a scalar per 5 ms window (no colouration)", "[engine]")
+{
+    auto e = makeEngine (48000.0, -12, 12);
+    runSegments (e, { { -21.0, 8.0 } }, Stimulus::Sine, 1000.0); // continues phase-continuously below
+    // after settling the gain is constant: output = k * input per 5 ms window, residual <= -120 dB
+    std::vector<double> l (240), r (240), in (240);
+    double resid = 0.0, energy = 0.0;
+    for (int w = 0; w < 100; ++w)
+    {
+        for (size_t i = 0; i < 240; ++i)
+            l[i] = r[i] = in[i] = dbToGain (-21.0) * std::sqrt (2.0)
+                                  * std::sin (2.0 * pi * 1000.0 * double (384000 + w * 240 + int (i)) / 48000.0);
+        double* ch[2] = { l.data(), r.data() };
+        e.process (ch, 2, (const double* const*) nullptr, 0, 240);
+        double xy = 0, xx = 0;
+        for (size_t i = 0; i < 240; ++i)
+        {
+            xy += in[i] * l[i];
+            xx += in[i] * in[i];
+        }
+        for (size_t i = 0; i < 240; ++i)
+        {
+            resid += (l[i] - xy / xx * in[i]) * (l[i] - xy / xx * in[i]);
+            energy += l[i] * l[i];
+        }
+    }
+    CHECK (10.0 * std::log10 (resid / energy + 1e-300) <= -120.0);
 }
 
 TEST_CASE ("An impulse passes without delay", "[engine]")

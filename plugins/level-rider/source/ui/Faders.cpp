@@ -104,8 +104,8 @@ void TargetBar::paint (juce::Graphics& g)
     flag.addTriangle (x - 6.0f, t.getY() - 9.0f, x + 6.0f, t.getY() - 9.0f, x, t.getY() - 2.0f);
     g.fillPath (flag);
     g.setFont (juce::Font (uiFont (10.5f, true)));
-    const auto labelArea = juce::Rectangle<float> (60.0f, 12.0f).withCentre ({ x, t.getY() - 13.0f });
-    g.drawText ("TARGET " + juce::String (targetDb, 1), labelArea.withX (juce::jlimit (0.0f, getWidth() - 60.0f, labelArea.getX())),
+    const auto labelArea = juce::Rectangle<float> (96.0f, 12.0f).withCentre ({ x, t.getY() - 13.0f });
+    g.drawText ("TARGET " + juce::String (targetDb, 1), labelArea.withX (juce::jlimit (0.0f, getWidth() - 96.0f, labelArea.getX())),
                 juce::Justification::centred);
 }
 

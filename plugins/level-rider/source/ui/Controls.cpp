@@ -243,7 +243,7 @@ void Knob::resized()
 void Knob::paint (juce::Graphics& g)
 {
     g.setColour (colours::textDim);
-    g.setFont (juce::Font (uiFont (10.5f, true)));
+    g.setFont (juce::Font (uiFont (9.5f, true)));
     g.drawText (caption.toUpperCase(), getLocalBounds().removeFromTop (16), juce::Justification::centred);
 }
 

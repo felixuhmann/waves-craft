@@ -115,9 +115,10 @@ struct GainTrace
     // mean gain over [t0, t1)
     double mean (double t0, double t1) const
     {
-        const auto i0 = size_t (std::round (t0 / windowSeconds)), i1 = size_t (std::round (t1 / windowSeconds));
+        const auto i1 = std::min (gainDb.size(), size_t (std::round (t1 / windowSeconds)));
+        const auto i0 = std::min (i1 - 1, size_t (std::round (t0 / windowSeconds)));
         double s = 0.0;
-        for (size_t i = i0; i < i1 && i < gainDb.size(); ++i)
+        for (size_t i = i0; i < i1; ++i)
             s += gainDb[i];
         return s / double (i1 - i0);
     }
