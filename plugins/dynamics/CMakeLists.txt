@@ -1,4 +1,4 @@
-# Craft dynamics (spec r1): Craft Dynamics, Craft Compressor, Craft Gate, Craft Compressor SC.
+# Craft dynamics (spec r2): Craft Dynamics, Craft Compressor, Craft Gate, Craft Compressor SC.
 # Added automatically by the root CMakeLists.txt; JUCE, clap-juce-extensions and Catch2 are fetched there.
 project (CraftDynamics VERSION 0.1.0 LANGUAGES C CXX)
 
