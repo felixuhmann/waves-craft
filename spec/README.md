@@ -10,3 +10,4 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 |---|---|---|---|---|
 | `stereo-imager` | [r1](stereo-imager/r1/SPEC.md) | Stereo imager (Full / Imager / MS matrix) | Approved 2026-10-29 | dad6a104e00c7296284e86a984cf5c10ce8e29b2b2bb06d9ee9b969ec0955dcc |
 | `flanger` | [r1](flanger/r1/SPEC.md) | Flanger (sine/triangle LFO, tape mode, feedback, FIR filter) | Approved 2026-10-29 | 44cd458b9febc279b66539c1cf390e2c48bc5ebfe1846dcc3e6612808aeab2b9 |
+| `mastering-limiter` | [r1](mastering-limiter/r1/SPEC.md) | Mastering limiter (look-ahead, adaptive release, requantise, dither, noise shaping) | Approved 2026-10-29 | eef416035a3a776990da029f7884516b67f8ac367fbea1a83a7fe8641503b630 |
