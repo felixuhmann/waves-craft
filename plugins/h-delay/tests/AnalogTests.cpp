@@ -1,4 +1,4 @@
-// Spec r2 section 9: Analog modes - small-signal response, distortion, noise inside the loop, bandwidth.
+// Spec r3 section 9: Analog modes - small-signal response, distortion, noise inside the loop, bandwidth.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -161,5 +161,50 @@ TEST_CASE ("Analog modes have no wow or flutter: echo timing unchanged", "[analo
         auto e2 = makeEngine (s, fs);
         auto y2 = run (e2, x, x);
         CHECK (std::abs (std::arg (bin (y2.l, 2000 + 2400, 4800, 1000.0, fs) / out)) < 1e-6);
+    }
+}
+
+TEST_CASE ("Analog modes: click levels relative to Off (r3 9.2.1)", "[analog][clicks]")
+{
+    struct Row
+    {
+        double amp, feedback;
+        int mode;
+        double ratio[6];
+    };
+    const Row rows[] = {
+        { 0.3, 80, 1, { -0.34, -0.29, -0.27, -0.24, -0.22, -0.22 } },
+        { 0.3, 80, 2, { -0.92, -0.79, -0.71, -0.66, -0.61, -0.57 } },
+        { 0.3, 80, 3, { -0.42, -0.35, -0.30, -0.27, -0.24, -0.22 } },
+        { 0.3, 80, 4, { -0.02, -0.02, -0.02, -0.01, -0.02, -0.02 } },
+        { 0.5, 60, 1, { -0.28, -0.24, -0.21, -0.21, -0.21, -0.21 } },
+        { 0.5, 60, 3, { -0.29, -0.23, -0.21, -0.17, -0.15, -0.16 } },
+    };
+    auto peaks = [] (int mode, double amp, double feedback) {
+        auto s = coreSettings (100.0, feedback);
+        s.analog = mode;
+        auto e = makeEngine (s, fs);
+        auto y = impulse (e, 7 * 4801, amp, 0.0);
+        std::array<double, 6> p {};
+        for (int k = 0; k < 6; ++k)
+        {
+            const int n = 4800 + k * 4801;
+            for (int i = n - 3; i <= n + 3; ++i)
+                p[size_t (k)] = std::max (p[size_t (k)], std::abs (y.l[size_t (i)]));
+        }
+        return p;
+    };
+    for (const auto& row : rows)
+    {
+        const auto off = peaks (0, row.amp, row.feedback);
+        const auto m = peaks (row.mode, row.amp, row.feedback);
+        for (int k = 0; k < 6; ++k)
+        {
+            const double ratio = db (m[size_t (k)] / off[size_t (k)]);
+            INFO ("mode " << row.mode << ", click " << row.amp << ", feedback " << row.feedback << " %, echo " << k + 1
+                          << ": " << ratio << " dB (target " << row.ratio[k] << ")");
+            CHECK (std::abs (ratio - row.ratio[k]) <= 0.5);
+            CHECK (ratio <= 0.05); // never louder than Off
+        }
     }
 }

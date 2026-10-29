@@ -1,4 +1,4 @@
-// Spec r1 sections 6 and 7: loop filters (HiPass / LoPass) and LoFi.
+// Spec r3 sections 2, 6 and 7: loop filters (HiPass / LoPass) and LoFi.
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -126,4 +126,42 @@ TEST_CASE ("LoFi response table, independent of the sample rate", "[lofi]")
     for (int i = 0; i < 4; ++i)
         CHECK (std::abs (db (std::abs (dtft (h, f[i], 48000.0))) - want[i]) <= 1.0);
     CHECK (std::abs (db (std::abs (dtft (h, 1000.0, 48000.0)))) <= 0.05);
+}
+
+TEST_CASE ("HiPass corner follows 19 * 1058^r near the bottom end (r3)", "[filters]")
+{
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (double r : { 0.01, 0.05 })
+        {
+            const double fc = param::HiPass::fromNorm (r);
+            CHECK_THAT (fc, Catch::Matchers::WithinRel (19.0 * std::pow (1058.0, r), 1e-12));
+            auto s = coreSettings();
+            s.hiPassHz = fc;
+            const auto h = firstEcho (s, fs, int (fs * 2));
+            for (double f : { 15.0, 20.0, 25.0, 30.0, 50.0, 100.0 })
+            {
+                const double got = db (std::abs (dtft (h, f, fs)));
+                const double want = expectedDb (true, fc, 0.80, f, fs);
+                INFO (fs << " Hz, r " << r << ", " << f << " Hz: " << got << " vs " << want);
+                CHECK (std::abs (got - want) < 0.1);
+            }
+        }
+}
+
+TEST_CASE ("Analog wet chains add no low-frequency roll-off of their own (1 Hz DC blocker)", "[filters][analog]")
+{
+    // The chains sit after the loop filters; their own low end must stay flat so the HiPass corner is unchanged.
+    // Modes 2 and 4 are flat below 200 Hz in the response table.
+    for (int mode : { 2, 4 })
+    {
+        const double fs = 48000.0;
+        AnalogStage a;
+        a.prepare (mode, fs);
+        std::vector<double> h (size_t (fs * 2));
+        for (size_t n = 0; n < h.size(); ++n)
+            h[n] = a.process (n == 0 ? 1.0e-2 : 0.0) / 1.0e-2;
+        const double g15 = db (std::abs (dtft (h, 15.0, fs))), g200 = db (std::abs (dtft (h, 200.0, fs)));
+        INFO ("mode " << mode << ": " << g15 - g200 << " dB at 15 Hz re 200 Hz");
+        CHECK (std::abs (g15 - g200) < 0.05);
+    }
 }
