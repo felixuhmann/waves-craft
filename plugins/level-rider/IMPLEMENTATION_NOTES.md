@@ -168,6 +168,11 @@ Stimuli follow §12 (band noise = Gaussian noise through 4th-order Butterworth 3
 
 ## Verification status
 
+Build/test status (2026-10-29): Windows x64 MSVC Release build of both products (VST3, CLAP, Standalone);
+41/41 CTest cases pass on Windows (MSVC) and Linux (GCC, DSP tests). `craft_hoststress --editor` 240 s on
+each VST3 (44.1/48/96 kHz, float/double, random blocks, state restores, editor open/close): 0 failures.
+The Linux plug-in targets were not built locally (CI covers them).
+
 All tables are checked by the unit tests (48 kHz unless stated; 44.1/96 kHz where noted).
 
 | Table | Result |
