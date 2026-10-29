@@ -1,4 +1,6 @@
-# Independent verification — spec r1 (Craft Shuffler / Imager / MS Matrix)
+# Independent verification — stereo-imager spec r1 (Craft Shuffler / Imager / MS Matrix)
+
+Spec: [spec/stereo-imager/r1/SPEC.md](../../spec/stereo-imager/r1/SPEC.md). Implementation: [plugins/stereo-imager](../../plugins/stereo-imager).
 
 Performed 2026-10-29 by the verifier (analyst side), per step 5 of [docs/process.md](../process.md).
 Only observed differences are reported here; no reference-side implementation detail is passed to the builder.

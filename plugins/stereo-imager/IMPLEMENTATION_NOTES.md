@@ -1,6 +1,6 @@
 # Implementation notes — Craft stereo imager (spec r1)
 
-Clean-room implementation (builder side) of [`spec/r1/SPEC.md`](spec/r1/SPEC.md)
+Clean-room implementation (builder side) of [`spec/stereo-imager/r1/SPEC.md`](../../spec/stereo-imager/r1/SPEC.md)
 (SHA-256 `dad6a104…955dcc`, approved 2026-10-29). Only the spec, `docs/process.md`, public documentation and
 this implementation were used. No original product, analyst workspace, vendor asset or vendor installation
 was accessed.
@@ -12,13 +12,16 @@ manufacturer **Craft Audio** (`Crft`); version 0.1.0. Formats: VST3, CLAP, Stand
 ## Licence
 
 JUCE 8 is dual-licensed AGPL-3.0 / commercial. This repository is public and publishes binaries, so it uses
-JUCE under the **AGPL-3.0** and the whole project is licensed AGPL-3.0 ([LICENSE](LICENSE)). Dependencies and
-their licences: [THIRD_PARTY.md](THIRD_PARTY.md). Switching to a commercial JUCE licence would be required for
+JUCE under the **AGPL-3.0** and the whole project is licensed AGPL-3.0 ([LICENSE](../../LICENSE)). Dependencies and
+their licences: [THIRD_PARTY.md](../../THIRD_PARTY.md). Switching to a commercial JUCE licence would be required for
 closed-source distribution.
 
 ## Architecture
 
+All paths below are relative to `plugins/stereo-imager/` unless noted.
+
 ```
+CMakeLists.txt    targets of this plugin (added automatically by the root CMakeLists.txt)
 source/dsp/       host-independent, header-only DSP core (no JUCE)
   Parameters.h      §3 mappings r -> value, quantisation, inverse mappings
   Matrix.h          Settings, Variant, §4 steps 1-6 + 8 as a 2x2 matrix (input -> M/S), encode
@@ -29,11 +32,11 @@ source/plugin/    JUCE AudioProcessor shared by the three variants (variant chos
 source/ui/        editor, look-and-feel, faders/value boxes, vector display, meters (all vector-drawn)
 tests/            Catch2 unit tests of the DSP core (spec §8/§9)
 tools/Snapshot.cpp  optional dev tool rendering the editors to PNG (-DCRAFT_BUILD_SNAPSHOT=ON)
-ci/package.py     release packaging; .github/workflows/release.yml  CI + releases
+(repo root) ci/package.py  release packaging; .github/workflows/release.yml  CI + releases
 ```
 
 One `CraftProcessor` class takes the `Variant` at construction; `createPluginFilter()` picks it from the
-compile definition `CRAFT_VARIANT` set per CMake target (`craft_add_variant` in `CMakeLists.txt`).
+compile definition `CRAFT_VARIANT` set per CMake target (`stereo_imager_add_variant` in `CMakeLists.txt`).
 
 ## How each spec section is implemented
 
@@ -146,6 +149,8 @@ All run the DSP core on impulses, sweeps or noise and measure:
 ## Building
 
 Requirements: CMake ≥ 3.22, a C++17 compiler, git (for clap-juce-extensions), internet for the first configure.
+Run from the repository root; this builds every plugin under `plugins/` and `ctest` runs all their tests
+(this plugin's tests are prefixed `stereo-imager/`).
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -153,9 +158,9 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-Artefacts: `build/<Target>_artefacts/Release/{VST3,CLAP,Standalone}/` for `CraftShuffler`, `CraftImager`,
+Artefacts: `build/plugins/stereo-imager/<Target>_artefacts/Release/{VST3,CLAP,Standalone}/` for `CraftShuffler`, `CraftImager`,
 `CraftMsMatrix`. Options: `-DCRAFT_BUILD_PLUGINS=OFF` (DSP tests only, no JUCE download — fast),
-`-DCRAFT_BUILD_TESTS=OFF`, `-DCRAFT_BUILD_SNAPSHOT=ON` (editor PNG tool).
+`-DCRAFT_BUILD_TESTS=OFF`, `-DCRAFT_BUILD_SNAPSHOT=ON` (editor PNG tool, target `stereo_imager_snapshot`).
 
 - **Windows**: from a "x64 Native Tools" prompt (`vcvars64.bat`), commands as above. MSVC builds use the static
   runtime. Install by copying the `.vst3` folders to `%LOCALAPPDATA%\Programs\Common\VST3` (or
@@ -168,7 +173,7 @@ Artefacts: `build/<Target>_artefacts/Release/{VST3,CLAP,Standalone}/` for `Craft
 
 CI (`.github/workflows/release.yml`) builds and tests on `windows-latest` and `ubuntu-22.04` for pushes,
 pull requests and manual runs; pushes to `main` (and manual runs on `main`) publish one GitHub release
-`v0.1.<run_number>` with per-plug-in and combined zips for each platform.
+`v0.1.<run_number>` with per-plug-in zips and a combined `craft-audio-bundle-*` zip for each platform.
 
 ## Status
 
