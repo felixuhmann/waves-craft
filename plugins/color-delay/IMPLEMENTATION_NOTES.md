@@ -140,7 +140,7 @@ Rate. Left edge: input meter above Input; right edge: output meter above Output 
 knobs show their value while hovered/dragged; double-click or Alt-click resets; linked right controls are dimmed and
 mirror the left values; tooltips explain the toggles. The header shows the host tempo in Host mode.
 
-## Tests (`tests/`, Catch2, 34 test cases / 3139 assertions, ~18 s with `ctest -j`; effects at 44.1/48/96 kHz)
+## Tests (`tests/`, Catch2, 35 test cases / 3141 assertions, ~18 s with `ctest -j`; effects at 44.1/48/96 kHz)
 
 - §2 mappings, quantisation round trips, note table; host-sync lengths: all r2 §11 examples (120/100/137/140 BPM) and
   every note × 9 tempi × 3 rates against an exact integer rational floor; 2 s limit; ms lengths; Delay Link.
@@ -169,7 +169,8 @@ mirror the left values; tooltips explain the toggles. The header shows the host 
   level (component) 9.2 ± 1 dB tone / ± 1.5 dB band-limited noise, latency 3–10 ms.
 - Phaser: ≥ 4 notches at four LFO positions, notch range 1.9–14.6 kHz; LFO rate within ±5 % (0.34, 2, 7 Hz).
 - Monitor, effects silent at Dry/Wet 0 %, effects off contribute nothing (bit-identical), click-free delay change,
-  Feedback 100 % lossless, host bypass bit-exact once faded.
+  Feedback 100 % lossless, host bypass bit-exact once faded, runaway protection (Feedback 100 %, +18 dB in/out,
+  full-scale square, all effects: finite and ≤ +30 dBFS).
 
 Fitted distortion results at 48 kHz (44.1/96 kHz within 0.2 dB up to 4 kHz): Send 50 % 100 Hz…4 kHz 12.1 / 14.7 /
 13.9 / 11.1 / 6.4 / −3.1 dB; Send 75 % 23.2 / 24.4 / 10.5 dB; Send 100 % 26.1 / 28.9 / 30.6 / 24.3 / 9.2 dB; gain vs level
@@ -214,6 +215,10 @@ Send 100 % 28.9 / 21.3 / 13.4 / 5.4 / −2.6 / −10.6 dB, Send 50 % 11.1 / 11.1
 14. **Meters**: input meter shows the level after the Input gain; peak meters −48 … +6 dBFS, ~36 dB/s fall, 1.5 s hold.
 15. **Tail length** reported as 10 s (Feedback 100 % repeats indefinitely).
 16. Fixed editor size 940×610; not resizable.
+17. **Runaway protection** (not in the spec): a soft clip that is exactly transparent up to +24 dBFS and bounded at
+    +30 dBFS sits on the value written into the feedback delay line and on the final output. Feedback 100 % with a
+    sustained full-scale input otherwise grows without bound (found with `tools/hoststress`); nothing the spec measures
+    reaches +24 dBFS.
 
 ## Public references and provenance
 
@@ -244,7 +249,8 @@ them generically (product zip `craft-colour-delay-<version>-<platform>.zip`). Ed
 
 ## Status
 
-r2: Windows x64 Release build (MSVC 2022, VST3 + CLAP + Standalone, no warnings in this plug-in) and all 34 unit tests
-pass (also on Linux / GCC 13 for the DSP core); `ci/package.py` produces `craft-colour-delay-<version>-windows-x64.zip`.
+r2: Windows x64 Release build (MSVC 2022, VST3 + CLAP + Standalone, no warnings in this plug-in) and all 35 unit tests
+pass. `tools/hoststress` (from main) ran 4 + 3 min against the VST3 (44.1/48/96 kHz, mono/stereo in, float/double,
+blocks 1…4096, random automation, state restores, editor open/close): 0 failures (also on Linux / GCC 13 for the DSP core); `ci/package.py` produces `craft-colour-delay-<version>-windows-x64.zip`.
 The Linux plug-in targets were not built locally; they use the same portable CMake as the other Craft plug-ins and are
 covered by CI.

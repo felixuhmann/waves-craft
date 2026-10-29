@@ -302,8 +302,8 @@ private:
             yl += b * (xl - yl);
             yr += b * (xr - yr);
         }
-        l = yl;
-        r = yr;
+        l = safetyClip (yl);
+        r = safetyClip (yr);
     }
 
     void resetEffect (int k) noexcept

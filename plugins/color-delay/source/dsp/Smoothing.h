@@ -66,4 +66,17 @@ private:
 inline double dbToGain (double db) noexcept { return std::pow (10.0, db / 20.0); }
 inline double gainToDb (double g) noexcept { return g > 0.0 ? 20.0 * std::log10 (g) : -400.0; }
 
+// Safety soft clip, transparent up to +24 dBFS (|x| <= 16) and bounded by +30 dBFS (|x| < 32). Only signals far
+// beyond any normal level reach it (e.g. Feedback 100 % with sustained full-scale input, which otherwise grows
+// without bound); everything the spec measures stays exactly linear.
+inline double safetyClip (double x) noexcept
+{
+    constexpr double knee = 16.0;
+    const double a = std::abs (x);
+    if (a <= knee)
+        return x;
+    const double y = knee + knee * std::tanh ((a - knee) / knee);
+    return x < 0.0 ? -y : y;
+}
+
 } // namespace craft::cdl

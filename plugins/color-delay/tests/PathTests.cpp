@@ -329,6 +329,34 @@ TEST_CASE ("Delay-time changes are click-free", "[path]")
     CHECK (e.getDelaySamples (0) == 352 * 48);
 }
 
+TEST_CASE ("Runaway protection: Feedback 100 % with sustained full-scale input stays bounded", "[path]")
+{
+    Settings s;
+    s.hostSync = false;
+    s.delayMs = { 0.0, 4.0 };
+    s.feedbackPct = { 100.0, 100.0 };
+    s.delayLink = false;
+    s.inputDb = 18.0;
+    s.outputDb = 18.0;
+    s.dryWetPct = 50.0;
+    s.verbOn = s.distOn = s.doublerOn = s.phaserOn = true;
+    s.verbLevel = s.distLevel = s.doublerLevel = s.phaserLevel = 100.0;
+    const int n = 48000 * 5;
+    std::vector<double> x ((size_t) n);
+    for (int i = 0; i < n; ++i)
+        x[(size_t) i] = ((i / 37) % 2) ? 1.0 : -1.0; // full-scale square
+    const auto out = render (s, x, x);
+    double peak = 0.0;
+    bool finite = true;
+    for (size_t i = 0; i < out.l.size(); ++i)
+    {
+        finite = finite && std::isfinite (out.l[i]) && std::isfinite (out.r[i]);
+        peak = std::max ({ peak, std::abs (out.l[i]), std::abs (out.r[i]) });
+    }
+    CHECK (finite);
+    CHECK (peak <= 32.0); // +30 dBFS
+}
+
 TEST_CASE ("Host bypass crossfades to the unprocessed input", "[path]")
 {
     Settings s;

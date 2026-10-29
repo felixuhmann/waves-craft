@@ -61,7 +61,7 @@ public:
             }
         }
 
-        buffer[(size_t) writePos] = xi + g * w;
+        buffer[(size_t) writePos] = safetyClip (xi + g * w); // bounded loop (transparent below +24 dBFS)
         if (++writePos == (int) buffer.size())
             writePos = 0;
         return w;
