@@ -192,4 +192,10 @@ from 6 dB above to 35 dB below the knee (and back for opening); release 0.4 s ro
 
 ## Status
 
-See the report in the pull request / commit history for build and test results.
+* Windows x64 Release (MSVC 17 2022): VST3, CLAP, Standalone build; 31/31 Catch2 test cases pass (also on Linux
+  GCC, DSP tests only).
+* `tools/hoststress` (240 s with editor, seed 3; 90 s, seed 11): no crash, no NaN/Inf, no hang. It reports
+  "runaway" samples of +40 … +43 dBFS: these are bounded and legitimate — the hoststress feeds full-scale squares
+  while automating every control to its extremes, and the strip has +18 dB trim, up to ≈ +19 dB per EQ band
+  (several bands can stack), +8.7 dB make-up and +12 dB fader. No output limiter was added, since the spec has
+  none.
