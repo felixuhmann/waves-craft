@@ -100,8 +100,7 @@ TEST_CASE ("Noise is read above its RMS (peak-weighted ballistics), white noise 
     CHECK (band < 4.5);
 
     RiderEngine w = makeEngine (48000.0, -12, 12);
-    std::mt19937 rng (3);
-    std::normal_distribution<double> nd;
+    Gaussian nd (3);
     const double a = dbToGain (-27.0);
     std::vector<double> l (480), r (480);
     double gsum = 0.0;
@@ -109,7 +108,7 @@ TEST_CASE ("Noise is read above its RMS (peak-weighted ballistics), white noise 
     for (int blk = 0; blk < 1000; ++blk)
     {
         for (size_t i = 0; i < l.size(); ++i)
-            l[i] = r[i] = a * nd (rng);
+            l[i] = r[i] = a * nd();
         double* ch[2] = { l.data(), r.data() };
         w.process (ch, 2, (const double* const*) nullptr, 0, 480);
         if (blk >= 900)

@@ -42,8 +42,8 @@ struct Ballistics
 {
     double attack, hold, release, up, down;
 
-    static Ballistics slow() noexcept { return { 0.0399, 0.0780, 1.004, 0.492, 0.0430 }; }
-    static Ballistics fast() noexcept { return { 0.00162, 0.471, 1.111, 0.766, 0.0166 }; }
+    static Ballistics slow() noexcept { return { 0.0512, 0.0780, 1.004, 0.492, 0.0430 }; }
+    static Ballistics fast() noexcept { return { 0.00137, 0.482, 1.502, 0.751, 0.0143 }; }
 };
 
 // Level detector on the weighted mean power of 1 ms blocks: attack when the block power exceeds the state,

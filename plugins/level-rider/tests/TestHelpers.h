@@ -16,6 +16,32 @@ using namespace craft::levelrider::dsp;
 inline double dbToGain (double db) { return std::pow (10.0, db / 20.0); }
 inline double gainToDb (double g) { return 20.0 * std::log10 (g); }
 
+// Gaussian numbers from std::mt19937 via Box-Muller: unlike std::normal_distribution the sequence is the same
+// with every standard library, so the noise stimuli (and the transitional table cells) match on all platforms.
+class Gaussian
+{
+public:
+    explicit Gaussian (unsigned seed) : rng (seed) {}
+    double operator()()
+    {
+        if (haveSpare)
+        {
+            haveSpare = false;
+            return spare;
+        }
+        const double u1 = (double (rng()) + 1.0) / 4294967297.0, u2 = double (rng()) / 4294967296.0;
+        const double r = std::sqrt (-2.0 * std::log (u1));
+        spare = r * std::sin (2.0 * pi * u2);
+        haveSpare = true;
+        return r * std::cos (2.0 * pi * u2);
+    }
+
+private:
+    std::mt19937 rng;
+    double spare = 0.0;
+    bool haveSpare = false;
+};
+
 // RBJ cookbook biquad (only used to shape test stimuli).
 struct Biquad
 {
@@ -53,7 +79,7 @@ struct Biquad
 class BandNoise
 {
 public:
-    BandNoise (double fs, unsigned seed = 7) : rng (seed)
+    BandNoise (double fs, unsigned seed = 7) : nd (seed)
     {
         const double qs[2] = { 0.54119610014619698, 1.3065629648763766 };
         for (int i = 0; i < 2; ++i)
@@ -77,15 +103,14 @@ public:
 private:
     double raw()
     {
-        double v = nd (rng);
+        double v = nd();
         for (auto& b : hp)
             v = b.process (v);
         for (auto& b : lp)
             v = b.process (v);
         return v;
     }
-    std::mt19937 rng;
-    std::normal_distribution<double> nd;
+    Gaussian nd;
     Biquad hp[2], lp[2];
     double norm = 1.0;
 };

@@ -55,16 +55,16 @@ TEST_CASE ("T4: idle behaviour after a burst falls to -80 dBFS noise", "[T4][gat
     for (const auto& row : t4)
     {
         auto e = makeEngine (48000.0, -12, 12, row.fast, -21, row.idle);
-        const auto tr = runSegments (e, { { row.burst, 10.0 }, { -80.0, 5.0 } });
+        const auto tr = runSegments (e, { { row.burst, 12.0 }, { -80.0, 5.0 } }); // 12 s bursts like the T2 holds
         for (size_t j = 0; j < 10; ++j)
         {
-            const double g = tr.at (10.0 + t4Times[j]);
+            const double g = tr.at (12.0 + t4Times[j]);
             INFO ("Idle " << row.idle << (row.fast ? " Fast" : " Slow") << ", burst " << row.burst << ", " << t4Times[j]
                           << " s: " << g << " vs " << row.gain[j]);
             CHECK (std::abs (g - row.gain[j]) <= 1.0);
         }
         // the fader stops exactly at Idle
-        CHECK (tr.at (15.0) == Approx (row.idle).margin (1e-9));
+        CHECK (tr.at (17.0) == Approx (row.idle).margin (1e-9));
     }
 }
 
