@@ -9,3 +9,4 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | Slug | Revision | Target | Status | SHA-256 |
 |---|---|---|---|---|
 | `stereo-imager` | [r1](stereo-imager/r1/SPEC.md) | Stereo imager (Full / Imager / MS matrix) | Approved 2026-10-29 | dad6a104e00c7296284e86a984cf5c10ce8e29b2b2bb06d9ee9b969ec0955dcc |
+| `doubler` | [r1](doubler/r1/SPEC.md) | Voice doubler (2/4 voices, pitch shift, delay, pan, EQ, feedback, LFO) | Approved 2026-10-29 | 8ed06647b921399dd5507b4bbf0e08683b7cafd34899e0761d34ec9b7fd32caa |
