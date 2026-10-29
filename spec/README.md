@@ -12,3 +12,4 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | `peak-limiter` | [r1](peak-limiter/r1/SPEC.md) | Look-ahead brickwall peak limiter (fixed/auto release) | Approved 2026-10-29 | b25832e96a22a42a1b3040c01bc6a4a69f981f6e6d3425414143d5cf8f96778c |
 | `flanger` | [r1](flanger/r1/SPEC.md) | Flanger (sine/triangle LFO, tape mode, feedback, FIR filter) | Approved 2026-10-29 | 44cd458b9febc279b66539c1cf390e2c48bc5ebfe1846dcc3e6612808aeab2b9 |
 | `vocal-compressor` | [r1](vocal-compressor/r1/SPEC.md) | One-knob vocal compressor with gate (look-ahead) | Approved 2026-10-29 | 1cb058153a6908b1ce800de8a9ee4463f5bee39a2a7fc8fdd9ba097ca21a4a16 |
+| `vocal-compressor` | [r2](vocal-compressor/r2/SPEC.md) | One-knob vocal compressor with gate (supersedes r1: gate release law, release patterns, ripple) | Approved 2026-10-29 | c7e1616760938f7ccd120295390fcc9b31d3426aa7f0a33eb4115fbc5b0938ed |
