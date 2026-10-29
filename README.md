@@ -16,18 +16,18 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 
 | # | Done | Plugin | Kind | Why this rank |
 |---:|:---:|---|---|---|
-| 1 | [ ] | S1 Stereo Imager | Stereo matrix + shuffler | Linear, time-invariant; fully measured, spec r1 approved, build in progress |
-| 2 | [ ] | ModFX Autopan | Modulation | Simple LFO gain/pan modulation |
-| 3 | [ ] | ModFX Delay | Delay | Basic delay/feedback; deterministic |
-| 4 | [ ] | ModFX Chorus | Modulation | Short modulated delay lines; deterministic |
+| 1 | [x] | S1 Stereo Imager | Stereo matrix + shuffler | Linear, time-invariant; fully measured, spec r1 approved — released as Craft Shuffler / Imager / MS Matrix |
+| 2 | n/a | ModFX Autopan | Modulation | Internal module, not loadable as a host plugin — cannot be measured |
+| 3 | n/a | ModFX Delay | Delay | Internal module, not loadable as a host plugin — cannot be measured |
+| 4 | n/a | ModFX Chorus | Modulation | Internal module, not loadable as a host plugin — cannot be measured |
 | 5 | [ ] | MetaFlanger | Modulation | Flanger with LFO/feedback; deterministic, few controls |
 | 6 | [ ] | H-Delay | Delay | Delay + filters + modulation; deterministic, more controls |
 | 7 | [ ] | MannyM-Delay | Delay | Delay with filtering/ducking; builds on #3/#6 |
 | 8 | [ ] | Doubler | Pitch/delay | Detuned delayed voices; small pitch-shift component |
 | 9 | [ ] | MetaFilter | Filter | Resonant filter with LFO/envelope modulation |
-| 10 | [ ] | ModFX Limiter | Dynamics | Simple limiter, few controls |
+| 10 | n/a | ModFX Limiter | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
 | 11 | [ ] | L1 | Dynamics | Look-ahead brickwall limiter; measurable with steps/bursts |
-| 12 | [ ] | ModFX Compressor | Dynamics | Basic compressor, few controls |
+| 12 | n/a | ModFX Compressor | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
 | 13 | [ ] | DeEsser | Dynamics | Band-limited sidechain compression |
 | 14 | [ ] | RVox | Dynamics | One-knob compressor/gate/limiter chain |
 | 15 | [ ] | C1 | Dynamics | Compressor/gate/expander with sidechain EQ; many modes |
@@ -36,7 +36,7 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 18 | [ ] | SSL G-Channel | Channel strip | Same family as #17 |
 | 19 | [ ] | C4 | Multiband dynamics | Crossover + 4 compressors; many interacting parameters |
 | 20 | [ ] | Vocal Rider | Gain riding | Level-detection/ride behaviour needs long-signal measurement |
-| 21 | [ ] | ModFX Distortion | Saturation | Static nonlinearity, but must model the curve |
+| 21 | n/a | ModFX Distortion | Saturation | Internal module, not loadable as a host plugin — cannot be measured |
 | 22 | [ ] | MannyM-Distortion | Saturation | Multi-stage distortion; nonlinear |
 | 23 | [ ] | H-Comp | Dynamics | Analog-style compressor with punch/hold; nonlinear |
 | 24 | [ ] | CLA-76 | Analog model | FET compressor model; level- and frequency-dependent nonlinearity |
@@ -47,7 +47,7 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 29 | [ ] | L3 Ultra | Multiband limiter | Same family as #28 |
 | 30 | [ ] | L3-LL Multi | Multiband limiter | Low-latency variant of #28 |
 | 31 | [ ] | L3-LL Ultra | Multiband limiter | Low-latency variant of #29 |
-| 32 | [ ] | ModFX Reverb | Reverb | Simple algorithmic reverb; hard to match exactly |
+| 32 | n/a | ModFX Reverb | Reverb | Internal module, not loadable as a host plugin — cannot be measured |
 | 33 | [ ] | RVerb | Reverb | Algorithmic reverb, many parameters |
 | 34 | [ ] | H-Reverb | Reverb | Long FIR-based reverb with dynamics/modulation |
 | 35 | [ ] | MannyM-Reverb | Reverb | Preset-style reverb with extra processing |
@@ -59,15 +59,27 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 41 | [ ] | Waves Tune Real-Time | Pitch correction | Real-time pitch detection and correction |
 | 42 | [ ] | OVox | Resynthesis | Vocal resynthesis/vocoder engine; hardest to specify |
 
-The ModFX folder contains seven small plugins (Autopan, Chorus, Compressor, Delay, Distortion, Limiter, Reverb),
-so the original install is 42 plugins in total, counting S1 as one bundle.
+The ModFX folder contains seven small modules (Autopan, Chorus, Compressor, Delay, Distortion, Limiter, Reverb),
+so the original install is 42 entries in total, counting S1 as one bundle. The ModFX modules are internal building
+blocks that cannot be loaded as a plugin in a host, so they cannot be measured and are skipped (`n/a`); that
+leaves **35 host-loadable plugins** to implement.
 
-## Craft stereo imager (first implementation)
+## Craft Audio plugins (monorepo)
 
-The first clean-room implementation, built only from [spec/r1](spec/r1/SPEC.md): **Craft Shuffler**,
+Every reimplementation lives in its own directory under [`plugins/`](plugins) and is picked up by the root
+`CMakeLists.txt` automatically; JUCE, the CLAP wrapper and Catch2 are fetched once for all of them. How to add one:
+[CONTRIBUTING.md](CONTRIBUTING.md). Specs: [spec/](spec/README.md); verification reports: `docs/verification/`.
+
+| Slug | Products | Spec | Notes |
+|---|---|---|---|
+| [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
+
+The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
 phase-compensated low-frequency shuffler, an original vector-drawn GUI, zero latency. Formats: VST3, CLAP and
 Standalone for Windows x64 and Linux x64. Licensed AGPL-3.0 (JUCE); see [THIRD_PARTY.md](THIRD_PARTY.md).
+
+Build all plugins and run all tests:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -75,9 +87,9 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-Plug-ins land in `build/<Target>_artefacts/Release/`. Every push to `main` publishes a GitHub release with
-zipped VST3/CLAP bundles per platform. Architecture, spec mapping, tests, assumptions and platform build notes:
-[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md).
+Plug-ins land in `build/plugins/<slug>/<Target>_artefacts/Release/`. `-DCRAFT_BUILD_PLUGINS=OFF` builds only the
+DSP unit tests (no JUCE download). Every push to `main` publishes a GitHub release with one zip per plugin and a
+combined `craft-audio-bundle-<version>-<platform>.zip` per platform (packaged by `ci/package.py`).
 
 ## Full catalogue
 
