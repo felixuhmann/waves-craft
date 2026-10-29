@@ -18,3 +18,5 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | `doubler` | [r1](doubler/r1/SPEC.md) | Voice doubler (2/4 voices, pitch shift, delay, pan, EQ, feedback, LFO) | Approved 2026-10-29 | 8ed06647b921399dd5507b4bbf0e08683b7cafd34899e0761d34ec9b7fd32caa |
 | `peak-limiter` | [r1](peak-limiter/r1/SPEC.md) | Look-ahead brickwall peak limiter (fixed/auto release) | Approved 2026-10-29 | b25832e96a22a42a1b3040c01bc6a4a69f981f6e6d3425414143d5cf8f96778c |
 | `flanger` | [r1](flanger/r1/SPEC.md) | Flanger (sine/triangle LFO, tape mode, feedback, FIR filter) | Approved 2026-10-29 | 44cd458b9febc279b66539c1cf390e2c48bc5ebfe1846dcc3e6612808aeab2b9 |
+| `mastering-limiter` | [r1](mastering-limiter/r1/SPEC.md) | Mastering limiter (look-ahead, adaptive release, requantise, dither, noise shaping) | Approved 2026-10-29 | eef416035a3a776990da029f7884516b67f8ac367fbea1a83a7fe8641503b630 |
+| `mastering-limiter` | [r2](mastering-limiter/r2/SPEC.md) | Mastering limiter — r2: full-scale rule, 88.2/96 kHz shaping tolerances, Type 2 constant-input rule | Approved 2026-10-29 | 56622bd27fd58279e1d866ad6925bccf218c4d29ff3b96dd2825859da3ae183b |
