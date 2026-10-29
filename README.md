@@ -74,6 +74,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 |---|---|---|---|
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
 | [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
+| [`mastering-limiter`](plugins/mastering-limiter) | Craft Mastering Limiter | [r1](spec/mastering-limiter/r1/SPEC.md) | [notes](plugins/mastering-limiter/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
