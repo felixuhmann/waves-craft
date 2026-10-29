@@ -206,10 +206,13 @@ assert the documented bounds (RMS ≤ 1.6 dB, P99 ≤ 4.5 dB) and print the valu
 
 ## Status
 
-See the table below for the latest local results; CI builds and tests Windows and Linux.
+Latest local results (CI builds and tests Windows and Linux):
 
 | Item | Result |
 |---|---|
-| Unit tests | STATUS_TESTS |
-| Windows x64 Release (MSVC, VS 2022) | STATUS_WINDOWS |
-| Linux x64 (GCC 13, tests only locally) | STATUS_LINUX |
+| Unit tests | 30 test cases / 2989 assertions, all passing (Windows MSVC Release and Linux GCC 13) |
+| Windows x64 Release (MSVC, VS 2022) | all four products build (VST3, CLAP, Standalone); installed locally for host testing |
+| Linux x64 | DSP tests built and passing locally (GCC 13); the plug-in targets are built by CI (no X11/ALSA dev packages locally) |
+
+Not done / open: no listening test in a DAW yet; the release-envelope shape (see "Envelope conformance") is the
+largest known deviation from the §10.5 reference; editor snapshots were checked with `tools/Snapshot.cpp` only.
