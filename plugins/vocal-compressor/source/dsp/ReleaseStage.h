@@ -46,11 +46,11 @@ struct ReleaseLaw
         double attackMs, attackWarp, releaseMs, releaseWarp, releaseDest, releaseOwn;
     };
     // Fitted constants (IMPLEMENTATION_NOTES.md, "Release law").
-    Envelope transient { 10.09198, -2.99999, 0.58332, -0.55901, 4.06849, -0.70493 };
-    Envelope charge { 90.40063, -0.52747, 1970.39571, -2.95697, 5.98508, 0.45515 };
-    Envelope medium { 73.28579, 0.28534, 7.19103, 0.20588, 1.78802, 0.59626 };
-    Envelope slow1 { 52.49309, -1.17733, 41.80864, -0.57309, 1.54241, -0.98166 };
-    Envelope slow2 { 170.84475, -0.94753, 341.87348, 0.08523, 0.6698, -0.38402 };
+    Envelope transient { 5.30379, -5.99984, 0.484878, 2.97445, 5.52281, -2.13282 };
+    Envelope charge { 84.2716, -0.534874, 4043.02, -4.18115, 7.37458, 0.93162 };
+    Envelope medium { 84.1112, 0.37478, 7.55183, -0.270362, 1.66276, 0.78227 };
+    Envelope slow1 { 58.244, -1.17602, 56.6068, -0.0169284, 2.26787, -1.81941 };
+    Envelope slow2 { 172.087, -0.74591, 326.627, 0.035831, 0.622106, -0.330568 };
     double holdMs = 5.0261;
     // The charge / medium / slow envelopes are updated at a control rate of about 12 kHz; the fast path and the
     // transient envelope run per sample. Each control step sees the maximum level of its block.
@@ -178,7 +178,8 @@ private:
                 lambda = s.lr;
                 constexpr double dbPerLn = 8.685889638065035; // 20 / ln(10)
                 const double xTarget = dbPerLn * std::log (target), xOwn = dbPerLn * std::log (z);
-                const double tauMs = s.releaseMs * std::exp ((s.dest * xTarget + s.own * xOwn) * 0.1);
+                // floor: at least ~2 samples at 48 kHz, so the law does not depend on the sample rate
+                const double tauMs = std::max (minReleaseMs, s.releaseMs * std::exp ((s.dest * xTarget + s.own * xOwn) * 0.1));
                 c = onePoleCoeff (tauMs, s.rate);
             }
             const double u = warp (z, lambda);
@@ -188,6 +189,7 @@ private:
         return z;
     }
 
+    static constexpr double minReleaseMs = 0.04;
     double fs = 48000.0, controlRate = 6000.0;
     int decimation = 8, counter = 0;
     ReleaseLaw law;

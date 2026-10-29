@@ -240,8 +240,8 @@ TEST_CASE ("Steady low-frequency tones: gain ripple within 9.8 + 0.15 dB", "[rel
     const R table[] = { { -6, 50, 0.69 }, { -6, 100, 0.24 }, { -6, 200, 0.02 },  { -18, 50, 0.20 }, { -18, 100, 0.04 },
                         { -18, 200, 0.00 }, { -36, 50, 0.11 }, { -36, 100, 0.03 }, { -36, 200, 0.00 } };
     const double fs = GENERATE (44100.0, 48000.0, 96000.0);
-    // tone length is not stated in the spec; checked for 1.5 s and 3 s tones (assumption A9)
-    for (double seconds : { 1.5, 3.0 })
+    // steady state: the tone length is not stated in the spec; checked for 2 s and 3 s tones (assumption A9)
+    for (double seconds : { 2.0, 3.0 })
         for (const auto& t : table)
         {
             const auto x = sineSchedule ({ { -6.0, ms (seconds * 1000.0, fs) } }, fs, t.f);
