@@ -73,6 +73,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | Slug | Products | Spec | Notes |
 |---|---|---|---|
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
+| [`color-delay`](plugins/color-delay) | Craft Colour Delay | [r1](spec/color-delay/r1/SPEC.md) | [notes](plugins/color-delay/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
