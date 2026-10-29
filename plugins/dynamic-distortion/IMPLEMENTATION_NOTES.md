@@ -177,4 +177,8 @@ All other normative table entries are met at 44.1, 48 and 96 kHz.
 ## Status
 
 - DSP core, tests, plugin (VST3 / CLAP / Standalone) and editor complete.
-- Windows x64 Release build, tests and hoststress: see the branch's final commit message / PR description.
+- Windows x64 Release (MSVC 2022): VST3, CLAP and Standalone build without warnings in plugin code; 33/33 tests pass
+  (also on Linux GCC: 123 576 assertions). Installed to the per-user and system VST3 folders and the per-user CLAP folder.
+- `craft_hoststress --seconds 600 --editor` on the VST3: 179 M samples, 461 prepares, 2292 state restores,
+  527 k parameter moves, 153 editor opens, 0 failures.
+- `ci/package.py` packages the VST3, CLAP and Standalone as `craft-dynamic-distortion-<version>-<platform>.zip`.
