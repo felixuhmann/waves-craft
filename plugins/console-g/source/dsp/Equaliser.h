@@ -113,17 +113,10 @@ private:
             pts.push_back (p);
             byFreq[p.freq][p.gain] = p.proto;
         }
-        for (const auto& [freq, gains] : byFreq)
-        {
-            // A frequency row needs points on both sides of 0 dB for the gain interpolation (the single LF 40 Hz
-            // point is not usable as a row; it lies between the 30 and 50 Hz rows).
-            bool neg = false, pos = false;
-            for (const auto& gp : gains)
-                (gp.first < 0 ? neg : pos) = true;
-            if (gains.size() < 4 || ! neg || ! pos)
-                continue;
-
-            // flat point q_flat = (0, ln wp, ln zp, ln wp, ln zp) of the nearest non-zero gain (ties: mean)
+        // Gain grid of one frequency row incl. the flat point q_flat = (0, ln wp, ln zp, ln wp, ln zp) of the nearest
+        // non-zero gain (ties: mean of both).
+        using GainMap = std::map<double, ShelfPrototype>;
+        auto gainCurve = [] (const GainMap& gains, std::vector<double>& gs, std::array<std::vector<double>, 5>& qs) {
             double nearest = 1e9;
             for (const auto& gp : gains)
                 nearest = std::min (nearest, std::abs (gp.first));
@@ -139,9 +132,9 @@ private:
                 }
             lnWp /= nNear;
             lnZp /= nNear;
-
-            std::vector<double> gs;
-            std::array<std::vector<double>, 5> qs;
+            gs.clear();
+            for (auto& v : qs)
+                v.clear();
             bool flatDone = false;
             for (const auto& gp : gains)
             {
@@ -158,6 +151,116 @@ private:
                 for (size_t k = 0; k < 5; ++k)
                     qs[k].push_back (q[k]);
             }
+        };
+
+        // Usable rows need points on both sides of 0 dB (the single LF 40 Hz point lies between the 30 and 50 Hz
+        // rows and is not a row of its own).
+        std::vector<std::pair<double, GainMap>> usable;
+        size_t maxGains = 0;
+        for (const auto& [freq, gains] : byFreq)
+        {
+            bool neg = false, pos = false;
+            for (const auto& gp : gains)
+                (gp.first < 0 ? neg : pos) = true;
+            if (gains.size() >= 4 && neg && pos)
+            {
+                usable.push_back ({ freq, gains });
+                maxGains = std::max (maxGains, gains.size());
+            }
+        }
+
+        for (const auto& [freq, gains] : usable)
+        {
+            std::vector<double> gs;
+            std::array<std::vector<double>, 5> qs;
+            gainCurve (gains, gs, qs);
+
+            if (gains.size() < maxGains)
+            {
+                // Sparse row (6 gains): the gains it lacks are estimated from its own PCHIP plus the residual that the
+                // same sparse subset leaves on the neighbouring dense rows (16 gains), interpolated in log f. Table
+                // points stay exact; the dense rows' gain shape is carried over to the sparse row.
+                const double lf = std::log10 (freq);
+                const std::pair<double, GainMap>* below = nullptr;
+                const std::pair<double, GainMap>* above = nullptr;
+                for (const auto& u : usable)
+                    if (u.second.size() == maxGains)
+                    {
+                        if (u.first < freq) below = &u;
+                        else if (u.first > freq && above == nullptr) above = &u;
+                    }
+                std::array<Pchip, 5> own;
+                for (size_t k = 0; k < 5; ++k)
+                    own[k].set (gs, qs[k]);
+                std::map<double, std::array<double, 5>> extraQ;
+                const auto* refRow = below != nullptr ? below : above;
+                if (refRow != nullptr)
+                {
+                    for (const auto& gp : refRow->second)
+                    {
+                        if (gains.count (gp.first))
+                            continue;
+                        std::array<double, 5> corr {};
+                        double wsum = 0.0;
+                        for (const auto* d : { below, above })
+                        {
+                            if (d == nullptr)
+                                continue;
+                            const auto it = d->second.find (gp.first);
+                            if (it == d->second.end())
+                                continue;
+                            GainMap subset;
+                            for (const auto& sg : gains)
+                                if (d->second.count (sg.first))
+                                    subset[sg.first] = d->second.at (sg.first);
+                            std::vector<double> sgs;
+                            std::array<std::vector<double>, 5> sqs;
+                            gainCurve (subset, sgs, sqs);
+                            const auto full = it->second.toQ();
+                            double w = 1.0;
+                            if (below != nullptr && above != nullptr)
+                            {
+                                const double t = (lf - std::log10 (below->first)) / (std::log10 (above->first) - std::log10 (below->first));
+                                w = d == below ? 1.0 - t : t;
+                            }
+                            for (size_t k = 0; k < 5; ++k)
+                                corr[k] += w * (full[k] - Pchip (sgs, sqs[k]) (gp.first));
+                            wsum += w;
+                        }
+                        if (wsum <= 0.0)
+                            continue;
+                        std::array<double, 5> q;
+                        for (size_t k = 0; k < 5; ++k)
+                            q[k] = own[k] (gp.first) + corr[k] / wsum;
+                        extraQ[gp.first] = q;
+                    }
+                }
+                // merge (keeping the original points exact)
+                std::vector<double> ngs;
+                std::array<std::vector<double>, 5> nqs;
+                size_t i = 0;
+                auto it = extraQ.begin();
+                while (i < gs.size() || it != extraQ.end())
+                {
+                    if (it == extraQ.end() || (i < gs.size() && gs[i] < it->first))
+                    {
+                        ngs.push_back (gs[i]);
+                        for (size_t k = 0; k < 5; ++k)
+                            nqs[k].push_back (qs[k][i]);
+                        ++i;
+                    }
+                    else
+                    {
+                        ngs.push_back (it->first);
+                        for (size_t k = 0; k < 5; ++k)
+                            nqs[k].push_back (it->second[k]);
+                        ++it;
+                    }
+                }
+                gs = ngs;
+                qs = nqs;
+            }
+
             FreqRow row;
             row.freq = freq;
             for (size_t k = 0; k < 5; ++k)

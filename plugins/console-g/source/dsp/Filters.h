@@ -184,28 +184,42 @@ private:
 class LowPassDesigner
 {
 public:
+    static constexpr int subdivisions = 4; // fitted points per table interval (coefficient interpolation in between)
+
     void prepare (double sampleRate)
     {
         if (sampleRate == fsPrepared && ! rowCoeffs.empty())
             return;
         fsPrepared = sampleRate;
-        const auto& target = LowPassTarget::get();
+        const auto& rs = LowPassTarget::get().rowR();
+        denseR.clear();
+        for (size_t k = 0; k + 1 < rs.size(); ++k)
+            for (int j = 0; j < subdivisions; ++j)
+                denseR.push_back (rs[k] + (rs[k + 1] - rs[k]) * j / subdivisions);
+        denseR.push_back (rs.back());
+        denseCoeffs.clear();
         rowCoeffs.clear();
-        for (size_t k = 0; k < target.rowR().size(); ++k)
-            rowCoeffs.push_back (fitRow (k, sampleRate));
+        std::array<double, 2> start {};
+        bool warm = false;
+        for (size_t k = 0; k < denseR.size(); ++k)
+        {
+            denseCoeffs.push_back (fitRow (denseR[k], sampleRate, start, warm));
+            warm = true;
+            if (k % subdivisions == 0)
+                rowCoeffs.push_back (denseCoeffs.back());
+        }
     }
 
     BiquadCoeffs coeffs (double r) const noexcept
     {
-        const auto& rs = LowPassTarget::get().rowR();
-        if (rowCoeffs.empty())
+        if (denseCoeffs.empty())
             return {};
-        if (r <= rs.front())
-            return rowCoeffs.front();
-        if (r >= rs.back())
-            return rowCoeffs.back();
-        const size_t i = segmentIndex (rs, r);
-        return BiquadCoeffs::lerp (rowCoeffs[i], rowCoeffs[i + 1], (r - rs[i]) / (rs[i + 1] - rs[i]));
+        if (r <= denseR.front())
+            return denseCoeffs.front();
+        if (r >= denseR.back())
+            return denseCoeffs.back();
+        const size_t i = segmentIndex (denseR, r);
+        return BiquadCoeffs::lerp (denseCoeffs[i], denseCoeffs[i + 1], (r - denseR[i]) / (denseR[i + 1] - denseR[i]));
     }
 
     const std::vector<BiquadCoeffs>& rows() const noexcept { return rowCoeffs; }
@@ -216,7 +230,7 @@ private:
         std::vector<double> w, mag, wt, f;
     };
 
-    static Grid makeGrid (size_t row, double fs)
+    static Grid makeGrid (double r, double fs)
     {
         const auto& target = LowPassTarget::get();
         Grid g;
@@ -227,7 +241,7 @@ private:
             const double f = 20.0 * std::pow (fMax / 20.0, double (i) / (n - 1));
             g.f.push_back (f);
             g.w.push_back (2.0 * pi * f / fs);
-            g.mag.push_back (dbToGain (target.rowDb (row, f)));
+            g.mag.push_back (dbToGain (target.targetDb (r, f)));
             g.wt.push_back (f > 15000.0 ? 0.3 : 1.0);
         }
         return g;
@@ -264,13 +278,13 @@ private:
         return c;
     }
 
-    static BiquadCoeffs fitRow (size_t row, double fs)
+    // start: in/out (warm start from the previous, neighbouring r)
+    static BiquadCoeffs fitRow (double r, double fs, std::array<double, 2>& start, bool warm)
     {
-        const Grid g = makeGrid (row, fs);
+        const Grid g = makeGrid (r, fs);
         auto f = [&] (const std::array<double, 2>& p) { return cost (g, design (g, p[0], p[1], fs), fs); };
 
-        // coarse start
-        std::array<double, 2> best { std::log (10000.0), std::log (0.7) };
+        std::array<double, 2> best = warm ? start : std::array<double, 2> { std::log (10000.0), std::log (0.7) };
         double bestCost = f (best);
         for (int i = 0; i <= 40; ++i)
             for (double q : { 0.5, 0.6, 0.7, 0.85 })
@@ -285,8 +299,9 @@ private:
             }
 
         // Nelder-Mead refinement
-        std::array<std::array<double, 2>, 3> s { best, std::array<double, 2> { best[0] + 0.1, best[1] },
-                                                 std::array<double, 2> { best[0], best[1] + 0.1 } };
+        const double step = 0.1;
+        std::array<std::array<double, 2>, 3> s { best, std::array<double, 2> { best[0] + step, best[1] },
+                                                 std::array<double, 2> { best[0], best[1] + step } };
         std::array<double, 3> v { f (s[0]), f (s[1]), f (s[2]) };
         for (int it = 0; it < 300; ++it)
         {
@@ -341,11 +356,13 @@ private:
         for (size_t k = 1; k < 3; ++k)
             if (v[k] < v[bi])
                 bi = k;
+        start = s[bi];
         return design (g, s[bi][0], s[bi][1], fs);
     }
 
     double fsPrepared = 0.0;
-    std::vector<BiquadCoeffs> rowCoeffs;
+    std::vector<double> denseR;
+    std::vector<BiquadCoeffs> denseCoeffs, rowCoeffs;
 };
 
 } // namespace craft::consoleg::dsp
