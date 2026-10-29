@@ -73,6 +73,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | Slug | Products | Spec | Notes |
 |---|---|---|---|
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
+| [`de-esser`](plugins/de-esser) | Craft De-Esser, Craft De-Esser Mono | [r1](spec/de-esser/r1/SPEC.md) | [notes](plugins/de-esser/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
