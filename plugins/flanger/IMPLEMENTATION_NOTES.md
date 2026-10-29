@@ -165,7 +165,8 @@ parameter, because Stereo has no effect there.
 
 ## Tests
 
-The tests are in `tests/`. They use Catch2 and are registered with CTest under the `flanger/` prefix.
+The tests are in `tests/`. They use Catch2 and are registered with CTest under the `flanger/` prefix: 35 test cases and
+101 061 assertions, all passing on Windows (MSVC, `/W4`, no warnings) and Linux (GCC 13).
 
 - **§10 impulse-response vectors, every row:**
   - Mix/Feedback/Delay taps.
@@ -262,4 +263,13 @@ The tests are in `tests/`. They use Catch2 and are registered with CTest under t
 
 ## Status
 
-See the report at the end of this file's commit history: the Windows Release build, the tests and the installation.
+- **Windows x64 Release (MSVC 14.44, Ninja):** all three products build as VST3, CLAP and Standalone.
+- **CTest at the repository root:** 59/59 pass (35 flanger and 24 stereo-imager).
+- **Linux:** the DSP tests were built and run with GCC 13 (`-DCRAFT_BUILD_PLUGINS=OFF`). The Linux plugin build is
+  left to CI.
+- **Packaging:** `ci/package.py` finds the three products without changes (`craft-flanger-*`,
+  `craft-flanger-mono-*`, `craft-flanger-mono-stereo-*`).
+- **GUI:** checked from editor snapshots (`-DCRAFT_BUILD_SNAPSHOT=ON`, `flanger_snapshot <dir>`).
+- **Not yet done:**
+  - No in-host listening or automation test.
+  - No independent verification report (`docs/verification/flanger-r1.md`).
