@@ -84,7 +84,7 @@ void LevelMeter::paint (juce::Graphics& g)
         const float r0 = rScale, r1 = rScale + (major ? 8.0f : 5.0f);
         g.setColour (v > 0.0f ? colours::warn : colours::textDim);
         g.drawLine (pivot.x + r0 * s, pivot.y + r0 * c, pivot.x + r1 * s, pivot.y + r1 * c, major ? 1.4f : 1.0f);
-        if (major)
+        if (major && ! (source == Source::GR && v > 0.0f))
         {
             const float rt = rScale + 17.0f;
             const juce::String txt = source == Source::GR ? juce::String (juce::roundToInt (-v))
@@ -98,7 +98,7 @@ void LevelMeter::paint (juce::Graphics& g)
     g.setColour (colours::textDim);
     g.setFont (juce::Font (uiFont (11.0f, true)));
     const char* cap = source == Source::GR ? "GAIN REDUCTION dB" : (source == Source::In ? "INPUT VU" : "OUTPUT VU");
-    g.drawText (cap, area.withTrimmedTop (area.getHeight() * 0.52f).removeFromTop (16.0f), juce::Justification::centred);
+    g.drawText (cap, area.withTrimmedTop (area.getHeight() * 0.80f).removeFromTop (16.0f), juce::Justification::centred);
 
     // needle (clipped to the dial)
     {

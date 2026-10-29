@@ -7,8 +7,8 @@ using namespace ui;
 
 namespace
 {
-constexpr int editorW = 780, editorH = 480, headerH = 40, margin = 12;
-constexpr int sideW = 238, bottomH = 128, captionH = 16, rowH = 26;
+constexpr int editorW = 780, editorH = 500, headerH = 40, margin = 12;
+constexpr int sideW = 238, bottomH = 150, captionH = 16, rowH = 26;
 
 std::vector<Knob::Tick> hundredScale()
 {

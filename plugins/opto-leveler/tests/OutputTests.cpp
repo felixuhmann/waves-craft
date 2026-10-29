@@ -130,7 +130,7 @@ TEST_CASE ("Mix is a linear crossfade with the unprocessed input, Trim an exact 
             double maxErr = 0.0, maxMixErr = 0.0;
             for (int i = 0; i < 24000; ++i)
             {
-                const double x = 0.4 * g.next();
+                const double x = 0.1 * g.next(); // keeps +18 dB trim below the output protection
                 double ya = x, yb = x, yw = x;
                 double* pa[1] = { &ya };
                 double* pb[1] = { &yb };
@@ -261,4 +261,33 @@ TEST_CASE ("parameter changes are smoothed within 20 ms without clicks (D4)", "[
     // a sine at 100 Hz changes by at most 2*pi*100/48000*A per sample; the ramps add only a fraction of that
     const double ampAfter = 0.25 * dbToLin (12.0 + dsp::gainLawDb (70.0));
     CHECK (maxStep <= std::max (baseline, 2.0 * pi * 100.0 / fs * ampAfter) * 1.5 + 1e-3);
+}
+
+TEST_CASE ("output protection only acts above +30 dBFS", "[output][protect]")
+{
+    for (double y : { 0.0, 0.5, -1.0, 10.0, -31.0 })
+        CHECK (dsp::LevelerEngine::protect (y) == y);
+    double prev = 0.0;
+    for (double y = 31.0; y < 1.0e6; y *= 1.3)
+    {
+        const double p = dsp::LevelerEngine::protect (y);
+        CHECK (p < 100.0);
+        CHECK (p >= prev);
+        CHECK (dsp::LevelerEngine::protect (-y) == -p);
+        prev = p;
+    }
+    // maximum settings, full-scale noise: bounded output
+    auto s = makeSettings (0.0, dsp::Mode::Compress, 100.0, 100.0);
+    s.trimDb = 18.0;
+    Engine en (s);
+    Gauss g;
+    double peak = 0.0;
+    for (int i = 0; i < 48000; ++i)
+    {
+        double x = std::clamp (g.next(), -1.0, 1.0);
+        double* p[1] = { &x };
+        en.e.process (p, 1, 1);
+        peak = std::max (peak, std::abs (x));
+    }
+    CHECK (peak < 100.0);
 }

@@ -50,13 +50,15 @@ void Knob::resized()
     r.removeFromTop (captionH);
     const auto dial = dialBounds();
     // leave room for the scale labels around large knobs
-    const float inset = ticks.empty() ? 0.0f : std::max (14.0f, dial.getWidth() * 0.13f);
+    const float inset = ticks.empty() ? 0.0f : std::max (18.0f, dial.getWidth() * 0.13f);
     const auto inner = dial.reduced (inset);
-    const int boxW = std::min (r.getWidth(), 76);
+    const int boxW = std::min (std::min (r.getWidth(), 76), int (inner.getWidth()) + 16);
     slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, boxW, textBoxH);
     // rotary area = inner (centred on the dial), the value box directly below it
-    slider.setBounds (juce::Rectangle<int> (int (inner.getX()), int (inner.getY()), int (inner.getWidth()),
-                                            int (inner.getHeight()) + textBoxH));
+    // (with a scale the rotary area is extended by the inset and shifted up by half of it, so the dial stays centred
+    // and the value box sits below the scale labels)
+    slider.setBounds (juce::Rectangle<int> (int (inner.getX()), int (inner.getY() - inset * 0.5f), int (inner.getWidth()),
+                                            int (inner.getHeight() + inset) + textBoxH));
 }
 
 void Knob::paint (juce::Graphics& g)
@@ -70,7 +72,7 @@ void Knob::paint (juce::Graphics& g)
     // scale: ticks at display values, positioned with the parameter's taper (the knob scale is non-linear, spec 2)
     const auto dial = dialBounds();
     const auto c = dial.getCentre();
-    const float inset = std::max (14.0f, dial.getWidth() * 0.13f);
+    const float inset = std::max (18.0f, dial.getWidth() * 0.13f);
     const float rKnob = dial.getWidth() * 0.5f - inset;
     const float r0 = rKnob + 2.0f, r1 = rKnob + 6.0f, rText = rKnob + inset * 0.62f;
     g.setFont (juce::Font (uiFont (10.0f)));

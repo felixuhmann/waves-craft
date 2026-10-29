@@ -41,7 +41,8 @@ Per sample (`LevelerEngine::process`):
 3. **Cell**: the 4.3 model with `a_t = 1 − 10^(−GR/20)`; `g = 1 − Σ c_i`.
 4. **Waveform following** (spec 6, LF distortion): `g ← g · exp(−D · r)` where `r` is the low-passed instantaneous
    waveform level relative to the envelope and `D = 0.0255 · slope(T1) · (1/g − 1)^0.737`.
-5. **Audio**: `x · g · makeup(T2)` → colour → response (T8) → Mix with the dry input → Trim → + analog noise.
+5. **Audio**: `x · g · makeup(T2)` → colour → response (T8) → Mix with the dry input → Trim → + analog noise →
+   output protection (smooth saturation above +30 dBFS only, see assumption 12).
 
 ### Level detector (spec 6, T1, T3, T6)
 
@@ -153,7 +154,7 @@ typed into the boxes. No brushed metal, vintage logos, hardware-style meter face
 
 ## Tests
 
-`ctest -R opto-leveler` (Catch2, 28 test cases). Results at the time of writing (48 kHz):
+`ctest -R opto-leveler` (Catch2, 29 test cases, 3200+ assertions). Results at the time of writing (48 kHz):
 
 | Check | Result | Tolerance |
 |---|---|---|
@@ -199,6 +200,10 @@ relative to the PR 0 path, harmonic analysis by single-bin DFT over whole cycles
    (all harmonics start at zero phase).
 10. **Meter**: 0 VU = −18 dBFS sine RMS (not specified); GR mode shows the mean cell gain reduction.
 11. **Mono** layout: the same engine with one channel (D3), not measured.
+12. **Output protection** (not in the spec): Gain +38.7 dB plus Trim +18 dB allow +56.7 dB of path gain, so a
+    full-scale input at low Peak Reduction would leave the plug-in near +50 dBFS. Samples above +30 dBFS are
+    saturated smoothly towards +39.2 dBFS (below the +40 dBFS runaway limit of `tools/hoststress`); nothing below
+    +30 dBFS is affected, so none of the spec tables is.
 
 ## Public references
 
@@ -218,4 +223,5 @@ relative to the PR 0 path, harmonic analysis by single-bin DFT over whole cycles
 ## Status
 
 DSP core and all spec tests pass on Linux (GCC 13) and Windows (MSVC 2022); VST3, CLAP and Standalone build on
-Windows x64; `tools/hoststress` run clean (see the pull-request description for the run log).
+Windows x64; `tools/hoststress` (300 s, with editor) runs clean after the output protection was added (the first run
+flagged legitimate +40…+52 dBFS outputs at maximum Gain + Trim with full-scale noise).

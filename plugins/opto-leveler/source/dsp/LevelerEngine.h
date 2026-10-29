@@ -120,6 +120,19 @@ public:
         resetMeters();
     }
 
+    // Output protection (not part of the spec): Gain +38.7 dB and Trim +18 dB allow a path gain of +56.7 dB, so a
+    // full-scale input at low Peak Reduction could leave the plug-in at +50 dBFS. Above +30 dBFS (31.6) the output
+    // saturates smoothly towards +39.2 dBFS (91.6); everything below +30 dBFS is untouched.
+    static double protect (double y) noexcept
+    {
+        constexpr double knee = 31.6227766, range = 60.0;
+        const double a = std::abs (y);
+        if (a <= knee)
+            return y;
+        const double d = a - knee;
+        return std::copysign (knee + d / (1.0 + d / range), y);
+    }
+
     double makeupDbFor (double gainDisplay) const { return gainLawDb (gainDisplay) - response1kDb; }
 
     template <typename Sample>
@@ -194,7 +207,7 @@ public:
                 outAbsSum[size_t (c)] += std::abs (y);
                 if (noise.getType() != AnalogNoise::Type::Off)
                     y += (c == 0 ? (humSample = noise.nextHum()) : humSample) + noise.nextNoise (c);
-                channels[c][i] = Sample (y);
+                channels[c][i] = Sample (protect (y));
             }
             ++meterSamples;
         }
