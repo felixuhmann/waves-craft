@@ -3,7 +3,8 @@ add_executable (h_delay_tests
     CoreTests.cpp
     FilterTests.cpp
     ModulationTests.cpp
-    AnalogTests.cpp)
+    AnalogTests.cpp
+    StressTests.cpp)
 target_link_libraries (h_delay_tests PRIVATE h_delay_dsp Catch2::Catch2WithMain)
 target_compile_features (h_delay_tests PRIVATE cxx_std_17)
 if (MSVC)

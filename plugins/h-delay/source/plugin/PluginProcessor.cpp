@@ -12,6 +12,22 @@ HDelayProcessor::HDelayProcessor()
       state (*this, nullptr, "CraftHybridDelayState", createParameterLayout())
 {
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (state.getParameter (ids::bypass));
+    // Look the parameters up once: the string-keyed lookups allocate and must not run on the audio thread.
+    for (size_t i = 0; i < paramIds.size(); ++i)
+    {
+        rawValues[i] = state.getRawParameterValue (paramIds[i]);
+        params[i] = state.getParameter (paramIds[i]);
+        jassert (rawValues[i] != nullptr && params[i] != nullptr);
+    }
+}
+
+size_t HDelayProcessor::indexOf (const char* id) noexcept
+{
+    for (size_t i = 0; i < paramIds.size(); ++i)
+        if (paramIds[i] == id)
+            return i;
+    jassertfalse;
+    return 0;
 }
 
 bool HDelayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -23,9 +39,9 @@ bool HDelayProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 Settings HDelayProcessor::readSettings() const
 {
-    auto raw = [this] (const char* id) { return state.getRawParameterValue (id)->load(); };
+    auto raw = [this] (const char* id) { return rawValues[indexOf (id)]->load(); };
     auto on = [&] (const char* id) { return raw (id) >= 0.5f; };
-    auto norm = [this] (const char* id) { return double (state.getParameter (id)->getValue()); };
+    auto norm = [this] (const char* id) { return double (params[indexOf (id)]->getValue()); };
 
     Settings s;
     s.sync = static_cast<param::Sync> (juce::jlimit (0, 2, int (raw (ids::sync))));

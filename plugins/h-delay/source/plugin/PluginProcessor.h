@@ -60,6 +60,16 @@ private:
     void processAudio (juce::AudioBuffer<Sample>& buffer);
 
     juce::AudioProcessorValueTreeState state;
+
+    // every parameter read by readSettings(), resolved once in the constructor (pointer comparison in indexOf)
+    static constexpr std::array<const char*, 20> paramIds {
+        ids::delayMs, ids::delayNote, ids::delayRMs, ids::delayRNote, ids::dual, ids::sync, ids::bpm,
+        ids::feedback, ids::pingPong, ids::pingPongStart, ids::phaseL, ids::phaseR, ids::mix, ids::output,
+        ids::analog, ids::lofi, ids::modRate, ids::modDepth, ids::hiPass, ids::loPass
+    };
+    std::array<std::atomic<float>*, 20> rawValues {};
+    std::array<juce::RangedAudioParameter*, 20> params {};
+    static size_t indexOf (const char* id) noexcept;
     HybridDelayEngine engine;
     juce::AudioParameterBool* bypassParam = nullptr;
 

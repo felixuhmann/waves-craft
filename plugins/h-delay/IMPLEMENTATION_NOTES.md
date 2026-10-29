@@ -249,13 +249,39 @@ Install: copy `Craft Hybrid Delay.vst3` to `%LOCALAPPDATA%\Programs\Common\VST3`
 `C:\Program Files\Common Files\VST3`) and `Craft Hybrid Delay.clap` to `%LOCALAPPDATA%\Programs\Common\CLAP`;
 on Linux to `~/.vst3` / `~/.clap`. `ci/package.py` picks the plug-in up automatically (`craft-hybrid-delay-*.zip`).
 
+## Robustness (after the r3 verification)
+
+The r3 verification saw REAPER exit mid-batch twice (exit code 1) while rendering this build. The same exits were
+later traced, in another verifier's runs, to an access violation in a third-party DLL loaded by the host process.
+Investigation here:
+- **Plug-in level:** `tools/hoststress` (shared stress host, see CONTRIBUTING.md) against `Craft Hybrid Delay.vst3`.
+  Runs covered 44.1/48/96 kHz, stereo / mono-in, float / double, max block 32–4096 with random blocks, all 21
+  host parameters automated from the audio thread (extremes included), and message-thread parameter gestures.
+  They also exercised state save/restore during processing, re-prepare / release, and editor open/close.
+  - Release, 20 min: 792.7 M samples, 1072 prepares, 5331 state restores, 1.8 M parameter moves, 356 editor opens.
+    0 failures (no NaN/Inf, nothing above +40 dBFS), no crash.
+  - Debug CRT (checked iterators) + MSVC AddressSanitizer, 15 min: 118.4 M samples, 325 prepares, 1644 state
+    restores, 101 editor opens. 0 failures, no ASan report.
+- **DSP level:** new `tests/StressTests.cpp` runs 20 s per configuration at 44.1/48/96/192 kHz, stereo and
+  mono→stereo, random blocks of 1–4096 samples. It randomises every setting (extreme feedback, host tempo
+  1–1000 BPM, all note values and Analog modes) and re-prepares mid-stream. It passes, and the whole suite also
+  passes under GCC `-fsanitize=address,undefined` with `_GLIBCXX_ASSERTIONS`.
+- **Code review:** parameters are read through APVTS atomics, and state restore goes through the APVTS. The engine
+  is per-sample, with no block-size-dependent buffers, so blocks larger than the prepared size are safe. Delay
+  reads are clamped to the buffer (max delay × 1.5 modulation + interpolator taps). Denormals are handled by
+  ScopedNoDenormals plus an envelope flush, and all members are initialised.
+- **One real-time fix (not a crash):** `readSettings()` looked parameters up by string on every audio block, and
+  those lookups allocate. The parameter pointers are now resolved once in the constructor.
+
+No crash cause was found in the plug-in.
+
 ## Status
 
 - Spec r3 implemented: r2 (verified: every r2 table passed) plus the §9.2.1 click vectors and the low-end fix.
 - Windows x64 Release build (VST3, CLAP, Standalone; MSVC 19.44, Visual Studio 17 2022 generator) without
   warnings; installed to `%LOCALAPPDATA%\Programs\Common\VST3`, `C:\Program Files\Common Files\VST3` and
   `%LOCALAPPDATA%\Programs\Common\CLAP`.
-- Tests: 40 h-delay test cases (all repository tests: 64/64) pass with MSVC and with GCC 13 (Linux, DSP only).
+- Tests: 41 h-delay test cases (all repository tests: 65/65) pass with MSVC and with GCC 13 (Linux, DSP only).
 - Linux plug-in build not run locally (JUCE system packages missing); CI builds it.
 - `ci/package.py` finds the product without changes (`craft-hybrid-delay-<version>-<platform>.zip`).
 - r3 not yet verified. Not done: host-level validation (pluginval / DAW session).
