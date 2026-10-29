@@ -1,4 +1,4 @@
-# Craft De-Esser (spec r2): Craft De-Esser (stereo) and Craft De-Esser Mono.
+# Craft De-Esser (spec r3): Craft De-Esser (stereo) and Craft De-Esser Mono.
 # Added automatically by the root CMakeLists.txt; JUCE, clap-juce-extensions and Catch2 are fetched there.
 project (CraftDeEsser VERSION 0.1.0 LANGUAGES C CXX)
 

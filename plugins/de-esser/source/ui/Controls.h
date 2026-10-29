@@ -1,4 +1,4 @@
-// Craft De-Esser - parameter-bound controls (spec r2 section 12).
+// Craft De-Esser - parameter-bound controls (spec r3 section 12).
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>

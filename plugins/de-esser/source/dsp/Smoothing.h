@@ -1,4 +1,4 @@
-// Craft De-Esser - click-free parameter changes and mode crossfades (spec r2 decision D2).
+// Craft De-Esser - click-free parameter changes and mode crossfades (spec r3 decision D2).
 #pragma once
 
 #include <algorithm>

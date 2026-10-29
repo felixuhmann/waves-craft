@@ -1,4 +1,4 @@
-// Craft De-Esser - editor (spec r2 section 12; all artwork drawn in code).
+// Craft De-Esser - editor (spec r3 section 12; all artwork drawn in code).
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>

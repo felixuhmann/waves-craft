@@ -1,7 +1,8 @@
-# Implementation notes — Craft De-Esser (spec r2)
+# Implementation notes — Craft De-Esser (spec r3)
 
-Clean-room implementation (builder side) of [`spec/de-esser/r2/SPEC.md`](../../spec/de-esser/r2/SPEC.md)
-(approved 2026-10-29, supersedes [r1](../../spec/de-esser/r1/SPEC.md); r1 verification:
+Clean-room implementation (builder side) of [`spec/de-esser/r3/SPEC.md`](../../spec/de-esser/r3/SPEC.md)
+(approved 2026-10-29, supersedes [r1](../../spec/de-esser/r1/SPEC.md) and [r2](../../spec/de-esser/r2/SPEC.md);
+r1 verification:
 [docs/verification/de-esser-r1.md](../../docs/verification/de-esser-r1.md)). Only the spec, this repository, public DSP references and this
 implementation were used. No original product, analyst workspace, vendor asset or vendor installation was accessed.
 
@@ -54,20 +55,24 @@ clamped to `0.4999·fs`. Coefficients are designed at the actual sample rate. Th
 HP and BP outputs are both available so the mode switch can crossfade. The filter feeds only the detector and
 the monitor.
 
-**§5 Detector / gain computer / smoothing (r2).** `Dynamics.h`, per sample, exactly as the r2 text:
-1. Peak envelope: `e += (|d|−e)·a_det` (τ 11 µs) if `|d| > e`, else `e *= r_det` (τ 0.38 ms).
-2. Static curve: `GR = clamp((20·log10 e − (Threshold − 0.08)) · 6/7, 0, 20·log10 19)`; target deficit
-   `dt = 1 − 10^(−GR/20)`.
-3. Two-component release on the deficit:
-   - fast part `df`: toward `dt` with τ_a 0.47 ms when `dt > df`, τ_f 11.6 ms when `dt < df`;
-   - slow part `ds` (updated after `df` in the same sample): if `df > ds` it charges toward `df` with τ_c 7.2 ms;
-     otherwise, if `dt < ds`, it releases toward `dt` with τ_s 32.4 ms;
-   - applied gain `g = 1 − max(df, ds)`.
-   All coefficients are `1 − exp(−1/(τ·fs))` (time constants in seconds). `df`/`ds` snap to the target within
-   1e-10 so the gain returns to exactly 1.0 after reduction (bit-exact identity).
+**§5 Detector / gain computer / smoothing (r3, normative pseudocode).** `Dynamics.h` (`GainReducer::process`)
+is a line-by-line transcription of the r3 pseudocode, in its order 1 → 2 → 3a → 3b → 4:
+1. Peak detector: `e += (v−e)·a_det` if `v = |d| > e` (τ 4.594 µs), else `e *= r_det` (τ 0.4942 ms).
+2. Static curve: `GR = clamp((20·log10 e − (Threshold − 0.0793)) · 0.85648, 0, 25.570)` (0 if `e = 0`);
+   target deficit `t = 1 − 10^(−GR/20)`.
+3a. Fast part: `f += (t−f)·c_a` if `t > f` (τ 0.4934 ms), else `f += (t−f)·c_f` (τ 9.913 ms).
+3b. Slow part: `s += (f−s)·c_c` if `t > s` (τ 3.789 ms, toward the just-updated `f`), else `s += (t−s)·c_s`
+    (τ 31.97 ms).
+4. `g = 1 − max(f, s)`.
 
-   r1 history: the r1 build used a fitted two-stage release (hold-history dependent); it was replaced by the r2
-   law after independent verification showed r1's envelope tables were biased.
+All coefficients `1 − exp(−1/(τ·fs))` (detector release `exp(−1/(τ·fs))`), recomputed for each sample rate.
+Two implementation details outside the pseudocode, neither audible: the envelope is flushed to 0 below 1e-30
+(denormals), and `f`/`s` are landed on `t` once within 1e-12, so the gain returns to exactly 1.0 and the
+no-reduction path stays bit-exact.
+
+History: r1 build used a fitted hold-dependent release; r2 build implemented r2's prose law, which missed r2's
+own tables (1–2 ms bursts, RMS 0.5 dB, §9.3). r3 corrected the law (slow part charges only while the target
+exceeds it, new detector constants, refitted gain constants); the literal r3 implementation meets every table.
 
 **§6 Audio path.** `DeEsserEngine.h`. Split: `HP1` is the first-order high-pass of §6 with
 `k = tan(π·Freq/fs)/√10`; the output is computed as `y = x + (g − 1)·HP1(x)` (= `LP1(x) + g·HP1(x)`), so `g = 1`
@@ -114,10 +119,8 @@ Original vector-drawn editor in the Craft Audio palette (same look-and-feel fami
 | LP1 + HP1 = 1 | §6 | 1e-15 |
 | Static curve formula | §5.2 | exact |
 | 9.2 static curve (36 points) and L-only line | 9.2 | ±0.3 dB |
-| 9.3 noise vs sine (8th-order 4 kHz HP noise) | 9.3 | regression bound ±0.8 dB; spec ±0.3 dB in a `[!mayfail]` case (known r2 deviation, below) |
-| 9.4 envelopes A–E (r2 exact-gain tables) at 44.1 / 48 / 96 kHz | 9.4, §8 | ±1 dB |
-| 9.6 release after bursts ≥ 5 ms (150 points) at 44.1 / 48 / 96 kHz | 9.6, §8 | ±1 dB; ±3 dB ≤ +480 after 5–50 ms bursts |
-| 9.6 1 ms / 2 ms rows and RMS ≤ 0.3 dB over all 166 points | 9.6, §8 | `[!mayfail]` (known r2 deviation, below); regression bound RMS ≤ 0.6 dB |
+| 9.3 noise vs sine (8th-order 4 kHz HP noise) | 9.3 | ±0.3 dB |
+| 9.4 (60 points) + 9.6 (166 points) exact-gain tables, at 44.1 / 48 / 96 kHz | 9.4, 9.6, §8 | every point ±1.0 dB; RMS over all 226 ≤ 0.3 dB |
 | 5 ms burst recovers faster than 1 s of reduction | §5 | qualitative |
 | Static points at 44.1 and 96 kHz | §5, §8 | ±0.3 dB |
 | Bit-exact identity without reduction: Split/Wideband × HP/BP × stereo/mono × float/double, with Freq and mode changes while running | §1, §6, §8 | exact |
@@ -127,37 +130,23 @@ Original vector-drawn editor in the Craft Audio palette (same look-and-feel fami
 | D2: no discontinuity on Monitor/Audio/SideChain/Threshold/Freq change; settles within 20 ms | D2 | |
 | Parameter mappings and defaults | §3 | |
 
+Measured against the r3 tables (226 points of §9.4 + §9.6): RMS 0.095 dB / worst 0.38 dB at 48 kHz,
+RMS 0.131 / worst 0.51 dB at 44.1 kHz, RMS 0.167 / worst 0.50 dB at 96 kHz.
+
 Model values at 48 kHz (exact gain in dB, same offsets as §9.4):
 
 | Vector | +5 | +10 | +20 | +48 | +96 | +192 | +480 | +960 | +2400 | +4800 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| A | −1.78 | −3.55 | −6.99 | −15.36 | −22.88 | −24.94 | −25.31 | −25.34 | −25.34 | −25.34 |
-| B | −25.33 | −25.31 | −25.23 | −24.43 | −21.18 | −16.96 | −10.84 | −6.44 | −2.02 | −0.39 |
-| C | −0.91 | −1.91 | −3.54 | −6.20 | −7.48 | −7.98 | −8.18 | −8.20 | −8.20 | −8.20 |
-| C′ | −8.19 | −8.17 | −8.09 | −7.86 | −7.48 | −6.79 | −5.21 | −3.49 | −1.22 | −0.25 |
-| D | −25.08 | −25.03 | −24.81 | −22.88 | −16.76 | −11.04 | −6.82 | −4.43 | −1.50 | −0.30 |
-| E | −1.28 | −2.61 | −4.93 | −9.23 | −11.51 | −12.22 | −12.47 | −12.49 | −12.49 | −12.49 |
+| A | −1.70 | −3.40 | −6.69 | −14.85 | −22.78 | −25.12 | −25.42 | −25.44 | −25.44 | −25.44 |
+| B | −25.41 | −25.37 | −25.25 | −24.79 | −22.00 | −17.38 | −10.96 | −6.45 | −1.99 | −0.38 |
+| C | −0.96 | −1.91 | −3.53 | −6.29 | −7.71 | −8.20 | −8.38 | −8.39 | −8.39 | −8.39 |
+| C′ | −8.37 | −8.32 | −8.15 | −7.91 | −7.52 | −6.83 | −5.21 | −3.48 | −1.20 | −0.24 |
+| D | −25.26 | −25.21 | −25.05 | −23.72 | −17.53 | −10.71 | −6.85 | −4.42 | −1.47 | −0.29 |
+| E | −1.28 | −2.55 | −4.82 | −9.19 | −11.73 | −12.44 | −12.66 | −12.68 | −12.68 | −12.68 |
 
-### Known deviation of the r2 §5 law from r2's own vectors (reported to the analyst side)
-
-Implemented literally, the r2 release law passes 9.4 (all vectors, all three rates) and every 9.6 row with
-bursts ≥ 5 ms, but **not**:
-- 9.6 rows "1 ms" and "2 ms" at +480 / +960: model −4.85 / −3.27 dB and −5.65 / −3.76 dB vs −3.87 / −1.93 and
-  −4.18 / −2.69 (errors up to 1.5 dB > ±1). Cause: by the text, `ds` keeps charging toward `df` after the burst
-  while the fast part decays (`df > ds`), so very short bursts leave too much in the slow part.
-- 9.6 RMS over the 166 table points: ≈ 0.5 dB at each of 44.1 / 48 / 96 kHz, vs ≤ 0.3. Besides the rows above,
-  the +48 / +96 points are 0.4–0.8 dB short of the tables for every burst length (the reference holds the
-  reduction slightly longer right after the level drop).
-- 9.3 noise (unchanged from r1, ±0.3 dB): model −2.61 / −7.43 / −12.57 / −17.71 / −22.84 dB at −36 … −12 vs
-  −3.01 / −7.99 / −13.18 / −18.42 / −23.44 (0.4–0.7 dB too little reduction; the r1 build met 9.3).
-Offline checks of alternative readings (slow part charging only while `dt > ds`, toward `dt` or `df`) fit the
-1–2 ms rows when τ_c ≈ 4.3 ms, but none removes the early +48/+96 bias, so the text was implemented as written and
-the strict checks are kept as `[!mayfail]` Catch2 cases (they run and report, but do not fail CTest) until a spec
-revision settles it.
-
-Static curve (9.2) model values: Threshold −36 → −4.87 / −10.01 / −15.16 / −20.30 / −25.44 / −25.58 dB at
-−30 … 0 dBFS (spec −4.85 / −9.98 / −15.12 / −20.26 / −25.41 / −25.57). The "gain" in these tests is the gain
-applied by the processor at that sample (envelopes) or the output/input RMS ratio (static, noise).
+Static curve (9.2) model values: Threshold −36 → −4.97 / −10.11 / −15.25 / −20.39 / −25.44 / −25.57 dB at
+−30 … 0 dBFS (spec −4.85 / −9.98 / −15.12 / −20.26 / −25.41 / −25.57). Gains are exact sample-wise `y/x`
+(envelopes) or output/input RMS ratios (static, noise).
 
 ## Public references
 
@@ -169,9 +158,9 @@ applied by the processor at that sample (envelopes) or the output/input RMS rati
 
 ## Questions / assumptions
 
-1. **Release law.** r2 §5 step 3 implemented literally (see the known deviation above); the slow part is
-   updated after the fast part within a sample (same results either way to ≤ 0.01 dB).
-2. **Measurement of 9.4 / 9.6.** Exact sample-wise gain (r2 §8). Level changes happen at the sample boundary,
+1. **Release law.** r3 §5 implemented literally (see §5 above); only denormal flushing and the 1e-12 landing on
+   the target are added.
+2. **Measurement of 9.4 / 9.6.** Exact sample-wise gain (r3 §8). Level changes happen at the sample boundary,
    10 kHz sine with continuous phase starting at 0; offsets in 48 kHz samples are scaled in time at other rates.
    Double bursts "20 ms apart" and the train "every 60 ms" are taken as start-to-start spacing.
 3. **Freq quantisation (open question 3).** Freq is quantised to integer Hz (the displayed value).
@@ -186,5 +175,5 @@ applied by the processor at that sample (envelopes) or the output/input RMS rati
 ## Status
 
 - Windows x64 Release (MSVC 2022): VST3, CLAP, Standalone for both products build; installed locally.
-- Unit tests: 24 Catch2 cases; 22 pass, the 2 `[!mayfail]` strict cases fail as expected (known r2 deviation); CTest is green on Windows (MSVC) and Linux (GCC).
+- Unit tests: 20 Catch2 cases, all pass (no expected failures) on Windows (MSVC) and Linux (GCC).
 - Linux plug-in targets are not built locally (no X11/ALSA dev packages on the build host); CI builds them.

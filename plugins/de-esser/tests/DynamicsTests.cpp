@@ -1,4 +1,4 @@
-// Spec r2 section 5 and test vectors 9.2 - 9.4, 9.6: static curve, noise vs sine, envelopes, release after bursts.
+// Spec r3 section 5 and test vectors 9.2 - 9.4, 9.6: static curve, noise vs sine, envelopes, release after bursts.
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -45,24 +45,14 @@ std::vector<double> envelope (double fs, double thresholdDb, const std::vector<s
 }
 
 const std::vector<int> offsets { 5, 10, 20, 48, 96, 192, 480, 960, 2400, 4800 };
-
-void checkVector (const std::vector<double>& got, const std::vector<double>& want, double tol, int firstChecked = 0)
-{
-    for (size_t i = size_t (firstChecked); i < want.size(); ++i)
-    {
-        CAPTURE (offsets[i], got[i], want[i]);
-        CHECK (got[i] == Catch::Approx (want[i]).margin (tol));
-    }
-}
 } // namespace
 
-TEST_CASE ("Static curve formula (section 5.2)", "[dynamics]")
+TEST_CASE ("Static curve formula (r3 section 5 step 2)", "[dynamics]")
 {
-    CHECK (GainComputer::reductionDb (-30.0, -30.0) == Catch::Approx (0.08 * 6.0 / 7.0));
-    CHECK (GainComputer::reductionDb (-30.09, -30.0) == 0.0);
-    CHECK (GainComputer::reductionDb (-20.0, -30.0) == Catch::Approx (10.08 * 6.0 / 7.0));
-    CHECK (GainComputer::reductionDb (0.0, -80.0) == Catch::Approx (25.575).margin (0.001));
-    CHECK (std::pow (10.0, -GainComputer::reductionDb (0.0, -80.0) / 20.0) == Catch::Approx (1.0 / 19.0));
+    CHECK (GainComputer::reductionDb (-30.0, -30.0) == Catch::Approx (0.0793 * 0.85648));
+    CHECK (GainComputer::reductionDb (-30.08, -30.0) == 0.0);
+    CHECK (GainComputer::reductionDb (-20.0, -30.0) == Catch::Approx (10.0793 * 0.85648));
+    CHECK (GainComputer::reductionDb (0.0, -80.0) == 25.570);
 }
 
 TEST_CASE ("9.2 static curve, 10 kHz sine in L and R", "[dynamics][9.2]")
@@ -116,18 +106,7 @@ double noiseGainDb (double peakDb)
 const double noiseLevels[] = { -42, -36, -30, -24, -18, -12, -6 };
 const double noiseWant[] = { -0.11, -3.01, -7.99, -13.18, -18.42, -23.44, -25.55 };
 
-// Guard against regressions: the r2 release law itself lands up to ~0.7 dB short of 9.3 (see IMPLEMENTATION_NOTES).
-TEST_CASE ("9.3 high-passed noise vs sine of equal RMS (r2 law, regression bound 0.8 dB)", "[dynamics][9.3]")
-{
-    for (int i = 0; i < 7; ++i)
-    {
-        CAPTURE (noiseLevels[i]);
-        CHECK (noiseGainDb (noiseLevels[i]) == Catch::Approx (noiseWant[i]).margin (0.8));
-    }
-}
-
-// Spec tolerance +-0.3 dB: not met by the r2 section 5 law as written (reported to the analyst side).
-TEST_CASE ("9.3 high-passed noise vs sine, spec tolerance 0.3 dB [known r2 deviation]", "[dynamics][9.3][!mayfail]")
+TEST_CASE ("9.3 high-passed noise vs sine of equal RMS", "[dynamics][9.3]")
 {
     for (int i = 0; i < 7; ++i)
     {
@@ -219,7 +198,7 @@ std::vector<double> runRow96 (double fs, const Row96& row)
     }
     double end = 0.0;
     for (const auto& s : seg)
-        end += s.second;
+        end += double (std::llround (s.second * fs)) / fs; // the stimulus rounds each segment to whole samples
     seg.push_back ({ -60, 0.25 });
     return envelope (fs, -40, seg, end, offsets96);
 }
@@ -230,90 +209,43 @@ std::vector<double> runVector94 (double fs, const Vector94& v)
 }
 } // namespace
 
-TEST_CASE ("9.4 envelope vectors (exact gain) at 44.1 / 48 / 96 kHz", "[dynamics][9.4][fs]")
+// r3 section 8: every 9.4 and 9.6 table point within +-1.0 dB, RMS over all of them <= 0.3 dB, at each rate.
+TEST_CASE ("9.4 + 9.6 envelope and release tables at 44.1 / 48 / 96 kHz", "[dynamics][9.4][9.6][fs]")
 {
     for (double fs : sampleRates)
+    {
+        double sq = 0.0, worst = 0.0;
+        int n = 0;
+        auto add = [&] (double got, double want) {
+            const double err = got - want;
+            CHECK (got == Catch::Approx (want).margin (1.0));
+            sq += err * err;
+            worst = std::max (worst, std::abs (err));
+            ++n;
+        };
         for (const auto& v : vectors94())
         {
-            CAPTURE (fs, v.name);
-            checkVector (runVector94 (fs, v), v.want, 1.0);
-        }
-}
-
-namespace
-{
-// Checks the 9.6 points of rows with bursts >= minBurst (or < minBurst if `shortOnly`); returns the squared errors.
-void check96 (double fs, bool shortOnly, double& sq, int& n)
-{
-    for (const auto& row : rows96())
-    {
-        const bool isShort = row.burstSeconds < 0.005;
-        if (isShort != shortOnly)
-            continue;
-        const auto got = runRow96 (fs, row);
-        for (size_t i = 0; i < offsets96.size(); ++i)
-        {
-            if (std::isnan (row.want[i]))
-                continue;
-            // section 8: +-1 dB, +-3 dB within the first 480 samples after bursts of 5 - 50 ms
-            const bool early = offsets96[i] <= 480 && row.burstSeconds >= 0.005 && row.burstSeconds <= 0.050;
-            CAPTURE (fs, row.level, row.burstSeconds, row.count, row.periodSeconds, offsets96[i], got[i], row.want[i]);
-            CHECK (got[i] == Catch::Approx (row.want[i]).margin (early ? 3.0 : 1.0));
-            sq += (got[i] - row.want[i]) * (got[i] - row.want[i]);
-            ++n;
-        }
-    }
-}
-} // namespace
-
-TEST_CASE ("9.6 release after bursts >= 5 ms at 44.1 / 48 / 96 kHz", "[dynamics][9.6][fs]")
-{
-    for (double fs : sampleRates)
-    {
-        double sq = 0.0;
-        int n = 0;
-        check96 (fs, false, sq, n);
-        CHECK (n == 150);
-    }
-}
-
-// The 1 ms / 2 ms rows and the overall RMS (<= 0.3 dB) are not met by the r2 section 5 law as written:
-// it leaves the slow part charging after very short bursts (up to -1.5 dB at +480/+960), RMS ~0.5 dB.
-TEST_CASE ("9.6 release after 1 ms / 2 ms bursts and RMS <= 0.3 dB [known r2 deviation]", "[dynamics][9.6][fs][!mayfail]")
-{
-    for (double fs : sampleRates)
-    {
-        double sq = 0.0;
-        int n = 0;
-        check96 (fs, false, sq, n);
-        check96 (fs, true, sq, n);
-        CAPTURE (fs, std::sqrt (sq / n));
-        CHECK (n == 166);
-        CHECK (std::sqrt (sq / n) <= 0.3);
-    }
-}
-
-TEST_CASE ("9.6 overall RMS regression bound (0.6 dB)", "[dynamics][9.6][fs]")
-{
-    for (double fs : sampleRates)
-    {
-        double sq = 0.0;
-        int n = 0;
-        {
-            // collect errors without asserting the per-point tolerances (covered above)
-            for (const auto& row : rows96())
+            const auto got = runVector94 (fs, v);
+            for (size_t i = 0; i < offsets.size(); ++i)
             {
-                const auto got = runRow96 (fs, row);
-                for (size_t i = 0; i < offsets96.size(); ++i)
-                    if (! std::isnan (row.want[i]))
-                    {
-                        sq += (got[i] - row.want[i]) * (got[i] - row.want[i]);
-                        ++n;
-                    }
+                CAPTURE (fs, v.name, offsets[i]);
+                add (got[i], v.want[i]);
             }
         }
-        CAPTURE (fs, std::sqrt (sq / n));
-        CHECK (std::sqrt (sq / n) <= 0.6);
+        for (const auto& row : rows96())
+        {
+            const auto got = runRow96 (fs, row);
+            for (size_t i = 0; i < offsets96.size(); ++i)
+            {
+                if (std::isnan (row.want[i]))
+                    continue;
+                CAPTURE (fs, row.level, row.burstSeconds, row.count, row.periodSeconds, offsets96[i]);
+                add (got[i], row.want[i]);
+            }
+        }
+        CAPTURE (fs, worst, std::sqrt (sq / n));
+        CHECK (n == 60 + 166);
+        CHECK (std::sqrt (sq / n) <= 0.3);
     }
 }
 

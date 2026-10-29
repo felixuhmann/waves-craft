@@ -1,4 +1,4 @@
-// Craft De-Esser - detector, gain computer and gain smoothing (spec r2 section 5).
+// Craft De-Esser - detector, gain computer and gain smoothing (spec r3 section 5, normative pseudocode).
 // Host-independent: no JUCE dependency. All time constants are in seconds, so behaviour is
 // independent of the sample rate.
 #pragma once
@@ -9,40 +9,40 @@
 namespace craft::deesser::dsp
 {
 
-// One-pole smoothing coefficient c = 1 - exp(-1 / (tau fs)) (spec section 5.3).
+// One-pole coefficient c = 1 - exp(-1 / (tau fs)).
 inline double onePoleCoeff (double tauSeconds, double fs) noexcept { return 1.0 - std::exp (-1.0 / (tauSeconds * fs)); }
 
 // ---------------------------------------------------------------------------------------------
-// Static curve (spec section 5.2): hard knee, 7:1, threshold offset -0.08 dB, at most 25.57 dB (1/19).
+// Static curve (r3 section 5 step 2): hard knee, slope 0.85648 dB/dB (~7:1), threshold offset 0.0793 dB,
+// maximum reduction 25.570 dB (linear ~1/19).
 struct GainComputer
 {
-    static constexpr double ratio = 7.0;
-    static constexpr double slope = 1.0 - 1.0 / ratio;  // 0.857 dB of reduction per dB above threshold
-    static constexpr double thresholdOffsetDb = -0.08;
-    static constexpr double minGain = 1.0 / 19.0;      // maximum attenuation, linear
-    static double maxReductionDb() noexcept { return -20.0 * std::log10 (minGain); } // 25.575 dB
+    static constexpr double slope = 0.85648;
+    static constexpr double thresholdOffsetDb = 0.0793; // GR starts at Threshold - 0.0793 dB
+    static constexpr double maxReductionDb = 25.570;
 
     // Gain reduction in dB (>= 0) for a detector level in dB.
     static double reductionDb (double levelDb, double thresholdDb) noexcept
     {
-        const double gr = (levelDb - (thresholdDb + thresholdOffsetDb)) * slope;
-        return std::clamp (gr, 0.0, maxReductionDb());
+        const double gr = (levelDb - (thresholdDb - thresholdOffsetDb)) * slope;
+        return std::min (std::max (gr, 0.0), maxReductionDb);
     }
 };
 
 // ---------------------------------------------------------------------------------------------
-// Time constants of spec r2 section 5 (all in seconds).
+// Time constants of r3 section 5 (seconds).
 struct DynamicsTiming
 {
-    static constexpr double detectorAttack = 11.0e-6;  // s, peak envelope rise
-    static constexpr double detectorRelease = 0.38e-3; // s, peak envelope fall
-    static constexpr double gainAttack = 0.47e-3;      // s, tau_a: fast part, deficit increasing
-    static constexpr double fastRelease = 11.6e-3;     // s, tau_f: fast part, deficit decreasing
-    static constexpr double slowCharge = 7.2e-3;       // s, tau_c: slow part charging toward the fast part
-    static constexpr double slowRelease = 32.4e-3;     // s, tau_s: slow part releasing toward the target
+    static constexpr double detectorAttack = 4.594e-6;  // a_det
+    static constexpr double detectorRelease = 0.4942e-3; // r_det (multiplicative decay)
+    static constexpr double gainAttack = 0.4934e-3;     // c_a
+    static constexpr double fastRelease = 9.913e-3;     // c_f
+    static constexpr double slowCharge = 3.789e-3;      // c_c
+    static constexpr double slowRelease = 31.97e-3;     // c_s
 };
 
-// Detector + gain computer + two-component release (spec r2 section 5) for one (linked) sidechain signal.
+// Detector + gain computer + two-part release for one (linked) sidechain signal, implemented literally from the
+// r3 pseudocode: 1 detector -> 2 static curve -> 3a fast part f -> 3b slow part s -> 4 g = 1 - max(f, s).
 class GainReducer
 {
 public:
@@ -51,17 +51,16 @@ public:
         fs = sampleRate;
         aDet = onePoleCoeff (DynamicsTiming::detectorAttack, fs);
         rDet = std::exp (-1.0 / (DynamicsTiming::detectorRelease * fs));
-        cAttack = onePoleCoeff (DynamicsTiming::gainAttack, fs);
-        cFast = onePoleCoeff (DynamicsTiming::fastRelease, fs);
-        cCharge = onePoleCoeff (DynamicsTiming::slowCharge, fs);
-        cSlow = onePoleCoeff (DynamicsTiming::slowRelease, fs);
+        cA = onePoleCoeff (DynamicsTiming::gainAttack, fs);
+        cF = onePoleCoeff (DynamicsTiming::fastRelease, fs);
+        cC = onePoleCoeff (DynamicsTiming::slowCharge, fs);
+        cS = onePoleCoeff (DynamicsTiming::slowRelease, fs);
         reset();
     }
 
     void reset() noexcept
     {
-        envelope = 0.0;
-        fast = slow = 0.0;
+        e = f = s = 0.0;
         gain = 1.0;
         lastTargetDb = 0.0;
     }
@@ -69,54 +68,55 @@ public:
     // Processes one sidechain sample; returns the applied linear gain (exactly 1 without reduction).
     double process (double d, double thresholdDb) noexcept
     {
-        // 1. peak envelope
-        const double a = std::abs (d);
-        if (a > envelope)
-            envelope += (a - envelope) * aDet;
+        // 1. peak detector
+        const double v = std::abs (d);
+        if (v > e)
+            e = e + (v - e) * aDet;
         else
-            envelope *= rDet;
-        if (envelope < tiny)
-            envelope = 0.0; // flush denormals / silence
+            e = e * rDet;
+        if (e < tiny)
+            e = 0.0; // denormal / silence flush (does not change any audible result)
 
-        // 2. static curve -> target deficit dt = 1 - 10^(-GR/20)
-        const double levelDb = envelope > 0.0 ? 20.0 * std::log10 (envelope) : -400.0;
-        const double grDb = GainComputer::reductionDb (levelDb, thresholdDb);
-        lastTargetDb = grDb;
-        const double target = grDb > 0.0 ? 1.0 - std::pow (10.0, -grDb / 20.0) : 0.0;
+        // 2. static curve
+        const double gr = e > 0.0 ? GainComputer::reductionDb (20.0 * std::log10 (e), thresholdDb) : 0.0;
+        lastTargetDb = gr;
+        const double t = gr > 0.0 ? 1.0 - std::pow (10.0, -gr / 20.0) : 0.0;
 
-        // 3. fast part: attack when dt > df, release when dt < df
-        if (target > fast)
-            fast += (target - fast) * cAttack;
-        else if (target < fast)
-            fast += (target - fast) * cFast;
-        if (std::abs (fast - target) <= snapEpsilon)
-            fast = target;
+        // 3a. fast part: attack or fast release toward t
+        if (t > f)
+            f = f + (t - f) * cA;
+        else
+            f = f + (t - f) * cF;
 
-        //    slow part: charges toward df while df > ds, otherwise releases toward dt while dt < ds
-        if (fast > slow)
-            slow += (fast - slow) * cCharge;
-        else if (target < slow)
-        {
-            slow += (target - slow) * cSlow;
-            if (slow - target <= snapEpsilon)
-                slow = target;
-        }
+        // 3b. slow part: charges toward f while the target exceeds it, otherwise releases toward t
+        if (t > s)
+            s = s + (f - s) * cC;
+        else
+            s = s + (t - s) * cS;
 
-        gain = 1.0 - std::max (fast, slow);
+        // Exact identity once released (implementation detail outside the pseudocode, |change| <= 1e-12):
+        // the one-poles only approach t asymptotically, so they are landed on t when practically there.
+        if (std::abs (f - t) <= snapEpsilon)
+            f = t;
+        if (t <= s && s - t <= snapEpsilon)
+            s = t;
+
+        // 4. applied gain
+        gain = 1.0 - std::max (f, s);
         return gain;
     }
 
     double getGain() const noexcept { return gain; }
-    double getEnvelope() const noexcept { return envelope; }
+    double getEnvelope() const noexcept { return e; }
     double getTargetReductionDb() const noexcept { return lastTargetDb; }
 
 private:
     static constexpr double tiny = 1.0e-30;
-    static constexpr double snapEpsilon = 1.0e-10;
+    static constexpr double snapEpsilon = 1.0e-12;
 
     double fs = 48000.0;
-    double aDet = 0.0, rDet = 0.0, cAttack = 0.0, cFast = 0.0, cCharge = 0.0, cSlow = 0.0;
-    double envelope = 0.0, fast = 0.0, slow = 0.0, gain = 1.0, lastTargetDb = 0.0;
+    double aDet = 0.0, rDet = 0.0, cA = 0.0, cF = 0.0, cC = 0.0, cS = 0.0;
+    double e = 0.0, f = 0.0, s = 0.0, gain = 1.0, lastTargetDb = 0.0;
 };
 
 } // namespace craft::deesser::dsp
