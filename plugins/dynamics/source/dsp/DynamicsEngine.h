@@ -89,6 +89,7 @@ public:
     static constexpr double expGainRel = 0.842;        // EXP_GAIN_REL
     static constexpr double gateDetectorMaxAttackMs = 2.0;
     static constexpr double peakHoldReleaseMs = 20.0;  // instantaneous-peak follower for the output limit
+    static constexpr double safetyClamp = 31.6227766;  // +30 dBFS hard safety limit on the engine output
     static constexpr double paramSmoothingMs = 4.0;    // one-pole time constant, settles well within 20 ms
     static constexpr double crossfadeMs = 10.0;        // switched settings (spec 8: <= 20 ms)
 
@@ -221,9 +222,10 @@ public:
                     fading = false;
                 }
             }
-            left[i] = Sample (y[0]);
+            // last-resort safety clamp (+30 dBFS): legitimate output stays below about +21 dBFS
+            left[i] = Sample (clampTo (y[0], -safetyClamp, safetyClamp));
             if (nch > 1)
-                right[i] = Sample (y[1]);
+                right[i] = Sample (clampTo (y[1], -safetyClamp, safetyClamp));
         }
     }
 

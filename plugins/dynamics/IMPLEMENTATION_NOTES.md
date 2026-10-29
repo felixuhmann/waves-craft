@@ -167,6 +167,10 @@ The engine implements the r2 §4–§5 compressor law literally (constants of §
    with PeakRef +40 and Makeup +40, until the detector's attack catches up; `tools/hoststress` reported outputs
    above +40 dBFS. On steady signals the held peak does not exceed `e − 1.277`, so the r2 statics and trajectories
    are unchanged; a regression test covers the onset case.
+   In addition the engine output has a last-resort hard clamp at ±31.6 (+30 dBFS). Legitimate output stays below
+   about +21 dBFS (+2.83 dBFS limit plus +18 dB output gain). `tools/hoststress` (antiphase DC, 1-sample blocks,
+   automation on every block) still produced rare samples of +40 … +46 dBFS without it. I did not pin down where
+   they come from; filter and automation transients at tiny blocks are the likely source.
 2. **Expander static calibration (my addition).** With EXP_DET_REL the expander detector reads a steady 1 kHz sine
    lower than the slower (Attack, Release) detector. At the default 2/30 ms it reads +0.03 dB re peak against the
    +1.13 dB that Appendix B's coordinates imply, so a literal r2 expander would sit about 1.1 dB below Appendix B. The
