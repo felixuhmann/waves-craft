@@ -1,0 +1,10 @@
+/build*/
+/out/
+/dist/
+/cmake-build-*/
+*.vst3
+*.zip
+.vs/
+.vscode/
+.idea/
+CMakeUserPresets.json
