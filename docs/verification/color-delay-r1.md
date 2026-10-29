@@ -35,6 +35,7 @@ Only observed differences are reported; no reference-side implementation detail 
 | Distortion Width 100 % | **Fail** | L/R level differs by 3.7 dB (spec: equal level); build correlation 0.00 vs reference 0.60 for an identical 1 kHz tone on both channels |
 | Doubler pitch / latency | **Pass** | Within 0.05 cent of Detune (ref within 0.25 cent); onset 5.8–6.6 ms |
 | Doubler level | **Fail** | +5.4 dB per channel vs reference +9.25 dB (tolerance ±1 dB) on a 1 kHz tone; one-sided broadband sweep 4.3 dB low as well |
+| Effects at 44.1 / 96 kHz | Same as 48 kHz, plus one finding | RT60, pre-delay, level law, distortion Send 50 % response, doubler pitch and phaser rate as at 48 kHz; distortion routing/drive and doubler level fail identically. Reverb energy depends on the sample rate: +2.1 … +3.8 dB at 44.1 kHz, −0.6 … +1.2 dB at 96 kHz (48 kHz: +2.0 … +3.2 dB) |
 | Phaser | Pass | 4 notches between 1.9 and 14.6 kHz; LFO rate 1.00 Hz at Rate 1 Hz (other rates not resolvable with this stimulus) |
 
 ## Spec revision
@@ -44,12 +45,13 @@ compressor model, LF claim, effect channel routing, missing distortion level dat
 
 ## Issues for the builder (against r2)
 1. Host-sync: compute the note length so that mathematically integer lengths are exact (drop the 0.6666666 factor).
-2. Reverb: reduce total energy by ≈ 2–2.5 dB and match the octave-band energy profile (less energy above 2 kHz).
+2. Reverb: reduce total energy by ≈ 2–2.5 dB and match the octave-band energy profile (less energy above 2 kHz);
+   make the energy independent of the sample rate (currently ≈ 3 dB lower at 96 kHz than at 44.1 kHz).
 3. Distortion: process each channel independently (no L+R sum); Width must not mix channels and must keep equal L/R
    level; match the Send 75/100 % small-signal response and gain-vs-level tables; Send 25 % must pass −40 dBFS input;
    gate thresholds per channel as specified.
 4. Doubler: raise the level by ≈ 3.9 dB to +9.2 dB per channel.
 
 ## Not verified
-Colour effects at 44.1 / 96 kHz (renders exist, analysis not completed), GUI, automation/parameter smoothing in a host, delay-time change behaviour, HP/LP Link and Delay Link interaction
+GUI, automation/parameter smoothing in a host, delay-time change behaviour, HP/LP Link and Delay Link interaction
 in a host, Monitor in combination with effects, mono-to-stereo layout, CLAP hosting, the Linux build, 88.2/176.4/192 kHz.
