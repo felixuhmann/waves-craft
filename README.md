@@ -21,17 +21,17 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 3 | n/a | ModFX Delay | Delay | Internal module, not loadable as a host plugin — cannot be measured |
 | 4 | n/a | ModFX Chorus | Modulation | Internal module, not loadable as a host plugin — cannot be measured |
 | 5 | [x] | MetaFlanger | Modulation | Flanger with LFO/feedback; deterministic, few controls  — released as Craft Flanger |
-| 6 | [ ] | H-Delay | Delay | Delay + filters + modulation; deterministic, more controls |
+| 6 | [x] | H-Delay | Delay | Delay + filters + modulation; deterministic, more controls — released as Craft Hybrid Delay |
 | 7 | [ ] | MannyM-Delay | Delay | Delay with filtering/ducking; builds on #3/#6 |
-| 8 | [ ] | Doubler | Pitch/delay | Detuned delayed voices; small pitch-shift component |
-| 9 | [ ] | MetaFilter | Filter | Resonant filter with LFO/envelope modulation |
+| 8 | [x] | Doubler | Pitch/delay | Detuned delayed voices; small pitch-shift component — released as Craft Doubler 2 / 4 |
+| 9 | [x] | MetaFilter | Filter | Resonant filter with LFO/envelope modulation — released as Craft Motion Filter |
 | 10 | n/a | ModFX Limiter | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
 | 11 | [x] | L1 | Dynamics | Look-ahead brickwall limiter; measurable with steps/bursts  — released as Craft Peak Limiter |
 | 12 | n/a | ModFX Compressor | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
-| 13 | [ ] | DeEsser | Dynamics | Band-limited sidechain compression |
+| 13 | [x] | DeEsser | Dynamics | Band-limited sidechain compression — released as Craft De-Esser |
 | 14 | [ ] | RVox | Dynamics | One-knob compressor/gate/limiter chain |
 | 15 | [ ] | C1 | Dynamics | Compressor/gate/expander with sidechain EQ; many modes |
-| 16 | [ ] | L2 | Dynamics | Limiter with adaptive release and dither |
+| 16 | [x] | L2 | Dynamics | Limiter with adaptive release and dither — released as Craft Mastering Limiter |
 | 17 | [ ] | SSL E-Channel | Channel strip | EQ curves measurable; dynamics section adds work |
 | 18 | [ ] | SSL G-Channel | Channel strip | Same family as #17 |
 | 19 | [ ] | C4 | Multiband dynamics | Crossover + 4 compressors; many interacting parameters |
