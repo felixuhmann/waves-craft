@@ -12,19 +12,24 @@ namespace craft::opto_leveler::dsp
 {
 
 // Memoryless colour curve on the post-make-up signal (fit: tools/fit_colour.py).
-//   y = x + b Xe (sqrt(1 + (x/Xe)^2) - 1) + c Xo u|u| / (1 + |u|),  u = x / Xo
-// The even term gives H2 rising 1 dB/dB with the output level and saturating near -46 dBc (T7b), the odd term
-// H3 / H5 rising 1 dB/dB (H5 17 dB below H3) and the +0.05 ... +0.1 dB level-dependent gain of T7.
+//   y = x + b Xe (sqrt(1 + (x/Xe)^2) - 1) + c Xo u|u| / (1 + |u|) + d Xd v^2.5 / (1 + v^1.5),
+//   u = x / Xo, v = |x / Xd|
+// The first even term gives H2 rising 1 dB/dB with the output level and saturating near -46 dBc (T7b), the odd term
+// H3 / H5 rising 1 dB/dB (H5 17 dB below H3) and the +0.05 ... +0.1 dB level-dependent gain of T7, the second even
+// term the H4 slope.
 struct Colour
 {
-    static constexpr double b = 0.0101071, xe = 0.221167, c = 0.020744, xo = 0.532867;
+    static constexpr double b = 0.00427196, xe = 0.106639, c = 0.020754, xo = 0.533114, d = 0.00765257, xd = 0.735137;
 
     static double process (double x) noexcept
     {
         const double ue = x / xe;
         const double uo = x / xo;
         const double au = std::abs (uo);
-        return x + b * xe * (std::sqrt (1.0 + ue * ue) - 1.0) + c * xo * uo * au / (1.0 + au);
+        const double v = std::abs (x / xd);
+        const double sv = std::sqrt (v);
+        return x + b * xe * (std::sqrt (1.0 + ue * ue) - 1.0) + c * xo * uo * au / (1.0 + au)
+               + d * xd * v * v * sv / (1.0 + v * sv);
     }
 };
 

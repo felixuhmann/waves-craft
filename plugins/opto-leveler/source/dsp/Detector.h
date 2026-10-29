@@ -113,7 +113,7 @@ struct DetectorTuning
     double compressKnee = 0.2;    // averaging domain F(e) = k ln(1 + e/k): linear below k, logarithmic above
     double satLevel = 0.2;        // > 0: above this envelope level F saturates further ...
     double satNepers = 0.5;       // ... approaching F(satLevel) + satNepers * k
-    double rippleCornerHz = 110.0; // shelving low-pass applied to the waveform ripple (fast modulation path)
+    double rippleCornerHz = 125.0; // shelving low-pass applied to the waveform ripple (fast modulation path)
     double rippleFloor = 0.03;     // high-frequency floor of that shelf (relative)
     int estimator = 1;            // transient tracking: 0 = quadrature envelope, 1 = energy separation
 };
@@ -212,9 +212,11 @@ public:
         const double tracked = (hold > 0 && tuning.estimator == 1) ? ed : e;
         envF += (toDomain (tracked) - envF) * coef;
         env = fromDomain (envF);
-        // instantaneous waveform level relative to the envelope, in nepers: ln(|s| / e) + ln 2 is zero-mean for a
-        // steady sine (and for Gaussian noise), positive near the waveform peaks
-        const double r = e > 1.0e-9 ? std::log (std::max (std::abs (s) / e, 0.01)) + 0.69314718055994531 : 0.0;
+        // instantaneous waveform level relative to the envelope, in nepers, softened near the zero crossings:
+        // r = ln sqrt((s/e)^2 + d^2) - ln((d + sqrt(1 + d^2)) / 2) is exactly zero-mean for a steady sine (and smooth,
+        // so its sampled mean does not depend on the sample rate); positive near the waveform peaks
+        const double u = e > 1.0e-9 ? s / e : 0.0;
+        const double r = e > 1.0e-9 ? 0.5 * std::log (u * u + rippleSoft * rippleSoft) - rippleMean : 0.0;
         rip = ripple.process (r);
     }
 
@@ -245,6 +247,8 @@ private:
     double slowCoef = 0.0, fastCoef = 0.0, onsetRatio = 1.0, env = 0.0, envF = 0.0, rip = 0.0;
     double satF = 0.0, satS = 1.0;
     double fallRatio = 0.0;
+    static constexpr double rippleSoft = 0.03;
+    const double rippleMean = std::log ((rippleSoft + std::sqrt (1.0 + rippleSoft * rippleSoft)) * 0.5);
     int holdSamples = 1, hold = 0, fallSamples = 1, below = 0;
 };
 

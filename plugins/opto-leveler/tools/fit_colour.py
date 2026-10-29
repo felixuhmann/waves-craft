@@ -2,9 +2,11 @@
 """Design aid (not part of the build): fits the memoryless tube-colour curve to spec tables T7 (PR 0) / T7b.
 
 Colour curve on the post-make-up signal x (per channel):
-    y = x + b * Xe * (sqrt(1 + (x/Xe)^2) - 1) + c * Xo * u|u| / (1 + |u|),  u = x / Xo
+    y = x + b * Xe * (sqrt(1 + (x/Xe)^2) - 1) + c * Xo * u|u| / (1 + |u|) + d * Xd * v^2.5 / (1 + v^1.5)
+    u = x / Xo, v = |x / Xd|
 The even term gives H2 growing 1 dB/dB at low level and saturating at high level (T7b), the odd term gives H3/H5
-growing 1 dB/dB (H5 17 dB under H3, as u|u| does) and the small level-dependent gain rise of T7.
+growing 1 dB/dB (H5 17 dB under H3, as u|u| does) and the small level-dependent gain rise of T7; the |x|^2.5 term
+sets the H4 slope (about 1.5 dB/dB).
 Prints the fitted constants and the residuals; the constants are copied into source/dsp/Colour.h.
 """
 import numpy as np
@@ -21,12 +23,14 @@ def harm(f, A):
 
 
 def mk(p):
-    b, xe, c, xo = p
+    b, xe, c, xo, d, xd = p
 
     def f(x):
         ue = x / xe
         uo = x / xo
-        return x + b * xe * (np.sqrt(1 + ue * ue) - 1) + c * xo * uo * np.abs(uo) / (1 + np.abs(uo))
+        ud = np.abs(x / xd)
+        return (x + b * xe * (np.sqrt(1 + ue * ue) - 1) + c * xo * uo * np.abs(uo) / (1 + np.abs(uo))
+                + d * xd * ud ** 2.5 / (1 + ud ** 1.5))
 
     return f
 
@@ -65,11 +69,11 @@ def res(p):
 best = None
 for xe0 in [0.2, 0.5, 1, 2]:
     for xo0 in [0.2, 0.5, 1, 2]:
-        s = least_squares(res, [0.01, xe0, 0.01, xo0], bounds=([-1, 0.01, -1, 0.01], [1, 100, 1, 100]))
+        s = least_squares(res, [0.01, xe0, 0.01, xo0, 0.0, 0.5], bounds=([-1, 0.01, -1, 0.01, -1, 0.01], [1, 100, 1, 100, 1, 100]))
         if best is None or s.cost < best.cost:
             best = s
 p = best.x
-print("b, Xe, c, Xo =", ", ".join(f"{v:.6g}" for v in p), " cost", best.cost)
+print("b, Xe, c, Xo, d, Xd =", ", ".join(f"{v:.6g}" for v in p), " cost", best.cost)
 f = mk(p)
 for L, k, t in rows:
     H = harm(f, 10 ** (L / 20))

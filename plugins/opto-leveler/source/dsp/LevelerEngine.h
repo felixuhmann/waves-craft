@@ -33,7 +33,7 @@ struct Settings
 struct EngineTuning
 {
     DetectorTuning detector;
-    double rippleDepth = 0.026;     // waveform-following depth ...
+    double rippleDepth = 0.0255;    // waveform-following depth ...
     double rippleExponent = 0.737;  // ... times slope * (1/g - 1)^exponent
     double rippleDelay = 16.3e-6;   // s, delay of the modulation relative to the audio
 };
