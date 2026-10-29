@@ -65,39 +65,42 @@ bool DoublerProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 Settings DoublerProcessor::readSettings() const
 {
-    auto value = [] (juce::RangedAudioParameter* p) { return double (p->convertFrom0to1 (p->getValue())); };
+    // Physical values are computed in double precision from the host-normalised value with the spec mapping.
+    // (JUCE's convertFrom0to1 works in float: 9.4 ms would become 9.3999996 ms and shift the delay taps.)
+    namespace pm = param;
+    auto norm = [] (juce::RangedAudioParameter* p) { return double (p->getValue()); };
     auto on = [] (juce::RangedAudioParameter* p) { return p->getValue() >= 0.5f; };
 
     Settings s = defaultSettings (numVoices);
-    s.masterDb = value (master);
-    s.fbHighPassHz = value (fbHighPass);
+    s.masterDb = pm::MasterGain::fromNorm (norm (master));
+    s.fbHighPassHz = pm::Frequency::fromNorm (norm (fbHighPass));
     s.modReset = on (modReset);
     s.range20 = on (range);
     s.alignDirect = on (align);
     s.directOn = on (directOn);
-    s.directGainDb = value (directGain);
-    s.directPanDeg = value (directPan);
+    s.directGainDb = pm::LevelGain::fromNorm (norm (directGain));
+    s.directPanDeg = pm::Pan::fromNorm (norm (directPan));
     s.eqLowOn = on (eqLowOn);
-    s.eqLowGainDb = value (eqLowGain);
-    s.eqLowFreqHz = value (eqLowFreq);
+    s.eqLowGainDb = pm::EqGain::fromNorm (norm (eqLowGain));
+    s.eqLowFreqHz = pm::Frequency::fromNorm (norm (eqLowFreq));
     s.eqHighOn = on (eqHighOn);
-    s.eqHighGainDb = value (eqHighGain);
-    s.eqHighFreqHz = value (eqHighFreq);
-    s.routingA = static_cast<Routing> (int (std::lround (value (routingA))));
-    s.routingB = static_cast<Routing> (int (std::lround (value (routingB))));
+    s.eqHighGainDb = pm::EqGain::fromNorm (norm (eqHighGain));
+    s.eqHighFreqHz = pm::Frequency::fromNorm (norm (eqHighFreq));
+    s.routingA = static_cast<Routing> (int (pm::Routing::fromNorm (norm (routingA))));
+    s.routingB = static_cast<Routing> (int (pm::Routing::fromNorm (norm (routingB))));
     for (int n = 0; n < numVoices; ++n)
     {
         const auto& p = voiceParams[size_t (n)];
         auto& v = s.voices[size_t (n)];
         v.on = on (p.on);
-        v.gainDb = value (p.gain);
-        v.panDeg = value (p.pan);
-        v.delayMs = value (p.delay);
-        v.feedbackPct = value (p.feedback);
+        v.gainDb = pm::LevelGain::fromNorm (norm (p.gain));
+        v.panDeg = pm::Pan::fromNorm (norm (p.pan));
+        v.delayMs = pm::DelayMs::fromNorm (norm (p.delay));
+        v.feedbackPct = pm::Feedback::fromNorm (norm (p.feedback));
         v.octave = on (p.octave);
-        v.detuneCents = value (p.detune);
-        v.depthCents = value (p.depth);
-        v.rateHz = value (p.rate);
+        v.detuneCents = pm::Detune::fromNorm (norm (p.detune));
+        v.depthCents = pm::Depth::fromNorm (norm (p.depth));
+        v.rateHz = pm::Rate::fromNorm (norm (p.rate));
     }
     s.bypass = bypassParam != nullptr && bypassParam->get();
     return s;

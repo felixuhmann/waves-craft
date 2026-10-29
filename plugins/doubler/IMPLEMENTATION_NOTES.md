@@ -53,7 +53,7 @@ shelf; master gain on everything. Latency reported to the host: 0.
 
 **§5 Voice delay / inherent latency.** `Lr` = round(320/44100·fs) (Range 80) or round(1088/44100·fs) (Range 20).
 `Dn = max(Delay, Lr)` (Align No) or `Delay + Lr` (Align Yes, and the direct is delayed by exactly `Lr` samples).
-Reads are linearly interpolated. With Detune = 0, Depth = 0 and Octave off the voice is an exact delay of `Dn`
+Reads are linearly interpolated; delay times, read positions and interpolation weights are computed in double precision, and the processor maps the host-normalised parameter values with the double-precision spec mappings (JUCE's float `convertFrom0to1` made 9.4 ms = 9.3999996 ms, i.e. tap weights off by ~2e-5 — found by the verification, fixed, and covered by the "Fractional voice delays" test). With Detune = 0, Depth = 0 and Octave off the voice is an exact delay of `Dn`
 (the shifter is bypassed; the tests check this bit-exactly).
 
 **§6 Pitch shifter** (`Voice.h`). A read tap moves through the voice delay line; its delay changes by `1 − ρ`
@@ -107,12 +107,12 @@ peak counters and clip indicator (click resets). Bottom: input routing selectors
 
 ## Tests (`tests/`, Catch2)
 
-Run with `ctest --test-dir build -R doubler` (or `doubler_tests` directly). 23 test cases:
+Run with `ctest --test-dir build -R doubler` (or `doubler_tests` directly). 24 test cases:
 
 | File | Spec | What |
 |---|---|---|
 | `ParameterTests.cpp` | §3, §1 | mappings, resolutions, quoted r → value pairs, defaults of both variants, 2-voice ≡ 4-voice with 3–4 off (bit-exact), zero latency |
-| `PathTests.cpp` | §11.1 | direct identity / ±22.5° / −45° rotation / −12 dB gains / Align delay (Range 80/20); voice delay 20 ms, pans; delay clamping and Align table (0/5/10/50 ms, both ranges); routing A/B; feedback echo times/peaks (1, 0.5994, 0.3591, 0.2153); 2nd/1st echo = 0.6·H_HP(f) ≤ 0.05 dB; 100 % feedback bounded — at 44.1/48/96 kHz, tolerance 3e-7 (≈ −135 dB re peak) |
+| `PathTests.cpp` | §11.1 | direct identity / ±22.5° / −45° rotation / −12 dB gains / Align delay (Range 80/20); voice delay 20 ms, pans; delay clamping and Align table (0/5/10/50 ms, both ranges); routing A/B; feedback echo times/peaks (1, 0.5994, 0.3591, 0.2153); 2nd/1st echo = 0.6·H_HP(f) ≤ 0.05 dB; 100 % feedback bounded; fractional delays (10.2 samples: taps 0.8/0.2 to 1e-7, float-stored host values stay on the 0.1 ms grid) — at 44.1/48/96 kHz, tolerance 3e-7 (≈ −135 dB re peak) |
 | `EqTests.cpp` | §11.2 | the full magnitude table (48 kHz, ±0.15 / ±0.5 dB), EQ measured through the engine at 44.1/48/96 kHz, EQ not on the direct, click-free EQ gain change |
 | `ShifterTests.cpp` | §11.3 | pitch by phase slope (±1…±100 cents ≤ 0.5 cent, octave and octave+50 ≤ 6 cents; 44.1/48 kHz), Hilbert envelope 1 % percentile (1 kHz/100 Hz ≥ 0.97, 5 kHz +50 ≥ 0.90), white-noise level (−1.8 ± 0.6 dB) and 1/3-octave flatness (≤ 3 dB), delay window / jump sizes / mean delay (Range 80 and 20, octave), louder-tap trajectory = cross-correlation peak of the output, click-free delay change within 10 ms |
 | `ModulationTests.cpp` | §11.4, §11.5 | triangle amplitude/period/start direction (depth ±), detune + depth range, output pitch follows the LFO, Modulation Reset (rising edge, all voices), gain/pan/on-off/direct/master/detune settle within 5 ms without steps, return to the exact path |
@@ -132,7 +132,7 @@ worst 1/3-octave deviation 1.7–2.6 dB [≤ 2.5]; mean delay ∓2.0…2.2 ms [�
    limit). A continuous overlap would also need taps up to `J/2` beyond the window, which the reference's
    `Lr − Wh` margin (0.89 ms) cannot accommodate at the smallest delays. I therefore kept the linear reads (the
    5 kHz envelope of 0.946 then matches the reference value exactly) and used a short travel-based cross-fade
-   (1.7 ms of delay travel) centred on the window edge. Result −2.1 dB, inside the limit. Please confirm.
+   (1.7 ms of delay travel) centred on the window edge. Result −2.1 dB, inside the limit. **Confirmed by the independent verification** (docs/verification/doubler-r1.md): the spec's "two-tap overlap" means linear-interpolated reads plus a linear cross-fade at the splices, not a continuous overlap.
 2. **1/3-octave deviation definition (§11.3).** Measured as each band's gain minus the broadband (RMS) gain,
    Welch spectra, IEC bands 100 Hz–16 kHz. Relative to the *mean of the band gains in dB* instead, the worst
    case is ≈ 3.0 dB at −100 cents (the 16 kHz band, linear-interpolation droop) — please confirm which definition
@@ -191,6 +191,6 @@ automatically (`craft-doubler-4-*.zip`, `craft-doubler-2-*.zip`).
 - Windows x64 Release build (MSVC 19.44, VST3 + CLAP + Standalone for both products) verified locally; installed
   to `%LOCALAPPDATA%\Programs\Common\VST3`, `C:\Program Files\Common Files\VST3` and
   `%LOCALAPPDATA%\Programs\Common\CLAP`. `ci/package.py` finds and zips both products.
-- 23/23 test cases pass with MSVC (Windows) and GCC 13 (Linux, `-DCRAFT_BUILD_PLUGINS=OFF`).
+- 24/24 test cases pass with MSVC (Windows) and GCC 13 (Linux, `-DCRAFT_BUILD_PLUGINS=OFF`).
 - Linux plug-in targets not built locally (JUCE system packages not installed here); CI covers them.
 - Not yet independently verified (no `docs/verification/doubler-r1.md`).

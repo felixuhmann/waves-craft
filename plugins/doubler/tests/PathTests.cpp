@@ -272,3 +272,53 @@ TEST_CASE ("Feedback high-pass: 2nd / 1st echo = 0.6 H_HP(f)", "[paths]")
         CHECK (20.0 * std::log10 (std::abs (b / a) / std::abs (expected)) == Approx (0.0).margin (0.05));
     }
 }
+
+TEST_CASE ("Fractional voice delays: interpolation weights exact (double-precision delay arithmetic)", "[paths]")
+{
+    const double fs = GENERATE (44100.0, 48000.0, 96000.0);
+
+    SECTION ("10.2 samples beyond Lr: impulse taps 0.8 / 0.2 to 1e-7, noise path <= -135 dB")
+    {
+        auto s = soloSettings();
+        s.voices[0].panDeg = -45.0;
+        s.alignDirect = true; // Dn = Delay + Lr, so a short fractional delay is not clamped
+        s.voices[0].delayMs = 10.2 / fs * 1000.0;
+        const int d = lr (fs, false) + 10;
+        const int n = int (0.1 * fs);
+
+        auto e = makeEngine (s, fs);
+        std::vector<double> L (size_t (n), 0.0), R (size_t (n), 0.0);
+        L[0] = 1.0;
+        const auto o = run (e, L, R);
+        CHECK (std::abs (o.l[size_t (d)] - 0.8) <= 1e-7);
+        CHECK (std::abs (o.l[size_t (d + 1)] - 0.2) <= 1e-7);
+
+        auto e2 = makeEngine (s, fs);
+        const auto x = noise (n, 51);
+        const auto y = run (e2, x, x).l;
+        CHECK (maxAbsDiff (y, lin (0.8, delayed (x, d), 0.2, delayed (x, d + 1))) <= tol);
+    }
+
+    SECTION ("host-normalised values pass through float without leaving the parameter grid")
+    {
+        // The host stores r in single precision; the plug-in maps it with the double-precision spec mapping
+        // (PluginProcessor::readSettings), which must land exactly on the step value.
+        namespace pm = craft::doubler::param;
+        for (int k = 0; k <= 1000; ++k)
+        {
+            const double v = k / 10.0;
+            const float r = float (pm::DelayMs::toNorm (v));
+            REQUIRE (pm::DelayMs::fromNorm (double (r)) == quantise (v, 10.0));
+        }
+        auto s = soloSettings();
+        s.voices[0].panDeg = -45.0;
+        s.voices[0].delayMs = pm::DelayMs::fromNorm (double (float (pm::DelayMs::toNorm (9.4))));
+        auto e = makeEngine (s, fs);
+        const double dn = 9.4 * fs / 1000.0, mu = dn - std::floor (dn);
+        std::vector<double> L (size_t (fs * 0.05), 0.0), R (L.size(), 0.0);
+        L[0] = 1.0;
+        const auto o = run (e, L, R);
+        CHECK (std::abs (o.l[size_t (std::floor (dn))] - (1.0 - mu)) <= 1e-7);
+        CHECK (std::abs (o.l[size_t (std::floor (dn)) + 1] - mu) <= 1e-7);
+    }
+}
