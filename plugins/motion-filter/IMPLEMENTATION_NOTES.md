@@ -118,7 +118,7 @@ Feedback, Dry/Wet, Digital/Analog, Pre/Fbk.
 
 ## Tests (`tests/`, Catch2)
 
-See the final section for the current count. Coverage:
+45 test cases, 8578 assertions, all passing on Windows (MSVC, ctest) and Linux (GCC). Coverage:
 
 - §3 mappings, ranges, defaults, choice lists.
 - §5 small-signal magnitude of LP/HP/BP/BR × 12/24 × fc 100/1k/5k × Res 0/50/90 at 44.1/48/96 kHz through the
@@ -168,6 +168,14 @@ See the final section for the current count. Coverage:
 12. **Bypass**: 5 ms crossfade; at oversampled rates the bypassed signal is the latency-compensated
     (band-limited) input.
 13. Editor fixed size 1000×640, not resizable; the step-edit mode is saved with the state (not automatable).
+
+## Status
+
+Windows x64 Release build (VST3, CLAP, Standalone) succeeds without warnings in this plug-in's code; all 45
+tests pass under ctest; `ci/package.py` packages `craft-motion-filter-<version>-<platform>.zip`. The editor was
+checked with `tools/Snapshot.cpp`. Not yet done: host smoke tests (DAW automation, tempo sync, sidechain
+routing) and the independent verification report. Linux: DSP tests built and run with GCC; the plug-in targets
+were not built locally (no GUI dev packages on the build host), CI covers them.
 
 ## Public references
 
