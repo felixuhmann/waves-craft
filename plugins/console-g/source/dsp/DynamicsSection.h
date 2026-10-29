@@ -37,11 +37,11 @@ struct DynamicsSettings
 struct DetectorConstants
 {
     static constexpr double stage1TauMs = 0.04;
-    static constexpr double attackScale = 2.1;            // x comp_model_fit attack constants (auto attack)
+    static constexpr double attackScale = 2.6;            // x comp_model_fit attack constants (auto attack)
     static constexpr double fastAttackMs = 1.8;
     // level-stage release: a fixed fraction of the attack constant (keeps the detector's peak sensitivity the same
     // for all auto-attack settings), fixed for fast attack
-    static constexpr double levelReleaseRatio = 0.067, levelReleaseFastMs = 5.0;
+    static constexpr double levelReleaseRatio = 0.035, levelReleaseFastMs = 5.0;
     static double levelReleaseMs (double T, double ratio, bool fast) noexcept
     {
         return fast ? levelReleaseFastMs : std::max (3.0, attackMs (T, ratio, false) * levelReleaseRatio);
@@ -110,12 +110,12 @@ struct DetectorConstants
     }
 
     // level stage (linear domain)
-    static double levelStep (double e2, double e1, double aA, double aR) noexcept
+    static double levelStep (double e2, double e1, double aA, double aR, double boostAmount = attackBoost) noexcept
     {
         if (e1 > e2)
         {
             const double gapDb = gainToDb (e1) - gainToDb (std::max (e2, 1.0e-12));
-            const double boost = 1.0 + attackBoost * std::max (0.0, 1.0 - gapDb / attackBoostSpanDb);
+            const double boost = 1.0 + boostAmount * std::max (0.0, 1.0 - gapDb / attackBoostSpanDb);
             return e2 + std::min (1.0, aA * boost) * (e1 - e2);
         }
         return e2 + aR * (e1 - e2);
@@ -130,7 +130,8 @@ struct DetectorConstants
 };
 
 // Mean reading (dB re. sine peak) of the level stage for a steady 1 kHz sine.
-inline double simulateLevelReadingDb (double attackMs, double releaseMs, double fs = 48000.0)
+inline double simulateLevelReadingDb (double attackMs, double releaseMs, double boost = DetectorConstants::attackBoost,
+                                      double fs = 48000.0)
 {
     const double d1 = std::exp (-1000.0 / (DetectorConstants::stage1TauMs * fs));
     const double aA = DetectorConstants::alpha (attackMs, fs), aR = DetectorConstants::alpha (releaseMs, fs);
@@ -139,7 +140,7 @@ inline double simulateLevelReadingDb (double attackMs, double releaseMs, double 
     for (int i = 0; i < settle + measure; ++i)
     {
         e1 = std::max (std::abs (std::sin (2.0 * pi * 1000.0 * i / fs)), e1 * d1);
-        e2 = DetectorConstants::levelStep (e2, e1, aA, aR);
+        e2 = DetectorConstants::levelStep (e2, e1, aA, aR, boost);
         if (i >= settle)
             acc += gainToDb (e2);
     }
@@ -187,7 +188,7 @@ private:
                 row.push_back (simulateLevelReadingDb (DetectorConstants::attackMs (T, R, false), DetectorConstants::levelReleaseMs (T, R, false)));
             grid.push_back (row);
         }
-        fastOffset = simulateLevelReadingDb (DetectorConstants::fastAttackMs, DetectorConstants::levelReleaseFastMs);
+        fastOffset = simulateLevelReadingDb (DetectorConstants::fastAttackMs, DetectorConstants::levelReleaseFastMs, 0.0);
         // the expander smoother has the same structure (plain one-pole, no attack boost difference matters little)
         expOffset = simulateLevelReadingDb (DetectorConstants::expSmoothAttackMs, DetectorConstants::expSmoothReleaseMs);
     }
@@ -274,7 +275,7 @@ public:
         compDb = 0.0;
         if (compActive)
         {
-            e2 = DetectorConstants::levelStep (e2, e1, aA, aR);
+            e2 = DetectorConstants::levelStep (e2, e1, aA, aR, settings.compFast ? 0.0 : DetectorConstants::attackBoost);
             const double gi = CompressorTable::evaluate (curve, gainToDb (e2) - calibDb) - makeupDb;
             gs = DetectorConstants::gainStep (gs, gi, aG, tail);
             compDb = gs + makeupDb;

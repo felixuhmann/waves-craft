@@ -140,7 +140,7 @@ TEST_CASE ("routing (spec 7): pre-EQ default, Ch Out post-EQ, filters to side-ch
     const auto pre = staircase (shelf (comp (-10, 4)), fsTest);
     const double shelfDb = stripMagnitudeDb (shelf (cg::Settings::defaults()), fsTest, 1000.0);
     INFO ("shelf at 1 kHz " << shelfDb);
-    CHECK (std::abs (shelfDb - 5.9) < 0.3);
+    CHECK (std::abs (shelfDb - 5.9) < 1.0); // off-grid shelf (11.9 dB on the sparse 450 Hz row): spec 10, <= 1 dB
     for (size_t k = 0; k < base.size(); ++k)
         CHECK (std::abs (pre[k] - (base[k] + shelfDb)) < 0.1);
 

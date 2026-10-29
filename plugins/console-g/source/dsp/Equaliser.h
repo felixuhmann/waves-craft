@@ -220,8 +220,8 @@ private:
                             double w = 1.0;
                             if (below != nullptr && above != nullptr)
                             {
-                                const double t = (lf - std::log10 (below->first)) / (std::log10 (above->first) - std::log10 (below->first));
-                                w = d == below ? 1.0 - t : t;
+                                const double tf = (lf - std::log10 (below->first)) / (std::log10 (above->first) - std::log10 (below->first));
+                                w = d == below ? 1.0 - tf : tf;
                             }
                             for (size_t k = 0; k < 5; ++k)
                                 corr[k] += w * (full[k] - Pchip (sgs, sqs[k]) (gp.first));

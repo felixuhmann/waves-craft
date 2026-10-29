@@ -78,6 +78,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | [`doubler`](plugins/doubler) | Craft Doubler 4, Craft Doubler 2 | [r1](spec/doubler/r1/SPEC.md) | [notes](plugins/doubler/IMPLEMENTATION_NOTES.md) |
 | [`peak-limiter`](plugins/peak-limiter) | Craft Peak Limiter (stereo / mono, look-ahead 64/128/256 samples) | [r1](spec/peak-limiter/r1/SPEC.md) | [notes](plugins/peak-limiter/IMPLEMENTATION_NOTES.md) |
 | [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
+| [`console-g`](plugins/console-g) | Craft Console G (channel strip: filters, 4-band EQ, compressor, expander/gate; stereo linked / mono) | [r1](spec/console-g/r1/SPEC.md) | [notes](plugins/console-g/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
