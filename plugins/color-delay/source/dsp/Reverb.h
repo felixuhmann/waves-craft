@@ -51,7 +51,26 @@ public:
     }
 
     static double preDelayMs (double size) noexcept { return 13.0 + 0.11 * size; }
-    static double energyTargetDb (double size) noexcept { return -0.7 + 1.5 * (std::clamp (size, 1.0, 100.0) - 1.0) / 99.0; }
+    // Impulse-response energy E = sum(hL^2 + hR^2) for a left-only impulse (spec r2 section 7.1), by Size row.
+    static double energyTargetDb (double size) noexcept { return interpRows (size, { -0.7, -0.1, 0.5, 0.7, 0.8 }); }
+
+    // Output tone shaping: first-order high shelf at 3 kHz (gain over Size), a gentle -1.3 dB dip at 250 Hz, a 38 Hz high-pass and,
+    // at sample rates above 60 kHz, a 2nd-order low-pass at 20 kHz (keeps the response in the audio band, so the
+    // energy does not depend on the sample rate; at 44.1/48 kHz a -1.8 dB dip at 15 kHz stands in for its in-band
+    // effect). The pre-delay settles on whole samples (no interpolation loss). Together with the RT60-dependent energy per band this gives the
+    // spec's octave-band energy profile (energy density per band re 1 kHz).
+    static constexpr double toneShelfHz = 3000.0, bandLimitHz = 20000.0;
+    static double toneShelfDb (double size) noexcept { return interpRows (size, { -3.3, -3.0, -2.8, -2.6, -2.4 }); }
+
+    static double interpRows (double size, std::array<double, 5> v) noexcept
+    {
+        size = std::clamp (size, 1.0, 100.0);
+        int row = 0;
+        while (row < 3 && size > sizeRows[(size_t) row + 1])
+            ++row;
+        const double t = (size - sizeRows[(size_t) row]) / (sizeRows[(size_t) row + 1] - sizeRows[(size_t) row]);
+        return v[(size_t) row] + t * (v[(size_t) row + 1] - v[(size_t) row]);
+    }
 
     void prepare (double sampleRate)
     {
@@ -76,6 +95,18 @@ public:
         preL.assign ((size_t) (std::ceil (0.030 * fs) + 4), 0.0);
         preR.assign (preL.size(), 0.0);
         preDelaySmoother.setTimeConstant (0.05, fs);
+        for (auto& b : bandLimit)
+            b = Biquad();
+        if (fs > 60000.0)
+            for (auto& b : bandLimit)
+                b.setLowPass (bandLimitHz, 0.7071, fs);
+        else // equivalent in-band effect of the 20 kHz low-pass where there is no room for it below Nyquist
+            for (auto& b : bandLimit)
+                b.setPeak (15000.0, 0.9, -1.8, fs);
+        for (auto& b : lowMidDip)
+            b.setPeak (250.0, 1.0, -1.3, fs);
+        for (auto& b : lowCut)
+            b.setHighPass (38.0, 0.7071, fs);
 
         // Input / output vectors from mutually orthogonal Hadamard rows, scrambled by a fixed random sign diagonal:
         //   inL = D h3, inR = D h5, outL = directMix D h3 + sqrt(1 - directMix^2) D h6, outR likewise with h5 / h9.
@@ -127,6 +158,10 @@ public:
                 s.reset();
         std::fill (preL.begin(), preL.end(), 0.0);
         std::fill (preR.begin(), preR.end(), 0.0);
+        for (auto& f : toneShelf) f.reset();
+        for (auto& b : bandLimit) b.reset();
+        for (auto& b : lowMidDip) b.reset();
+        for (auto& b : lowCut) b.reset();
         preWrite = 0;
         preDelaySmoother.snapToTarget();
     }
@@ -134,7 +169,7 @@ public:
     void setSize (double size) noexcept
     {
         sizeSmoother.setTarget (std::clamp (size, 1.0, 100.0));
-        preDelaySmoother.setTarget (preDelayMs (sizeSmoother.getTarget()) * 0.001 * fs);
+        preDelaySmoother.setTarget (std::round (preDelayMs (sizeSmoother.getTarget()) * 0.001 * fs)); // whole samples once settled (no interpolation loss)
     }
 
     void snapParameters() noexcept
@@ -189,8 +224,8 @@ public:
             yl += outL[(size_t) i] * s;
             yr += outR[(size_t) i] * s;
         }
-        outLeft = yl * outputGain;
-        outRight = yr * outputGain;
+        outLeft = bandLimit[0].process (lowCut[0].process (lowMidDip[0].process (toneShelf[0].process (yl * outputGain))));
+        outRight = bandLimit[1].process (lowCut[1].process (lowMidDip[1].process (toneShelf[1].process (yr * outputGain))));
     }
 
     // design inspection (tests)
@@ -287,15 +322,29 @@ private:
     // linear least squares on the small-gain sensitivities, refined by three Gauss-Newton steps on the exact response.
     void designLine (int i, const std::array<double, numBands>& rt)
     {
-        std::array<double, numBands> target {};
-        for (int b = 0; b < numBands; ++b)
-            target[(size_t) b] = -60.0 * lengths[(size_t) i] / (rt[(size_t) b] * fs);
+        // fit points: the seven octave centres plus 16 kHz (RT extrapolated geometrically from 4 and 8 kHz) when it
+        // lies below 0.45 fs, so the high-frequency decay does not depend on the sample rate
+        constexpr int maxPts = numBands + 1;
+        double hz[maxPts], target[maxPts];
+        int nb = 0;
+        for (int b = 0; b < numBands; ++b, ++nb)
+        {
+            hz[nb] = bandHz[(size_t) b];
+            target[nb] = -60.0 * lengths[(size_t) i] / (rt[(size_t) b] * fs);
+        }
+        if (16000.0 < 0.45 * fs)
+        {
+            const double rt16 = rt[6] * rt[6] / rt[5];
+            hz[nb] = 16000.0;
+            target[nb] = -60.0 * lengths[(size_t) i] / (rt16 * fs);
+            ++nb;
+        }
 
         // sensitivities: d(dB)/d(gain dB) at zero gain
-        double J[numBands][4];
-        for (int b = 0; b < numBands; ++b)
+        double J[maxPts][4];
+        for (int b = 0; b < nb; ++b)
         {
-            const double t = std::tan (pi * bandHz[(size_t) b] / fs);
+            const double t = std::tan (pi * hz[b] / fs);
             J[b][0] = 1.0;
             for (int s = 0; s < 3; ++s)
             {
@@ -312,21 +361,21 @@ private:
             setLowShelf (f[0], shelfHz[0], p[1], fs);
             setHighShelf (f[1], shelfHz[1], p[2], fs);
             setHighShelf (f[2], shelfHz[2], p[3], fs);
-            double res[numBands];
-            for (int b = 0; b < numBands; ++b)
+            double res[maxPts];
+            for (int b = 0; b < nb; ++b)
             {
-                const double w = 2.0 * pi * bandHz[(size_t) b] / fs;
+                const double w = 2.0 * pi * hz[b] / fs;
                 const double db = p[0] + 20.0 * std::log10 (std::abs (f[0].response (w) * f[1].response (w) * f[2].response (w)));
-                res[b] = target[(size_t) b] - db;
+                res[b] = target[b] - db;
             }
             // normal equations (4x4)
             double A[4][5] {};
             for (int r = 0; r < 4; ++r)
             {
                 for (int c = 0; c < 4; ++c)
-                    for (int b = 0; b < numBands; ++b)
+                    for (int b = 0; b < nb; ++b)
                         A[r][c] += J[b][r] * J[b][c];
-                for (int b = 0; b < numBands; ++b)
+                for (int b = 0; b < nb; ++b)
                     A[r][4] += J[b][r] * res[b];
                 A[r][r] += 1.0e-9;
             }
@@ -355,6 +404,8 @@ private:
     void updateDesign (double size)
     {
         designedSize = size;
+        for (auto& f : toneShelf)
+            setHighShelf (f, toneShelfHz, toneShelfDb (size), fs);
         const auto rt = rt60ForSize (size);
         for (int i = 0; i < numLines; ++i)
             designLine (i, rt);
@@ -415,7 +466,7 @@ private:
             corrDb.fill (0.0);
             const double size = sizeRows[row];
             sizeSmoother.reset (size);
-            preDelaySmoother.reset (preDelayMs (size) * 0.001 * fs);
+            preDelaySmoother.reset (std::round (preDelayMs (size) * 0.001 * fs));
             updateDesign (size);
             reset();
             double total = 0.0, window = 0.0;
@@ -424,7 +475,7 @@ private:
             {
                 double l = 0.0, r = 0.0;
                 process (n == 0 ? 1.0 : 0.0, 0.0, l, r);
-                const double e = 0.5 * (l * l + r * r);
+                const double e = l * l + r * r;
                 total += e;
                 window += e;
                 if ((n + 1) % windowLen == 0)
@@ -452,6 +503,8 @@ private:
     std::vector<double> preL, preR;
     int preWrite = 0;
     OnePoleSmoother sizeSmoother, preDelaySmoother;
+    std::array<FirstOrder, 2> toneShelf;
+    std::array<Biquad, 2> bandLimit, lowMidDip, lowCut;
     double designedSize = -1.0, outputGain = 1.0;
     unsigned designCounter = 0;
 };

@@ -7,7 +7,8 @@
 // search span so that it is in phase with the other (currently dominant) tap: the lag between the two taps
 // maximises the normalised autocorrelation of the input. This avoids the comb cancellation and splice phase
 // jumps of a free-running shifter, so sustained tones come out at exactly the shifted frequency.
-// All tap delays stay within 3 ... 10 ms (latency, spec: 3-10 ms). Both channels share the taps.
+// All tap delays stay within 3 ... 10 ms (latency, spec: 3-10 ms). Each channel is shifted independently through its
+// own buffer (no channel mixing); the two channels share the tap positions (same shift on both).
 #pragma once
 
 #include <algorithm>
@@ -25,7 +26,9 @@ class Doubler
 public:
     static constexpr double minDelaySeconds = 0.003, maxDelaySeconds = 0.010;
     static constexpr double travelSeconds = 0.0027; // delay travel per grain
-    static constexpr double outputGainDb = 9.2;     // re input at Level 100 %
+    // re input at Level 100 %: spec +9.2 dB; +0.2 dB so that tones (+9.4) and band-limited broadband input
+    // (about +8.8; the sin^2 crossfade of partially correlated taps loses some energy) straddle the target
+    static constexpr double outputGainDb = 9.4;
 
     void prepare (double sampleRate)
     {

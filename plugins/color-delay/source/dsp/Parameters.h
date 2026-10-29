@@ -94,23 +94,23 @@ inline constexpr std::array<const char*, numNotes> noteNames {
     "1/8",   "1/4T", "1/8D",  "1/4",   "1/2T", "1/4D",  "1/2",   "1/2D", "Whole"
 };
 
-// Triplets use the 7-digit factor 0.6666666 (just below 2/3) and the result is floored; this reproduces the
-// measured 1/16T = 3999 samples at 120 BPM / 48 kHz (spec section 3a / 11) while straight and dotted values
-// land exactly on whole samples.
-inline constexpr double tripletFactor = 0.6666666;
+// Exact note length as a rational number of quarter notes: num / den.
+struct NoteRatio { long long num, den; };
+
+inline NoteRatio noteRatio (int index) noexcept
+{
+    // straight base b = 1/2^k quarters; triplet = b * 2/3; dotted = b * 3/2
+    static constexpr NoteRatio table[numNotes] = {
+        { 1, 24 }, { 1, 16 }, { 1, 12 }, { 3, 32 }, { 1, 8 }, { 1, 6 }, { 3, 16 }, { 1, 4 }, { 1, 3 }, { 3, 8 },
+        { 1, 2 },  { 2, 3 },  { 3, 4 },  { 1, 1 },  { 4, 3 }, { 3, 2 }, { 2, 1 },  { 3, 1 }, { 4, 1 }
+    };
+    return table[std::clamp (index, 0, numNotes - 1)];
+}
 
 inline double noteQuarters (int index) noexcept
 {
-    // base value in quarter notes, kind: 0 straight, 1 triplet, 2 dotted
-    struct N { double base; int kind; };
-    static constexpr N table[numNotes] = {
-        { 1.0 / 16, 1 }, { 1.0 / 16, 0 }, { 1.0 / 8, 1 }, { 1.0 / 16, 2 }, { 1.0 / 8, 0 }, { 1.0 / 4, 1 },
-        { 1.0 / 8, 2 },  { 1.0 / 4, 0 },  { 1.0 / 2, 1 }, { 1.0 / 4, 2 },  { 1.0 / 2, 0 }, { 1.0, 1 },
-        { 1.0 / 2, 2 },  { 1.0, 0 },      { 2.0, 1 },     { 1.0, 2 },      { 2.0, 0 },     { 2.0, 2 },
-        { 4.0, 0 }
-    };
-    const auto& n = table[std::clamp (index, 0, numNotes - 1)];
-    return n.kind == 1 ? n.base * tripletFactor : (n.kind == 2 ? n.base * 1.5 : n.base);
+    const auto r = noteRatio (index);
+    return (double) r.num / (double) r.den;
 }
 
 inline int noteIndexFromNorm (double r) noexcept { return std::clamp ((int) std::lround (r * (numNotes - 1)), 0, numNotes - 1); }
@@ -122,11 +122,16 @@ inline int delaySamplesMs (double ms, double fs) noexcept
     return (int) std::clamp (d, 1.0, std::floor (2.0 * fs));
 }
 
+// Host mode (spec r2 section 3a): D = max(1, floor(N fs)), N = beats * 60 / BPM the exact note duration, limited
+// to 2.0 s. Evaluated as num * 60 * fs / (den * BPM) in long double with a 1e-9 relative guard before flooring, so
+// lengths that are mathematically integers are never lost to rounding.
 inline int delaySamplesNote (int noteIndex, double bpm, double fs) noexcept
 {
     bpm = bpm > 0.0 ? bpm : 120.0;
-    const double seconds = std::min (2.0, noteQuarters (noteIndex) * (60.0 / bpm));
-    return (int) std::max (1.0, std::floor (seconds * fs));
+    const auto r = noteRatio (noteIndex);
+    long double n = (long double) r.num * 60.0L * (long double) fs / ((long double) r.den * (long double) bpm);
+    n = std::min (n, 2.0L * (long double) fs);
+    return (int) std::max (1.0L, std::floor (n * (1.0L + 1.0e-9L)));
 }
 
 // ---------------------------------------------------------------------------------------------

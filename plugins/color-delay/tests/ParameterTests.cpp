@@ -57,7 +57,7 @@ TEST_CASE ("Parameter mappings and resolution", "[params]")
     }
 }
 
-TEST_CASE ("Note values: 19 steps, ascending, host-sync lengths (spec section 11)", "[params]")
+TEST_CASE ("Note values: 19 steps, ascending, exact host-sync lengths (spec r2 sections 3a, 11)", "[params]")
 {
     namespace p = param;
     CHECK (p::noteIndexFromNorm (0.0) == 0);
@@ -74,8 +74,29 @@ TEST_CASE ("Note values: 19 steps, ascending, host-sync lengths (spec section 11
     };
     CHECK (p::delaySamplesNote (idx ("1/4"), 120.0, 48000.0) == 24000);
     CHECK (p::delaySamplesNote (idx ("1/8D"), 120.0, 48000.0) == 18000);
-    CHECK (p::delaySamplesNote (idx ("1/16T"), 120.0, 48000.0) == 3999);
+    CHECK (p::delaySamplesNote (idx ("1/16T"), 120.0, 48000.0) == 4000);
+    CHECK (p::delaySamplesNote (idx ("1/8T"), 120.0, 48000.0) == 8000);
+    CHECK (p::delaySamplesNote (idx ("1/2T"), 120.0, 48000.0) == 32000);
+    CHECK (p::delaySamplesNote (idx ("1/64T"), 120.0, 48000.0) == 1000);
     CHECK (p::delaySamplesNote (idx ("Whole"), 120.0, 48000.0) == 96000);
+    CHECK (p::delaySamplesNote (idx ("1/16T"), 100.0, 48000.0) == 4800);
+    CHECK (p::delaySamplesNote (idx ("1/8D"), 100.0, 48000.0) == 21600);
+    CHECK (p::delaySamplesNote (idx ("1/64T"), 100.0, 48000.0) == 1200);
+    CHECK (p::delaySamplesNote (idx ("1/16T"), 137.0, 48000.0) == 3503);
+    CHECK (p::delaySamplesNote (idx ("1/32T"), 137.0, 48000.0) == 1751);
+    CHECK (p::delaySamplesNote (idx ("1/16T"), 140.0, 48000.0) == 3428);
+    CHECK (p::delaySamplesNote (idx ("1/2T"), 140.0, 48000.0) == 27428);
+    // every note at many tempi: integer-valued lengths are exact, others are floored
+    for (double bpm : { 60.0, 90.0, 100.0, 120.0, 128.0, 137.0, 140.0, 150.0, 180.0 })
+        for (int i = 0; i < p::numNotes; ++i)
+            for (double fs : { 44100.0, 48000.0, 96000.0 })
+            {
+                const auto r = p::noteRatio (i);
+                // exact rational floor: num * 60 * fs / (den * bpm), all integers here
+                const long long num = r.num * 60LL * (long long) fs, den = r.den * (long long) bpm;
+                const long long exact = std::min (num / den, (long long) (2.0 * fs));
+                REQUIRE (p::delaySamplesNote (i, bpm, fs) == (int) std::max (1LL, exact));
+            }
     // limited to 2.0 s
     CHECK (p::delaySamplesNote (idx ("Whole"), 60.0, 48000.0) == 96000);
 
@@ -93,11 +114,11 @@ TEST_CASE ("Note values: 19 steps, ascending, host-sync lengths (spec section 11
     e.setSettings (s);
     e.prepare (48000.0);
     e.setTempo (120.0);
-    CHECK (e.getDelaySamples (0) == 3999);
+    CHECK (e.getDelaySamples (0) == 4000);
     CHECK (e.getDelaySamples (1) == 96000);
     s.delayLink = true;
     e.setSettings (s);
-    CHECK (e.getDelaySamples (1) == 3999);
+    CHECK (e.getDelaySamples (1) == 4000);
 }
 
 TEST_CASE ("Dry/Wet law (spec section 6)", "[params]")

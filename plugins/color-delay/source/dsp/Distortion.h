@@ -1,17 +1,23 @@
-// Craft Colour Delay - distortion colour (spec r1 section 7.2, [target]).
+// Craft Colour Delay - distortion colour (spec r2 section 7.2, [target]).
 //
-// Own design, fitted to the spec's measured targets:
-//   mono sum (L + R) -> drive P(Send) -> gate (on the post-drive level) -> band-pass voicing (pre) -> symmetric
-//   saturator (linear below |x| = 0.4, rational soft limit above; odd harmonics only) -> presence peak (post)
-//   -> make-up Q(Send) -> latency delay -> width network (0 % identical L/R, 100 % decorrelated L/R, equal level).
-// Voicing = pre * post is fitted to the small-signal response table (Send 50 %); the presence peak after the
-// saturator raises the 3rd harmonic re the fundamental (odd-harmonic profile); P and Q are interpolated over Send
-// from a table fitted to the drive, harmonic and gate data.
+// Own design, per channel (no channel mixing, spec r2 section 7):
+//   drive D(Send) -> gate (on the post-drive peak level of that channel) -> band-pass voicing (pre) -> symmetric
+//   saturator (linear below |x| = knee, rational soft limit above; odd harmonics only; first-order antiderivative
+//   anti-aliasing) -> post voicing (presence peak
+//   + low-pass) -> make-up M(Send) -> latency delay -> width all-pass.
+// The pre / post voicing, the knee and D / M at Send 50 / 75 / 100 % were fitted offline (least squares on a
+// simulation of this chain at 48 kHz) to the spec's small-signal tables (Send 50 / 75 / 100 %), the 1 kHz
+// gain-vs-level tables (Send 50 / 100 %) and the odd-harmonic profile. Below 50 % D and M are interpolated so that
+// Send 25 % gives -1.7 dB and the gate thresholds (Send 10 % / 0 %) land as specified.
+// Width: the left channel ends in a first-order all-pass with coefficient +c, the right one with -c, c = Width * cMax;
+// cMax gives a 53 degree phase difference at 1 kHz (correlation 0.6 for an identical 1 kHz tone). All-passes keep
+// both channels at equal level and never mix them; at Width 0 both channels are processed identically.
 #pragma once
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <vector>
 
 #include "Filters.h"
@@ -23,24 +29,24 @@ namespace craft::cdl
 class Distortion
 {
 public:
-    static constexpr double kneeLevel = 0.4;     // saturator linear up to here
-    static constexpr double gateThresholdDb = -30.0; // post-drive peak level (dBFS) below which the output is gated
+    static constexpr double kneeLevel = 0.685;      // saturator linear up to here
+    static constexpr double gateThresholdDb = -29.1; // post-drive peak level (dBFS) below which the channel is gated
     static constexpr double gateHysteresisDb = 2.0;
     static constexpr double latencySeconds = 0.0065; // plus ~0.3 ms voicing group delay = ~6.8 ms
-    static constexpr double decorrelatorMs[4] = { 3.1, 4.7, 7.3, 11.3 };
+    static constexpr double widthCorrelation = 0.6;  // identical 1 kHz tone at Width 100 %
 
-    // drive P (dB at 1 kHz into the saturator) and make-up Q (dB) over Send (%)
+    // drive D (dB at 1 kHz into the saturator) and make-up M (dB) over Send (%)
     static double driveDb (double send) noexcept
     {
-        static constexpr double s[] = { 0.0, 10.0, 25.0, 50.0, 100.0 };
-        static constexpr double p[] = { -3.0, 1.0, 8.5, 22.0, 56.0 };
-        return interp (s, p, 5, send);
+        static constexpr double s[] = { 0.0, 10.0, 25.0, 50.0, 75.0, 100.0 };
+        static constexpr double d[] = { -3.1, 0.9, 12.81, 25.666, 38.865, 51.222 };
+        return interp (s, d, 6, send);
     }
     static double makeupDb (double send) noexcept
     {
-        static constexpr double s[] = { 0.0, 50.0, 100.0 };
-        static constexpr double q[] = { -10.3, -10.3, -25.3 };
-        return interp (s, q, 3, send);
+        static constexpr double s[] = { 0.0, 50.0, 75.0, 100.0 };
+        static constexpr double m[] = { -14.51, -14.51, -14.098, -12.664 };
+        return interp (s, m, 4, send);
     }
 
     static double saturate (double x) noexcept
@@ -53,29 +59,63 @@ public:
         return x < 0.0 ? -y : y;
     }
 
+    // antiderivative of saturate() (even function), for first-order anti-derivative anti-aliasing (ADAA)
+    static double saturateIntegral (double x) noexcept
+    {
+        const double a = std::abs (x);
+        if (a <= kneeLevel)
+            return 0.5 * a * a;
+        const double u = (a - kneeLevel) / (1.0 - kneeLevel);
+        return 0.5 * kneeLevel * kneeLevel + kneeLevel * (a - kneeLevel)
+             + (1.0 - kneeLevel) * (1.0 - kneeLevel) * (u - std::log1p (u));
+    }
+
+    // ADAA: y = (F(x) - F(x1)) / (x - x1); suppresses the aliasing of the heavily driven saturator
+    static double saturateAdaa (double x, double x1) noexcept
+    {
+        const double d = x - x1;
+        if (std::abs (d) < 1.0e-7)
+            return saturate (0.5 * (x + x1));
+        return (saturateIntegral (x) - saturateIntegral (x1)) / d;
+    }
+
     void prepare (double sampleRate)
     {
         fs = sampleRate;
-        // voicing (fitted at 48 kHz, designed at the actual rate)
-        pre[0].setHighPass (96.75, 0.892, fs);
-        pre[1].setHighPass (96.75, 0.892, fs);
-        pre[2].setLowPass (std::min (4301.0, 0.45 * fs), 0.300, fs);
-        pre[3].setLowPass (std::min (4301.0, 0.45 * fs), 0.300, fs);
-        pre[4].setPeak (704.4, 0.989, 1.458, fs);
-        pre[5].setLowPass (std::min (8715.0, 0.45 * fs), 1.214, fs);
-        post.setPeak (std::min (3000.0, 0.4 * fs), 0.9, 3.0, fs);
+        const double nyq = 0.45 * fs;
+        for (auto& ch : chans)
+        {
+            ch.pre[0].setHighPass (85.151, 0.957, fs);
+            ch.pre[1].setHighPass (85.151, 0.957, fs);
+            ch.pre[2].setLowPass (std::min (2353.4, nyq), 0.300, fs);
+            ch.pre[3].setPeak (372.59, 0.300, 7.317, fs);
+            ch.pre[4].setLowPass (std::min (11284.9, nyq), 1.500, fs);
+            ch.post[0].setPeak (std::min (1687.3, nyq), 0.881, 5.621, fs);
+            ch.post[1].setLowPass (std::min (5995.2, nyq), 1.500, fs);
+            ch.delay.assign ((size_t) std::lround (latencySeconds * fs) + 1, 0.0);
+        }
 
         // normalise pre and post to 0 dB at 1 kHz
         const double w = 2.0 * pi * 1000.0 / fs;
-        std::complex<double> h = 1.0;
-        for (auto& b : pre)
-            h *= b.response (w);
+        std::complex<double> h = 1.0, g = 1.0;
+        for (auto& b : chans[0].pre) h *= b.response (w);
+        for (auto& b : chans[0].post) g *= b.response (w);
         preNorm = 1.0 / std::abs (h);
-        postNorm = 1.0 / std::abs (post.response (w));
+        postNorm = 1.0 / std::abs (g);
 
-        delayBuf.assign ((size_t) std::lround (latencySeconds * fs) + 1, 0.0);
-        for (int i = 0; i < 4; ++i)
-            decorr[(size_t) i].buf.assign ((size_t) std::max (2, (int) std::lround (decorrelatorMs[i] * 0.001 * fs)), 0.0);
+        // all-pass coefficient for the width target (bisection on the 1 kHz phase difference)
+        const double target = std::acos (widthCorrelation);
+        auto phaseDiff = [w] (double c) {
+            const auto z1 = std::polar (1.0, -w);
+            return std::arg ((c + z1) / (1.0 + c * z1)) - std::arg ((-c + z1) / (1.0 - c * z1));
+        };
+        double lo = 0.0, hi = 0.999;
+        for (int i = 0; i < 60; ++i)
+        {
+            const double mid = 0.5 * (lo + hi);
+            (std::abs (phaseDiff (mid)) < target ? lo : hi) = mid;
+        }
+        cMax = 0.5 * (lo + hi);
 
         envRelease = std::exp (-1.0 / (0.050 * fs));
         gateAttack = std::exp (-1.0 / (0.001 * fs));
@@ -88,18 +128,15 @@ public:
 
     void reset() noexcept
     {
-        for (auto& b : pre) b.reset();
-        post.reset();
-        std::fill (delayBuf.begin(), delayBuf.end(), 0.0);
-        delayPos = 0;
-        for (auto& d : decorr)
+        for (auto& ch : chans)
         {
-            std::fill (d.buf.begin(), d.buf.end(), 0.0);
-            d.pos = 0;
+            for (auto& b : ch.pre) b.reset();
+            for (auto& b : ch.post) b.reset();
+            std::fill (ch.delay.begin(), ch.delay.end(), 0.0);
+            ch.apX = ch.apY = ch.env = ch.gate = ch.satX = 0.0;
+            ch.gateOpen = false;
         }
-        env = 0.0;
-        gate = 0.0;
-        gateOpen = false;
+        delayPos = 0;
         driveSmoother.snapToTarget();
         makeupSmoother.snapToTarget();
         widthSmoother.snapToTarget();
@@ -122,44 +159,56 @@ public:
     {
         const double drive = dbToGain (driveSmoother.next());
         const double makeup = dbToGain (makeupSmoother.next());
-        const double width = widthSmoother.next();
+        const double c = widthSmoother.next() * cMax;
+        const double gateOnDb = gateThresholdDb, gateOffDb = gateThresholdDb - gateHysteresisDb;
 
-        const double x = (inLeft + inRight) * drive;
+        const double in[2] = { inLeft, inRight };
+        double out[2];
+        const int readPos = delayPos;
+        for (int k = 0; k < 2; ++k)
+        {
+            auto& ch = chans[(size_t) k];
+            const double x = in[k] * drive;
 
-        // gate on the post-drive peak envelope
-        const double a = std::abs (x);
-        env = a > env ? a : a + envRelease * (env - a);
-        const double envDb = gainToDb (env);
-        if (gateOpen ? envDb < gateThresholdDb - gateHysteresisDb : envDb >= gateThresholdDb)
-            gateOpen = ! gateOpen;
-        const double gTarget = gateOpen ? 1.0 : 0.0;
-        gate = gTarget + (gTarget > gate ? gateAttack : gateRelease) * (gate - gTarget);
-        if (gate < 1.0e-6 && ! gateOpen)
-            gate = 0.0;
+            // gate on the post-drive peak envelope of this channel
+            const double a = std::abs (x);
+            ch.env = a > ch.env ? a : a + envRelease * (ch.env - a);
+            const double envDb = gainToDb (ch.env);
+            if (ch.gateOpen ? envDb < gateOffDb : envDb >= gateOnDb)
+                ch.gateOpen = ! ch.gateOpen;
+            const double gTarget = ch.gateOpen ? 1.0 : 0.0;
+            ch.gate = gTarget + (gTarget > ch.gate ? gateAttack : gateRelease) * (ch.gate - gTarget);
+            if (ch.gate < 1.0e-6 && ! ch.gateOpen)
+                ch.gate = 0.0;
 
-        double v = x * preNorm;
-        for (auto& b : pre)
-            v = b.process (v);
-        v = saturate (v);
-        v = post.process (v) * postNorm * makeup * gate;
+            double v = x * preNorm;
+            for (auto& b : ch.pre)
+                v = b.process (v);
+            const double sat = saturateAdaa (v, ch.satX);
+            ch.satX = v;
+            v = sat;
+            for (auto& b : ch.post)
+                v = b.process (v);
+            v *= postNorm * makeup * ch.gate;
 
-        // latency
-        const double d = delayBuf[(size_t) delayPos];
-        delayBuf[(size_t) delayPos] = v;
-        if (++delayPos == (int) delayBuf.size())
+            // latency
+            const double d = ch.delay[(size_t) readPos];
+            ch.delay[(size_t) readPos] = v;
+
+            // width all-pass: H(z) = (ck + z^-1) / (1 + ck z^-1), ck = +c (left) / -c (right)
+            const double ck = k == 0 ? c : -c;
+            const double y = ck * d + ch.apX - ck * ch.apY;
+            ch.apX = d;
+            ch.apY = y;
+            out[k] = y;
+        }
+        if (++delayPos == (int) chans[0].delay.size())
             delayPos = 0;
-
-        // width: L = cos(t) d + sin(t) u, R = cos(t) d - sin(t) u, u = decorrelated d, t = width * pi/4
-        double u = d;
-        for (auto& ap : decorr)
-            u = ap.process (u, 0.5);
-        const double t = width * (pi / 4.0);
-        const double c = std::cos (t), s = std::sin (t);
-        outLeft = c * d + s * u;
-        outRight = c * d - s * u;
+        outLeft = out[0];
+        outRight = out[1];
     }
 
-    int getLatencySamples() const noexcept { return (int) delayBuf.size() - 1; }
+    int getLatencySamples() const noexcept { return (int) chans[0].delay.size(); }
 
 private:
     static double interp (const double* xs, const double* ys, int n, double x) noexcept
@@ -171,30 +220,19 @@ private:
         return ys[n - 1];
     }
 
-    struct AllPass
+    struct Channel
     {
-        std::vector<double> buf;
-        int pos = 0;
-        double process (double x, double g) noexcept
-        {
-            const double dd = buf[(size_t) pos];
-            const double v = x + g * dd;
-            buf[(size_t) pos] = v;
-            if (++pos == (int) buf.size())
-                pos = 0;
-            return dd - g * v;
-        }
+        std::array<Biquad, 5> pre;
+        std::array<Biquad, 2> post;
+        std::vector<double> delay;
+        double apX = 0.0, apY = 0.0, env = 0.0, gate = 0.0, satX = 0.0;
+        bool gateOpen = false;
     };
 
-    double fs = 48000.0;
-    std::array<Biquad, 6> pre;
-    Biquad post;
-    double preNorm = 1.0, postNorm = 1.0;
-    std::vector<double> delayBuf;
+    double fs = 48000.0, preNorm = 1.0, postNorm = 1.0, cMax = 0.0;
+    std::array<Channel, 2> chans;
     int delayPos = 0;
-    std::array<AllPass, 4> decorr;
-    double env = 0.0, gate = 0.0, envRelease = 0.0, gateAttack = 0.0, gateRelease = 0.0;
-    bool gateOpen = false;
+    double envRelease = 0.0, gateAttack = 0.0, gateRelease = 0.0;
     OnePoleSmoother driveSmoother, makeupSmoother, widthSmoother;
 };
 
