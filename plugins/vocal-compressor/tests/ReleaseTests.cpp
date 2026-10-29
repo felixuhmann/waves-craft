@@ -4,7 +4,6 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <cstdio>
 #include <string>
 
 #include "TestHelpers.h"
@@ -104,8 +103,10 @@ std::vector<double> patternSignal (const std::string& name, double fs, long& edg
     std::vector<Segment> segs;
     if (name.rfind ("step_", 0) == 0)
     {
-        double hi = 0, lo = 0, len = 0;
-        std::sscanf (name.c_str(), "step_%lf_%lf_%lf", &hi, &lo, &len);
+        // "step_<hi>_<lo>_<ms>"
+        const auto a = name.find ('_', 5), b = name.find ('_', a + 1);
+        const double hi = std::stod (name.substr (5, a - 5)), lo = std::stod (name.substr (a + 1, b - a - 1)),
+                     len = std::stod (name.substr (b + 1));
         segs = { { lo, ms (500, fs) }, { hi, ms (len, fs) } };
         lower = lo;
     }

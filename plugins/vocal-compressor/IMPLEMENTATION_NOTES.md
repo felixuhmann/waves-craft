@@ -1,7 +1,8 @@
-# Implementation notes — Craft Vocal Compressor (spec r1)
+# Implementation notes — Craft Vocal Compressor (spec r2)
 
-Clean-room implementation (builder side) of [`spec/vocal-compressor/r1/SPEC.md`](../../spec/vocal-compressor/r1/SPEC.md)
-(SHA-256 `1cb05815…a21a4a16`, approved 2026-10-29). Only the spec, `docs/process.md`, the repository's own code,
+Clean-room implementation (builder side) of [`spec/vocal-compressor/r2/SPEC.md`](../../spec/vocal-compressor/r2/SPEC.md)
+(SHA-256 `c7e16167…5b0938ed`, approved 2026-10-29; supersedes r1 after the verification
+[`docs/verification/vocal-compressor-r1.md`](../../docs/verification/vocal-compressor-r1.md)). Only the spec, `docs/process.md`, the repository's own code,
 public documentation (JUCE / CLAP docs, textbook dynamics-processing material) and this implementation were used.
 No original product, analyst workspace, vendor asset or vendor installation was accessed.
 
@@ -19,7 +20,7 @@ CMakeLists.txt     targets of this plugin (added automatically by the root CMake
 source/dsp/        host-independent, header-only DSP core (no JUCE)
   Parameters.h       §3 mappings r -> dB with 0.1 dB quantisation, gate "off" (D5), display / parsing, Settings
   Primitives.h       LookaheadConfig (§4.1/§4.5/D7 lengths per rate), SlidingMax, Boxcar, DelayLine, Smoother
-  Gate.h             §4.2 gate detector (instant attack, 63 dB/s release) and 1:2 expander gain
+  Gate.h             §4.2 gate detector (dB domain, instant attack, distance-dependent release S(D)), 1:2 gain
   ReleaseStage.h     §4.3/§4.4 compressor gain: fast path + program-dependent release (constants in ReleaseLaw)
   VocalCompressorEngine.h  complete per-sample processor: detection, gate, compressor, boxcars, makeup, output
 source/plugin/     JUCE AudioProcessor + parameter layout
@@ -34,7 +35,8 @@ tools/Snapshot.cpp optional dev tool rendering the editor to PNG (-DCRAFT_BUILD_
    target, so settled values are bit-exact). `k = 10^(−Compression/20)`.
 2. Linked level `a = max_c |x_c[t]|`; `A[n] = max(a[n … n+H])` — a monotonic-deque sliding maximum over the last
    `H + 1` inputs (`SlidingMax`, O(1) amortised).
-3. Gate (§4.2): `d[n] = max(A[n], decay(d[n−1]))`, `gg = min(1, d/T)` (gate off: `gg = 1`).
+3. Gate (§4.2): detector `L_d` in dB released at `S(D)` toward `20·log10 A[n]`, `gg = min(1, 10^((L_d − Gate)/20))`
+   (gate off: `gg = 1`).
 4. Compressor (§4.3/§4.4): `q[n] = ReleaseStage::process(A[n], k − 1)` — the fast path is
    `h[n] = 1/(1 + (k−1)·A[n]) = min(t[n … n+H])` (t is monotonic in a, so the forward min of t equals t of the
    forward max), combined with the program-dependent envelopes (below). Detection uses the ungated level (D4).
@@ -62,47 +64,51 @@ Bypass is the host bypass parameter (`getBypassParameter`).
 `setLatencySamples(H)` in `prepareToPlay` (and a 44.1 kHz value in the constructor for hosts that ask early).
 Tested: an impulse comes out exactly H samples later at 44.1/48/96/192 kHz.
 
-**§4.2 Gate.** `GateDetector`: `d = max(A, decay(d))`, release `c_g = 10^(−63/(20 fs))` per sample, gain
-`min(1, d/T)` → 1:2 expansion, hard knee, instant (look-ahead) opening. One addition (assumption A2): within the last
-5 dB above the current level `A` the decay rate is scaled by the remaining distance (an exponential approach in dB),
-which rounds the corner where a closing gate meets its final value. With constant `A` the detector equals `A`
-exactly, so the static curve (§9.5) is unchanged. While the gate is off the detector keeps running (without the
-soft corner) so switching it on is seamless; the threshold glides from −140 dB when switched on and back when off,
-and `gg` is exactly 1 once "off" has settled.
+**§4.2 Gate.** `GateDetector` implements the r2 law literally, in dB: `L_A = 20·log10 A[n]` (digital silence
+→ −300 dB), `D = L_d[n−1] − L_A`; `D ≤ 0` → `L_d = L_A` (instant attack, opening anticipated by the look-ahead);
+otherwise `L_d = L_A + max(0, D − S(D)/fs)` with `S(D) = 21.57 + 44.19·(1 − e^(−D/8.03))` dB/s. Gain
+`gg = min(1, 10^((L_d − Gate)/20))` → 1:2 expansion, hard knee. With constant `A` the detector equals `L_A`, so the
+static curve (§9.5) is exact. The detector keeps running while the gate is off, so switching it on is seamless; the
+threshold glides from −140 dB when switched on and back when off, and `gg` is exactly 1 once "off" has settled.
+Tested: every §9.6 / §9.6.1 point within ±0.75 dB and the §9.6.1 detector release times at 44.1/48/96 kHz.
 
 **§4.3 Compressor target.** `t = 1/(1 + (k−1)·a)`; forward min over the look-ahead window = `t(A)`. Makeup `k` is
 applied after the boxcars, so neutral settings give exactly `y = 0.99·x` (k = 1, all gains exactly 1).
 
-**§4.4 Release.** The spec makes the tables normative (D3). `ReleaseStage` follows the informative structure
-(fast path + slower envelopes of the held level, gain `1/(1 + (k−1)·e)`), generalised and fitted to all 36 rows
-of §9.3/§9.4:
+**§4.4 Release.** The spec makes the tables normative (D3; r2: §9.3, §9.4, §9.7 and the ripple table §9.8).
+`ReleaseStage` follows the informative structure (fast path + slower envelopes, gain `1/(1 + (k−1)·e)`),
+generalised and fitted to all of them:
 
 - All envelopes act on the "compression ratio" `z = 1 + (k−1)·level` (normalised gain `1/z`). Each is a one-pole
-  that moves in a warped domain `u = (z^λ − 1)/λ` (λ = 1 amplitude, λ = 0 dB, λ = −1 linear gain) with its own time
-  constant and warp for rising (attack) and falling (release) targets.
-- **Fast path** `z_h = 1 + (k−1)·A[n]` per sample: instant attack and release, so short transients recover as soon
-  as the look-ahead smoothing allows (§4.4 item 1).
-- **Medium branch**: a "charge" envelope follows `z_h` (attack 102 ms, ≈ dB domain, instant release), a "medium"
-  envelope follows the charge envelope (attack 104 ms, release 26.7 ms in the amplitude domain). The two-pole
-  charge is S-shaped in time, so bursts of 2–20 ms leave (almost) nothing, while 50–200 ms bursts at strong
-  compression leave a reduction that decays within tens of ms (table 9.4, first columns).
-- **Slow branch**: `slow1` follows the level held over 12 ms (attack 192 ms, release 52.7 ms with warp −1.98, i.e.
-  slow while the reduction is large — the plateau that grows with |Compression|), `slow2` follows `slow1` (attack
-  149 ms, release 420 ms with warp −0.64, close to the "≈ 0.45 s in the linear-gain domain" tail of §4.4).
-- `q = 1/max(z_h, z_medium, z_slow2)`.
-- The 12 ms hold is longer than half a 50 Hz period minus the look-ahead window, so a steady 50 Hz tone gives a
-  constant slow target, which converges to exactly the peak (static) gain (§4.4 item 4; tested ≤ 0.2 dB ripple).
-- The envelopes are updated at a ≈ 6 kHz control rate (every `round(fs/6000)` samples, each step sees the maximum
-  level of its block); all their time constants are ≥ 26 ms. The fast path stays per sample. Time constants are in
-  milliseconds, so the behaviour is the same at 44.1/48/96 kHz (§4.4 item 5; tested within 0.1 dB / 0.2 dB).
-- Envelopes are stored as levels `(z − 1)/(k − 1)`, so a change of Compression rescales them consistently; with
-  Compression 0 they track the level.
-- CPU: ≈ 3 % of one core for a 48 kHz stereo stream on the development machine (x64, -O2).
+  that moves in a warped domain `u = (z^λ − 1)/λ` (λ = 1 amplitude, λ = 0 dB, λ = −1 linear gain, …) with its own
+  time constant and warp for rising (attack) and falling (release) targets.
+- **Program-dependent release time** (new in r2, §4.4 item 6): `τ = releaseMs · exp(dest·x_target/10 + own·x_own/10)`
+  with `x_target = 20·log10(target z)` — the reduction the signal now asks for — and `x_own` the envelope's own
+  reduction. A release toward a still strongly compressed level is slow, toward a lightly compressed one fast.
+  `τ` is floored at 0.04 ms so the law does not depend on the sample rate.
+- **Fast path** `z_h = 1 + (k−1)·A[n]`, per sample, instant.
+- **Transient envelope**, per sample, follows `z_h` (attack ≈ 5 ms). Its destination-dependent release holds the
+  reduction after loud passages when the level only drops moderately (e.g. 0 → −20 dBFS at Compression −36,
+  §9.7), lets go within a few ms when the new level is only lightly compressed (short bursts inside −40 dBFS,
+  §9.4), and holds the gain across the cycles of strongly compressed low-frequency tones (§9.8).
+- **Charge / medium**: `charge` follows the level held over 5 ms (attack 84 ms, very slow release — it keeps its
+  charge through pauses); `medium` follows `min(z_h, z_charge)` (attack 84 ms, fast destination-dependent release).
+  So the extra reduction after a loud passage grows with the time spent loud, also across double bursts and burst
+  trains (§9.7 `dbl_50` / `train_30` ≈ a single 100 ms burst, as in the reference).
+- **Slow branch**: `slow1` follows the held level, `slow2` follows `slow1` (release ≈ 330 ms near the
+  linear-gain domain) — the S-shaped release with a plateau that grows with |Compression| (§9.3).
+- `q = 1/max(z_h, z_transient, z_medium, z_slow2)`. Exact constants: `ReleaseLaw` in `ReleaseStage.h`.
+- Charge / medium / slow envelopes are updated at a ≈ 12 kHz control rate (each step sees the maximum level of its
+  block); fast path and transient run per sample. Envelopes are stored as levels `(z − 1)/(k − 1)`, so a change of
+  Compression rescales them consistently; with Compression 0 they track the level.
+- CPU: a few % of one core for a 48 kHz stereo stream (the development machine was heavily shared during
+  measurement: 4 % neutral / 12–16 % compressing at load average ≈ 66 on 22 threads, i.e. well below that unloaded).
 
-Fit quality (worst point, as a fraction of the §8 tolerance "±1.5 dB or ±25 %, whichever is larger"):
-§9.3 0.69, §9.4 0.76 at 48 kHz (0.79 at 44.1 kHz, 0.77 at 96 kHz). The worst point is Compression −36, B = 100 ms,
-t = 10 ms (5.96 dB vs 4.82 dB). The fit used the scripted test signals of §9.3/§9.4 (1 kHz sines, burst inside a
-−40 dBFS tone) and Nelder–Mead on the tolerance-normalised errors; the fitting script is not part of the product.
+Fit: least squares + Nelder–Mead on the production engine (the scripted §9.3/§9.4/§9.7 stimuli and the §9.8 tones,
+errors normalised by the §8 tolerances), at 48 and 96 kHz jointly; the fitting scripts are not part of the product.
+Worst point as a fraction of its tolerance: 0.99 (§9.4 Compression −36, B = 20 ms, t = 2 ms, 44.1 kHz), 0.97
+(§9.7 Compression −24, `step_0_-20_50`); all §9.3/§9.4/§9.7 points and all §9.8 ripple limits pass at 44.1, 48 and
+96 kHz in the unit tests.
 
 **§4.5 Smoothing and output.** As in the signal flow; 0.99 is `VocalCompressorEngine::outputFactor` (D2).
 
@@ -125,28 +131,20 @@ adjusts (Shift = fine). Meters are display only. A footer shows the look-ahead i
 |---|---|
 | `PrimitiveTests.cpp` | sliding max vs brute force, boxcar exactness, lengths per sample rate |
 | `ParameterTests.cpp` | mappings, quantisation, gate off (D5), display/parsing |
-| `StaticTests.cpp` | latency H (impulse), neutral `|y − 0.99x| ≤ 1e-6` incl. +6 dBFS (D1), static curve §9.1 ±0.05 dB with/without Gain (gain and output peak), isolated samples §9.1, attack ramp §9.2 at 44.1/48/96 kHz, linking, 50 Hz–12 kHz independence, smooth parameter changes |
-| `GateTests.cpp` | §9.5 static ±0.2 dB, combined gains (+7.8 / −2.1 dB), gate off, §9.6 trajectory ±1.5 dB, instant re-opening, 63 dB/s |
-| `ReleaseTests.cpp` | all 36 rows of §9.3/§9.4 within the §8 tolerance, ms-based times at 44.1/96 kHz, 50 Hz ripple ≤ 0.2 dB, short transients |
+| `StaticTests.cpp` | latency H (impulse), neutral `|y − 0.99x| ≤ 1e-6` incl. +6 dBFS (D1), static curve §9.1 ±0.05 dB with/without Gain (gain and output peak), isolated samples §9.1, attack ramp §9.2 (r2 values, ±0.25 dB everywhere) at 44.1/48/96 kHz, linking, 50 Hz–12 kHz independence, smooth parameter changes |
+| `GateTests.cpp` | §9.5 static ±0.2 dB, combined gains (+7.8 / −2.1 dB), gate off, §9.6 / §9.6.1 trajectories ±0.75 dB and §9.6.1 detector release times at 44.1/48/96 kHz, instant re-opening, 65.76 dB/s far above the level |
+| `ReleaseTests.cpp` | all rows of §9.3, §9.4 and §9.7 within the §8 tolerance at 44.1/48/96 kHz, ms-based times, §9.8 ripple ≤ table + 0.15 dB at 44.1/48/96 kHz (2 s and 3 s tones), short transients |
 
 Gains are measured exactly with a constant probe (1e-7) on the right channel, far below every test level.
 
 ## Questions / assumptions
 
 - **A1 — Release law.** Not given in closed form (D3); implemented as described in §4.4 above and fitted to the
-  tables. Behaviour between and beyond the tabulated conditions (other levels, other burst lengths, programme
-  material) is the model's interpolation.
-- **A2 — Gate closing corner (§9.6).** The literal §4.2 law (constant 63 dB/s down to the floor) reaches the floor
-  at 793 ms in the §9.6 test and gives −50.0 dB at 800 ms where the table has −47.52 (−27.52, −7.52 for the other
-  rows): 2.5 dB, outside the ±1.5 dB tolerance. The table shows a rounded corner (−43.55 / −47.52 / −50.01 at
-  700/800/900 ms). The soft corner described above (last 5 dB) keeps every §9.6 point within 1.23 dB, keeps the
-  63 dB/s slope and leaves the static curve untouched. Question for the analyst: is the corner real or a
-  measurement artefact at the −120 dBFS output level?
-- **A3 — Attack ramp at n = −1 / 0 (§9.2).** The literal §4.3 hold + §4.5 boxcars reproduce every tabulated
-  point to ≤ 0.01 dB when the 1 kHz step starts at a zero crossing (phase-continuous sine), except n = −1
-  (0.65 vs 0.99 dB) and n = 0 (0.25 vs 0.40 dB) for Compression −36. The input sample there is 0 (n = 0) or
-  0.0013 (n = −1), so the tabulated output/input ratio is ill-conditioned; the test allows 0.4 dB at these two
-  points, 0.25 dB elsewhere. Question for the analyst: how were those two values measured?
+  r2 tables. Behaviour between and beyond the tabulated conditions (other levels, durations, programme material) is
+  the model's interpolation.
+- **A2 / A3 (r1 questions)** were answered by the verification and are resolved in r2: the gate uses the r2 S(D)
+  law literally (no own corner rounding any more), and the §9.2 test uses the corrected r2 values with ±0.25 dB at
+  every point.
 - **A4 — 176.4/192 kHz.** H = 256, boxcars 150 + 108 (D7).
 - **A5 — Parameter smoothing** (D6, not measured): τ = 5 ms one-pole in dB for Compression, Gate threshold and Gain.
   Switching the gate on/off glides the threshold from/to −140 dB.
@@ -155,7 +153,12 @@ Gains are measured exactly with a constant probe (1e-7) on the right channel, fa
   fall; gain reduction = smallest smoothed gain `s2` (compressor × gate) per frame, 30 dB/s return, peak hold until
   clicked; output = sample peaks per channel, ≈ 27 dB/s fall, peak hold until clicked.
 - **A8 — Gate value "off"** is represented by the bottom of the range (−80 dB ≙ r = 0); r > 0 never maps to off.
+- **A9 — §9.8 tone length.** The spec measures "the last 0.5 s" of a steady −6 dBFS sine without giving its length.
+  The slow components still charge during the first ≈ 1.5 s (as the reference does after a level rise, §9.4), so
+  the gain still drifts in a 1–1.5 s tone; the tests use 2 s and 3 s tones (steady state). Question for the analyst:
+  how long were the §9.8 tones?
 
 ## Status
 
-Complete: DSP core, plug-in (VST3, CLAP, Standalone; Windows x64 Release build verified), editor, tests.
+Complete for r2: DSP core, plug-in (VST3, CLAP, Standalone; Windows x64 Release build verified, `craft_hoststress`
+run against the VST3), editor, tests.
