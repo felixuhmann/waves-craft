@@ -68,6 +68,19 @@ public:
 
     static int getLatencySamples() noexcept { return 0; }
 
+    // Output safety (not in the spec): with every gain at maximum (trim +18 dB, EQ boosts, make-up, output +12 dB)
+    // a full-scale input can exceed +40 dBFS. Levels above +24 dBFS are bent smoothly towards +30 dBFS; nothing below
+    // +24 dBFS is affected (all spec behaviour lies far below).
+    static double safetyClip (double v) noexcept
+    {
+        constexpr double knee = 16.0, span = 16.0; // +24 dBFS, limit +30 dBFS
+        const double a = std::abs (v);
+        if (a <= knee)
+            return v;
+        const double y = knee + span * std::tanh ((a - knee) / span);
+        return v < 0.0 ? -y : y;
+    }
+
     void prepare (double sampleRate)
     {
         fs = sampleRate;
@@ -161,6 +174,7 @@ public:
                 v *= outSm * duck;
                 if (! std::isfinite (v))
                     v = 0.0;
+                v = safetyClip (v);
                 blockOutPeak = std::max (blockOutPeak, std::abs (v));
                 data[c][i] = Sample (v);
             }

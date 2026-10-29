@@ -245,3 +245,30 @@ TEST_CASE ("parameter changes are smoothed (D6): no step larger than the signal 
     const double early = rms (b, size_t (0.025 * fsTest), size_t (0.025 * fsTest) + 480);
     CHECK (std::abs (cg::gainToDb (early / final)) < 1.0);
 }
+
+TEST_CASE ("extreme settings: output stays bounded (safety above +24 dBFS) and finite", "[strip]")
+{
+    auto s = cg::Settings::defaults();
+    s.inputTrim = 1.0;
+    s.outputGain = 1.0;
+    s.lfGain = s.hfGain = s.lmfGain = s.hmfGain = 1.0;
+    s.lmfQ = s.hmfQ = 0.0;
+    s.compThreshold = 1.0;
+    s.compRatio = 0.1;
+    auto e = makeEngine (fsTest, s);
+    std::vector<double> x (48000);
+    uint32_t r = 1;
+    for (auto& v : x)
+    {
+        r = r * 1664525u + 1013904223u;
+        v = (double (r) / 4294967295.0) * 2.0 - 1.0;
+    }
+    auto y = x;
+    run (e, y);
+    for (double v : y)
+    {
+        REQUIRE (std::isfinite (v));
+        REQUIRE (std::abs (v) <= 32.0);
+    }
+    CHECK (cg::ConsoleEngine::safetyClip (10.0) == 10.0);
+}

@@ -109,8 +109,8 @@ Structure (`DynamicsSection.h`):
 
 1. rectifier `e1 = max(p, e1·exp(−1/(0.04 ms·fs)))`;
 2. level stage, linear domain: `e2` charges towards `e1` with the attack constant (auto: the `comp_model_fit`
-   attack constant interpolated in T and 1−1/R, ×2.1, speeding up by up to 5× within the last 20 dB of the gap —
-   "program dependent"; fast: 1.8 ms) and discharges with 6.7 % of the attack constant (fast: 5 ms);
+   attack constant interpolated in T and 1−1/R, ×2.6, speeding up by up to 5× within the last 20 dB of the gap —
+   "program dependent"; fast: 1.8 ms) and discharges with 3.5 % of the attack constant (fast: 5 ms; boost only for auto attack);
 3. level `L = 20·log10(e2) − cal + Δ`; `cal` = the simulated mean reading of a steady 1 kHz sine at the setting's
    level-stage constants (so a sine of peak level L dBFS reads L); `Δ` = 3.3 dB for fast attack and
    2.1 dB·log10(release/0.4 s) — the residual static shifts of the §9.2 fast / 4 s rows;
@@ -121,11 +121,12 @@ Structure (`DynamicsSection.h`):
    0.1/0.4/1.2 s, log-log extrapolated; fast: ×30/87…66/126), slowed by `1 + K·exp(g/4 dB)` for the last dB of
    reduction (K = 3·√(rel/0.4) auto, 6·(rel/0.4) fast) — reproduces the long 90 % release tails.
 
-Results (unit tests, 48 kHz): all 1568 comp_static points within 0.2 dB (rms 0.04 dB); §9.2 fast / 4 s / trim rows
-within tolerance; timing vs §5 table (attack/release 50/63/90 %): auto 0.4 s 28.5/38.5/73.5 · 81.5/117.5/348.5 ms,
-0.1 s ·58.5/78.5/192.5, 1.2 s ·235.5/357.5/1052.5, fast 0.4 s 1.5/1.5/2.5 · 44.5/66.5/246.5, fast 0.1 s
-·22.5/28.5/66.5 (all within ±25 %, fast attack within the 1 ms analysis resolution); noise vs sine (§9.3)
-−4.55/−3.64 (auto), −6.52/−5.52 (fast), −13.28/−11.85 dB (T−20 R∞); link: R receives L's −11.59 dB.
+Results (unit tests, 48 kHz): all 1568 comp_static points within 0.05 dB; §9.2 fast / 4 s / trim rows
+within tolerance; timing vs §5 table (attack/release 50/63/90 %): auto 0.4 s 29.5/40.5/76.5 · 75.5/110.5/341.5 ms,
+0.1 s 31.5/42.5/79.5 · 51.5/71.5/186.5, 1.2 s 28.5/38.5/75.5 · 228.5/351.5/1047.5, fast 0.4 s 1.5/1.5/3.5 ·
+44.5/67.5/246.5, fast 0.1 s 1.5/1.5/3.5 · 22.5/29.5/66.5 (all within ±25 %, fast attack within the 1 ms analysis resolution); noise vs sine (§9.3)
+−4.43/−3.65 (auto), −6.27/−5.51 (fast), −13.06/−11.85 dB (T−20 R∞) vs −4.28/−3.62, −6.15/−5.20, −13.18/−11.82;
+link: R receives L's −11.60 dB (spec −11.57).
 
 **§6 Expander / gate.** Shares the detector (`e1`) through its own fast level smoother (0.3 ms / 15 ms, calibrated
 like the compressor). Constants are derived from `exp_static.csv` at start-up:
@@ -171,7 +172,37 @@ to type one. Meters: instant rise, 20 dB/s fall, 1.5 s peak marker.
 
 ## Tests (`tests/`, Catch2)
 
-TEST_COUNT_PLACEHOLDER
+26 test cases (≈1.95 million assertions), registered with CTest as `console-g/<name>`; all pass with MSVC 2022
+(Release, Windows x64, CTest) and GCC 13 (Linux). The full run takes ~4 min (the §9.1 strip measurements and the
+staircases simulate ~90 s of audio each).
+
+- **Tapers** (§2): all 820 cells of `param_tapers.csv` reproduced as text; interpolation, inversion, §2 defaults.
+- **HP** (§3.1): factored prototypes vs the full table prototypes ≤ 0.1 dB; digital = analog at the bilinear-warped
+  frequency (no prewarp) at 44.1/48/96 kHz; −3 dB points of §3.1 within 3 %; §9.1 HP vectors ≤ 0.1 dB.
+- **LP** (§3.2): every table row at 44.1/48/96 kHz ≤ 0.5 dB to 15 kHz, ≤ 1.5 dB to 20 kHz (worst 0.11 dB);
+  off-grid r vs interpolated target ≤ 0.5 dB; §9.1 LP vectors with the documented spread (assumption 1).
+- **Shelves** (§4.1): every grid point vs the table prototype ≤ 0.1 dB at three rates, bilinear rule, exact
+  flatness at 0 dB.
+- **LMF / HMF** (§4.2/4.3): table points reproduced exactly; HMF matched design ≤ 0.5 / 1.5 dB vs the analog target
+  at three rates (incl. ×3 at 7 kHz, 44.1 kHz).
+- **§9.1 vectors** (all 25 rows incl. the combination) through the whole strip at 48 kHz, −30 dBFS: ≤ 1.0 dB
+  (worst 0.88 dB); HMF/LP 44.1 vs 96 kHz ≤ 0.6 dB.
+- **Compressor**: all 1568 `comp_static` points (staircase as §9.2: 0.3 s steps, last 0.1 s) within tolerance
+  (worst 0.04 dB); §9.2 fast / release 4 s / trim +6.3 rows; §5 timing table (5 settings × 50/63/90 % attack and
+  release) within ±25 %; §9.3 noise vs sine (3 settings) and stereo link.
+- **Expander / gate**: all 60 `exp_static` staircases (1680 points, up and down) within tolerance (worst 0.55 dB);
+  §9.2 expander / gate / compressor+expander rows ≤ 1 dB; D7 random-automation soak then neutral unity gain;
+  deepest floors finite.
+- **Strip**: baseline curve bit-exact and H2/H3 vectors, coefficient ±2 %; analog noise level ±0.5 dB at three rates,
+  L/R correlation < 0.01, white; polarity bit-exact inversion; zero latency (impulse) at three rates; routing (§7:
+  pre-EQ, Ch Out with the §9.2 post-EQ row, side-chain within 0.2 dB and unfiltered audio, split); EQ/dynamics
+  bypass; mono = stereo channel, L = R; smoothing (no step larger than the signal, settles < 25 ms); extreme
+  settings stay finite and bounded.
+
+Host stress (`tools/hoststress`, VST3, Windows, `--editor`, 300 s, 3 rates, mono/stereo, float/double, blocks
+32…4096, random automation, state save/restore): 248 M samples, 144 prepares, 838 state restores, 49 editor
+opens, 0 failures. (A first run found outputs above +40 dBFS with all gains at maximum, which led to the output
+safety, assumption 11.)
 
 ## Public references
 
@@ -210,8 +241,14 @@ TEST_COUNT_PLACEHOLDER
 9. **Analog noise** is added before the output fader; with output 0 dB it is −110.8 dBFS RMS.
 10. **Routing combinations** not described in §1 (side-chain + split, side-chain + Ch Out): side-chain wins over
     split; with Ch Out the detector sees filters(EQ output).
-11. **> 96 kHz** works (same laws); not verified against data (open question 5).
+11. **Output safety** (not in the spec): levels above +24 dBFS are bent smoothly towards +30 dBFS
+    (`ConsoleEngine::safetyClip`). With every gain at maximum a full-scale input can otherwise exceed +40 dBFS
+    (found by the host stress tool); nothing in the specified operating range is affected.
+12. **> 96 kHz** works (same laws); not verified against data (open question 5).
 
 ## Status
 
-STATUS_PLACEHOLDER
+Complete for spec r1: DSP, parameters, GUI, tests, Windows x64 Release build (VST3 / CLAP / Standalone) installed
+locally; Linux test build verified. Not done: independent verification (verifier side), optional 5th-harmonic
+analog content (§1.2, optional). The low-pass designs are fitted when the sample rate changes (`prepareToPlay`,
+a few hundred ms at most, cached for the current rate).
