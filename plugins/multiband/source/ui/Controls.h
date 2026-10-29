@@ -78,7 +78,7 @@ private:
 };
 
 // Two-state selector drawn as a segmented switch (Auto / Manual, Electro / Opto) bound to a bool parameter.
-class SegmentSwitch : public juce::Component
+class SegmentSwitch : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     SegmentSwitch (juce::RangedAudioParameter& param, juce::String offText, juce::String onText);
@@ -93,7 +93,7 @@ private:
 };
 
 // Band input meter (0 ... -80 dBFS) with a draggable Threshold line.
-class ThresholdMeter : public juce::Component
+class ThresholdMeter : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     ThresholdMeter (juce::RangedAudioParameter& threshold, juce::Colour colour);

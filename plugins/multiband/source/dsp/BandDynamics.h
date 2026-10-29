@@ -35,19 +35,19 @@ namespace craft::multiband
 
 struct DynamicsLaw
 {
-    double peakReleaseMs = 3.0;
-    double fastReleaseMs = 12.0;
-    double chargeMs = 45.0;
-    double holdMs = 45.0;
-    double holdOptoMs = 20.0;
-    double e0 = 0.35, e1 = 4.0, e2 = 1.5;
-    double o0 = 0.9, o1 = 10.0, o2 = 2.0;
-    double autoMin = 0.25;
-    double memoryMs = 250.0;
-    double memoryDecay = 3.0;
-    double onsetMs = 0.3;
-    double onsetDecayMs = 1.5;
-    double onsetDepth = 0.15;
+    double peakReleaseMs = 1.55369;
+    double fastReleaseMs = 1.96836;
+    double chargeMs = 46.8268;
+    double holdMs = 59.8614;
+    double holdOptoMs = 35.5607;
+    double e0 = 0.480972, e1 = 2.63701, e2 = 1.40008;
+    double o0 = 1.10027, o1 = 203.845, o2 = 7.56418;
+    double autoMin = 0.05;
+    double memoryMs = 365.094;
+    double memoryDecay = 20.0;
+    double onsetMs = 0.883292;
+    double onsetDecayMs = 0.928495;
+    double onsetDepth = 0.485577;
 
     static const DynamicsLaw& standard() noexcept
     {
