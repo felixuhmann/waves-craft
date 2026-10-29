@@ -109,7 +109,7 @@ TEST_CASE ("Comp Off harmonics match tables/harmonics.csv (Input -12, Output 0)"
     }
 }
 
-TEST_CASE ("Comp Off harmonics at 100 Hz (saturating levels)", "[harmonics]")
+TEST_CASE ("Comp Off harmonics at 100 Hz", "[harmonics]")
 {
     const auto csv = parseCsv (craft::fet_limiter::spec_tables::harmonicsCsv);
     for (const auto& row : csv.rows)
@@ -118,7 +118,7 @@ TEST_CASE ("Comp Off harmonics at 100 Hz (saturating levels)", "[harmonics]")
             continue;
         const double level = std::stod (row[3]);
         if (level < -18.0)
-            continue; // -30 dBFS at 100 Hz: see IMPLEMENTATION_NOTES (deviation C2)
+            continue; // -30 dBFS at 100 Hz: known deviation C4 (IMPLEMENTATION_NOTES)
         Settings s = neutralSettings();
         s.revision = row[1] == "A" ? Revision::A : Revision::B;
         s.inputDisplay = -12.0;

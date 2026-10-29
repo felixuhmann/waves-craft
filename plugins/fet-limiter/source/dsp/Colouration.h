@@ -5,7 +5,7 @@
 //   sp = 120 tanh(s / 120) (keeps the polynomial bounded for extreme inputs).
 // The negative half-wave saturates much earlier than the positive one (even-order content, spec 7.2 "asymmetric
 // curve"); the small polynomial gives the low-level H2/H3. Constants were fitted to the Comp Off rows of
-// tables/harmonics.csv (1 kHz, Input -12 / Output 0), see IMPLEMENTATION_NOTES. Small-signal slope is 1, so the
+// tables/harmonics.csv (1 kHz and 100 Hz, Input -12 / Output 0), see IMPLEMENTATION_NOTES. Small-signal slope is 1, so the
 // gain staging of spec 4 is unaffected. The DC produced by the asymmetry is removed by the 2 Hz coupling high-pass.
 #pragma once
 
