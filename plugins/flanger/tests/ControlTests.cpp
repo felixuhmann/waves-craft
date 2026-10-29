@@ -265,7 +265,9 @@ TEST_CASE ("float and double processing agree", "[engine]")
     s.rateHz = 0.7;
     const auto x = noise (8000, 8);
     auto e1 = makeEngine (s, fs), e2 = makeEngine (s, fs);
-    std::vector<float> fl (x.begin(), x.end()), fr (x.begin(), x.end());
+    std::vector<float> fl (x.size()), fr (x.size());
+    for (size_t i = 0; i < x.size(); ++i)
+        fl[i] = fr[i] = float (x[i]);
     e1.process (fl.data(), fr.data(), 8000);
     const auto d = run (e2, x, x);
     for (size_t i = 0; i < fl.size(); ++i)
