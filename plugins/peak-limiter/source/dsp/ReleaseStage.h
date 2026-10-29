@@ -13,15 +13,15 @@ namespace craft::limiter
 struct AutoReleaseLaw
 {
     // Fast branch: recovers linearly in dB at this many dB per Release time.
-    static constexpr double fastDbPerRelease = 127.0;
+    static constexpr double fastDbPerRelease = 117.0;
     // Slow branch ("overload memory"):
     //  - immediately holds this fraction of the linear-gain deficit of the target,
-    static constexpr double instantFraction = 0.216;
+    static constexpr double instantFraction = 0.227;
     //  - charges its linear-gain deficit toward the target with this time constant (ms, independent of Release),
-    static constexpr double chargeMs = 226.0;
+    static constexpr double chargeMs = 238.0;
     //  - recovers at slowDbPerRelease dB per Release time plus slowExpPerRelease * (its GR in dB) per Release time.
-    static constexpr double slowDbPerRelease = 7.7;
-    static constexpr double slowExpPerRelease = 0.30;
+    static constexpr double slowDbPerRelease = 8.35;
+    static constexpr double slowExpPerRelease = 0.16;
 };
 
 // Turns the look-ahead hold target h[n] (linear gain, <= 1) into the release state q[n].

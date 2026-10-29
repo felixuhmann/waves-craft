@@ -83,7 +83,47 @@ stays constant, so bypassing never shifts the timeline); bit-exact delayed dry o
 
 ## Auto Release law (spec §5, open question 1)
 
-AUTO_RELEASE_SECTION
+The spec fixes only the attack/look-ahead/smoothing (unchanged) and the §5 recovery table; the law is mine.
+Reading the table (all in the linear-gain deficit, times from the end of the overload) suggested two components:
+after long overloads the recovery is close to linear in dB at ≈ 8–9 dB per Release time; after short overloads a
+fast part recovers most of the reduction, and the remaining tail again falls linearly in dB from a level that grows
+with the overload duration (≈ 2 dB after 5 ms, ≈ 4 dB after 100 ms, ≈ 10 dB after 500 ms at 12 dB over); the
+growth is roughly exponential in the *linear* gain deficit with a time constant of ≈ 0.2 s that does not scale with
+Release. `ReleaseStage` therefore runs two branches on the hold target `h` (both with instantaneous attack, so the
+attack is identical to the fixed mode) and uses `q = min(fast, slow)`:
+
+- **fast**: recovers toward `h` linearly in dB at `fastDbPerRelease` = 117 dB per Release time;
+- **slow** ("overload memory"): while `h` is below it, it immediately takes `instantFraction` = 0.227 of the
+  target's linear-gain deficit and then charges its deficit toward `h` with τ = `chargeMs` = 238 ms (absolute
+  time); when `h` is above it, its GR in dB shrinks per Release time by `slowDbPerRelease` = 8.35 dB plus
+  `slowExpPerRelease` = 0.16 × its current GR (slightly faster for deep reduction).
+
+Recovery is monotonic and continuous (the output is still boxcar-smoothed); Release scales both release rates, so
+it remains the governing time. The constants were fitted (Nelder–Mead, minimax-weighted, offline in a scratch
+script — not shipped) to the 45 numbers of the §5 table by simulating exactly this engine at 48 kHz. Result
+(measured by the unit test, t63 / t90 / t99 deviation vs. the table):
+
+| Release | Overload | t63 | t90 | t99 |
+|---|---|---|---|---|
+| 31.62 ms | 5 ms | +12 % | +3 % | +13 % |
+| 31.62 ms | 20 ms | +7 % | +12 % | +10 % |
+| 31.62 ms | 100 ms | +5 % | +5 % | +5 % |
+| 31.62 ms | 500 ms | −8 % | −6 % | −6 % |
+| 31.62 ms | 2000 ms | −9 % | −7 % | −6 % |
+| 31.62 ms | 500 ms, 6 dB | −8 % | −5 % | −5 % |
+| 31.62 ms | 500 ms, 24 dB | −8 % | −7 % | −6 % |
+| 316.23 ms | 5 ms | +11 % | −14 % | −8 % |
+| 316.23 ms | 20 ms | +3 % | −10 % | −6 % |
+| 316.23 ms | 100 ms | −12 % | −4 % | −3 % |
+| 316.23 ms | 500 ms | −10 % | −7 % | −6 % |
+| 316.23 ms | 2000 ms | −9 % | −7 % | −6 % |
+| 316.23 ms | 500 ms, 6 dB | −9 % | −6 % | −5 % |
+| 316.23 ms | 500 ms, 24 dB | −11 % | −9 % | −8 % |
+| 1.00 ms | 500 ms | +16 % | +7 % | +3 % |
+
+Worst case 15.7 % (tolerance ±20 %). The 1 ms row is dominated by the 1.3 ms look-ahead smoothing and is the
+least robust (one sample = 1.8 %). At 44.1 and 96 kHz the same table holds within ±25 % (tested; the spec's table
+is for 48 kHz).
 
 ## GUI (spec §12)
 
@@ -105,7 +145,29 @@ its default; value boxes accept typed values (single click) and vertical drag. M
 
 ## Tests (`tests/`, Catch2)
 
-TESTS_SECTION
+23 test cases / 276 212 assertions; all pass with MSVC 2022 (Release, via CTest) and GCC 13 (Linux).
+
+- **Latency** (§3): 64/64/128/128/256/256 at 44.1/48/88.2/96/176.4/192 kHz, `A + B − 1 = L`, an impulse
+  appears exactly `L` samples later.
+- **Bit-exact** passthrough at Threshold = Ceiling = 0 without overs (4 rates); fs/4 sine with 0.707 sample
+  peaks passes unchanged (sample-peak detection only).
+- **Static curve** (§9 table, 1 kHz sine, all 30 cells) within ±0.005 dB.
+- **Attack S-curve** (§9) at 48/44.1 kHz and 96/88.2 kHz for three click heights within ±6e-6; gain starts moving
+  exactly `L` samples before the peak and reaches `g_min` one sample before it.
+- **Release trajectory** and **click pair** (§9) within ±6e-6 (click-pair k = 0 is the D1-clamped 0.125594,
+  i.e. within 1.5e-5 of the reference's 0.12560).
+- **Model match** (§8): engine vs. an independent brute-force implementation of §4 (written in the test helpers),
+  5 rates × stereo/mono × 6 random settings on programme-like noise with clicks, odd block sizes:
+  error ≤ −100 dB re output peak (actual ≈ −300 dB, i.e. rounding).
+- **Ceiling** never exceeded by more than 1e-6 relative: 4 rates × 5 Release values × fixed/auto × 5
+  threshold/ceiling pairs on hot programme.
+- **Link**: a click on L only reduces L and R identically. **Mono** equals stereo with identical channels.
+- **Smoothing** (§6): Threshold/Ceiling jump is click-free (largest output step < 0.01), settled within 1 % after
+  25 ms. **Bypass**: dry signal delayed by exactly L.
+- **Auto Release** (§5/§8): all 45 table values within ±20 % with monotonic recovery; 44.1/96 kHz within ±25 %;
+  longer overload / longer Release recover more slowly; attack identical to fixed mode; click-free on programme.
+- **Parameters** (§2): mappings, 0.1 dB / 0.01 ms quantisation, default Release 1.00 ms at r = 0.4, display formats.
+- **Primitives**: sliding minimum and boxcar against brute force; boxcar exact for constant windows; delay line.
 
 ## Questions / assumptions
 
@@ -153,4 +215,11 @@ Artefacts: `build/plugins/peak-limiter/CraftPeakLimiter_artefacts/Release/{VST3,
 
 ## Status
 
-STATUS_SECTION
+- Windows x64 Release build (VST3, CLAP, Standalone) verified locally with MSVC 2022, no compiler warnings in
+  this plugin's sources; 23/23 test cases pass (MSVC and GCC 13). Editor rendered with the snapshot tool (stereo,
+  mono, limiting) and checked visually. `ci/package.py` finds VST3 + CLAP + Standalone and writes
+  `craft-peak-limiter-0.1.0-windows-x64.zip`.
+- Linux: DSP tests verified natively (GCC 13). A full local Linux plug-in build was not run (JUCE system packages
+  need sudo); CI builds it.
+- Not yet done: host-level validation (pluginval / DAW session) and the independent verification against the
+  reference (process step 5).
