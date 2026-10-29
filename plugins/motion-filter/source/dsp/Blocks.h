@@ -75,7 +75,8 @@ struct Biquad
 };
 
 // §4 output HF response. At 44.1/48 kHz the specified roll-off (-0.3 dB @ 10 kHz ... -4.8 dB @ 22 kHz) is
-// reproduced by a biquad least-squares fitted (in dB, offline) to those points for each base rate. Other
+// reproduced by a biquad least-squares fitted (in dB, offline) to those points for each base rate (zeros
+// reflected into the unit circle: minimum phase, same magnitude). Other
 // rates in 40-60 kHz use the nearest fit; below 40 kHz and at 60 kHz and above the output is flat (review
 // decision (5): no HF ripple at high rates).
 inline void designOutputTone (Biquad& bq, double fs) noexcept
@@ -85,12 +86,12 @@ inline void designOutputTone (Biquad& bq, double fs) noexcept
         return;
     if (std::abs (fs - 44100.0) < std::abs (fs - 48000.0))
     {
-        bq.b0 = 0.7560666892292073; bq.b1 = 1.2703490948276897; bq.b2 = 0.4484589320532082;
+        bq.b0 = 0.8889103266599879; bq.b1 = 1.2045256212824154; bq.b2 = 0.38143876816770167;
         bq.a1 = 1.179696154386514;  bq.a2 = 0.29412772800578146;
     }
     else
     {
-        bq.b0 = 0.6532747371065674; bq.b1 = 1.2259962296423437; bq.b2 = 0.4874512920095783;
+        bq.b0 = 0.8524288441240261; bq.b1 = 1.1407260291161454; bq.b2 = 0.3735673855183175;
         bq.a1 = 1.0972052403144525; bq.a2 = 0.2678879341073828;
     }
 }

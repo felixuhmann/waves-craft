@@ -64,7 +64,7 @@ struct ChainNormalised
 {
     double fs;
     std::vector<double> ref;
-    explicit ChainNormalised (double rate) : fs (rate) { ref = impulseResponse (transparentSettings(), fs, 1.4); }
+    explicit ChainNormalised (double rate) : fs (rate) { ref = impulseResponse (transparentSettings(), fs, 0.6); }
     std::vector<double> response (FilterType type, bool slope24, double fc, double res) const
     {
         Settings s;
@@ -72,7 +72,7 @@ struct ChainNormalised
         s.slope24 = slope24;
         s.freqNorm = freqKnob (fc);
         s.resonance = res;
-        return impulseResponse (s, fs, 1.4);
+        return impulseResponse (s, fs, 0.6);
     }
     double gainDb (const std::vector<double>& h, double f) const { return db (dftMagnitude (h, f, fs) / dftMagnitude (ref, f, fs)); }
 };

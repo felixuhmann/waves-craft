@@ -1,4 +1,4 @@
-// Craft Motion Filter - 2x oversampling with linear-phase half-band FIR filters (Kaiser-windowed sinc).
+// Craft Motion Filter - 2x / 4x oversampling with linear-phase half-band FIR filters (Kaiser-windowed sinc).
 // Reference: DAFX ch. "Sample-rate conversion"; Oppenheim/Schafer, "Discrete-Time Signal Processing" (Kaiser window).
 #pragma once
 
@@ -9,17 +9,18 @@
 namespace craft::mf
 {
 
+// Half-band low-pass (cut-off at a quarter of its own rate) with N = 4k + 3 taps.
+template <int N>
 class HalfbandFir
 {
 public:
-    static constexpr int numTaps = 63;                 // 4k + 3 taps: integer base-rate latency
-    static constexpr int centre = (numTaps - 1) / 2;   // group delay at the high rate (31)
+    static constexpr int numTaps = N;
+    static constexpr int centre = (N - 1) / 2; // group delay in samples of the filter's rate
+    static_assert ((N - 3) % 4 == 0, "half-band length must be 4k + 3");
 
-    HalfbandFir() { std::fill (state.begin(), state.end(), 0.0); }
-
-    static const std::array<double, numTaps>& coefficients()
+    static const std::array<double, N>& coefficients()
     {
-        static const std::array<double, numTaps> h = design();
+        static const std::array<double, N> h = design();
         return h;
     }
 
@@ -33,13 +34,13 @@ public:
     {
         const auto& h = coefficients();
         state[size_t (pos)] = x;
-        state[size_t (pos + numTaps)] = x; // mirrored copy: contiguous window without modulo
+        state[size_t (pos + N)] = x; // mirrored copy: contiguous window without modulo
         const double* w = &state[size_t (pos + 1)]; // oldest .. newest
-        // half-band: every second tap is zero, and the filter is symmetric
+        // every second tap is zero and the filter is symmetric
         double y = h[size_t (centre)] * w[centre];
         for (int m = 1; m <= centre; m += 2)
             y += h[size_t (centre + m)] * (w[centre + m] + w[centre - m]);
-        pos = (pos + 1) % numTaps;
+        pos = (pos + 1) % N;
         return y;
     }
 
@@ -55,19 +56,17 @@ private:
         return sum;
     }
 
-    // Half-band low-pass (cut-off at a quarter of the high rate), Kaiser beta 8 (~80 dB stop band).
-    static std::array<double, numTaps> design()
+    static std::array<double, N> design()
     {
-        std::array<double, numTaps> h {};
-        constexpr double beta = 8.0, pi = 3.14159265358979323846;
+        std::array<double, N> h {};
+        constexpr double beta = 8.0, kPi = 3.14159265358979323846; // ~80 dB stop band
         double sum = 0.0;
-        for (int n = 0; n < numTaps; ++n)
+        for (int n = 0; n < N; ++n)
         {
             const int m = n - centre;
-            const double sinc = m == 0 ? 0.5 : std::sin (pi * m / 2.0) / (pi * m);
+            const double sinc = m == 0 ? 0.5 : std::sin (kPi * m / 2.0) / (kPi * m);
             const double r = double (m) / centre;
-            const double w = besselI0 (beta * std::sqrt (std::max (0.0, 1.0 - r * r))) / besselI0 (beta);
-            h[size_t (n)] = sinc * w;
+            h[size_t (n)] = sinc * besselI0 (beta * std::sqrt (std::max (0.0, 1.0 - r * r))) / besselI0 (beta);
             sum += h[size_t (n)];
         }
         for (auto& c : h)
@@ -75,36 +74,84 @@ private:
         return h;
     }
 
-    std::array<double, 2 * numTaps> state {};
+    std::array<double, 2 * N> state {};
     int pos = 0;
 };
 
-// 2x up-sampler: one input sample -> two output samples.
-struct Upsampler2x
+// One 2x stage: up (1 -> 2 samples) and down (2 -> 1 samples) for one channel.
+template <int N>
+struct Stage2x
 {
-    HalfbandFir fir;
-    void reset() noexcept { fir.reset(); }
-    void process (double x, double& y0, double& y1) noexcept
+    HalfbandFir<N> upFir, downFir;
+    void reset() noexcept { upFir.reset(); downFir.reset(); }
+    void up (double x, double& y0, double& y1) noexcept
     {
-        y0 = fir.process (2.0 * x);
-        y1 = fir.process (0.0);
+        y0 = upFir.process (2.0 * x);
+        y1 = upFir.process (0.0);
     }
-};
-
-// 2x down-sampler: two input samples -> one output sample.
-struct Downsampler2x
-{
-    HalfbandFir fir;
-    void reset() noexcept { fir.reset(); }
-    double process (double x0, double x1) noexcept
+    double down (double x0, double x1) noexcept
     {
-        const double y = fir.process (x0);
-        fir.process (x1);
+        const double y = downFir.process (x0);
+        downFir.process (x1);
         return y;
     }
 };
 
-// Base-rate latency of an up/down pair.
-constexpr int oversamplingLatency = HalfbandFir::centre; // 2 x 31 high-rate samples = 31 base samples
+// Up/down sampler by 1, 2 or 4 with an integer base-rate latency:
+//  2x: 63-tap stage, 2 x 31 high-rate samples = 31 base samples.
+//  4x: outer 63-tap stage (31 base samples) + inner 23-tap stage (2 x 11 + 2 padding = 24 4x-samples = 6 base).
+class Oversampler
+{
+public:
+    void setFactor (int f) noexcept { factor = (f >= 4) ? 4 : (f >= 2 ? 2 : 1); }
+    int getFactor() const noexcept { return factor; }
+    int latency() const noexcept { return factor == 1 ? 0 : (factor == 2 ? outerLatency : outerLatency + innerLatency); }
+
+    void reset() noexcept
+    {
+        outer.reset();
+        inner0.reset();
+        inner1.reset();
+        pad.fill (0.0);
+        padPos = 0;
+    }
+
+    // base sample -> factor samples in out[]
+    void up (double x, double* out) noexcept
+    {
+        if (factor == 1) { out[0] = x; return; }
+        double a, b;
+        outer.up (x, a, b);
+        if (factor == 2) { out[0] = a; out[1] = b; return; }
+        inner0.up (a, out[0], out[1]);
+        inner0.up (b, out[2], out[3]); // inner0 handles the up path, inner1 the down path
+    }
+
+    // factor samples -> base sample
+    double down (const double* in) noexcept
+    {
+        if (factor == 1) return in[0];
+        if (factor == 2) return outer.down (in[0], in[1]);
+        // 2 samples of padding at 4x keep the total latency an integer number of base samples
+        double s[4];
+        for (int k = 0; k < 4; ++k)
+        {
+            s[k] = pad[size_t (padPos)];
+            pad[size_t (padPos)] = in[k];
+            padPos = (padPos + 1) % 2;
+        }
+        const double a = inner1.down (s[0], s[1]);
+        const double b = inner1.down (s[2], s[3]);
+        return outer.down (a, b);
+    }
+
+private:
+    static constexpr int outerLatency = 31, innerLatency = 6;
+    int factor = 2;
+    Stage2x<63> outer;
+    Stage2x<23> inner0, inner1;
+    std::array<double, 2> pad {};
+    int padPos = 0;
+};
 
 } // namespace craft::mf

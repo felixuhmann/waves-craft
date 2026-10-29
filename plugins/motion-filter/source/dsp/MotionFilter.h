@@ -1,10 +1,9 @@
-// Craft Motion Filter - top-level processor: the engine, 2x oversampled at base rates below 60 kHz.
+// Craft Motion Filter - top-level processor: the engine, oversampled so that it runs at >= 176.4 kHz.
 //
-// Oversampling keeps the filter responses on their analog prototypes up to high frequencies (no
-// bilinear cramping near Nyquist at 44.1/48 kHz) and reduces saturator aliasing. Dry and wet run through
-// the same up/down filters, so they stay aligned; the latency (31 samples) is reported to the host (spec §1:
-// <= 64 samples, compensated). At 60 kHz and above the engine runs at the host rate with zero latency.
-// The section-4 output HF response is applied at the base rate after down-sampling.
+// Oversampling (4x at 44.1/48 kHz, 2x at 88.2/96 kHz, none at >= 120 kHz) keeps the filter responses on their
+// analog prototypes up to 16 kHz (no bilinear cramping) and reduces saturator aliasing. Dry and wet run through
+// the same up/down filters, so they stay aligned; the latency (37 / 31 / 0 samples) is reported to the host
+// (spec §1: <= 64 samples, compensated). The section-4 output HF response is applied at the base rate.
 #pragma once
 
 #include <array>
@@ -19,15 +18,19 @@ namespace craft::mf
 class MotionFilter
 {
 public:
-    static constexpr double oversamplingBelowHz = 60000.0;
     static constexpr int chunk = 256;
+
+    static int factorFor (double rate) noexcept { return rate < 60000.0 ? 4 : (rate < 120000.0 ? 2 : 1); }
 
     void prepare (double sampleRate)
     {
         fs = sampleRate;
-        oversampled = fs < oversamplingBelowHz;
+        factor = factorFor (fs);
+        oversampled = factor > 1;
+        for (auto& o : os)
+            o.setFactor (factor);
         engine.setSettings (settings);
-        engine.prepare (oversampled ? 2.0 * fs : fs, ! oversampled);
+        engine.prepare (fs * factor, ! oversampled);
         for (auto& t : tone)
         {
             designOutputTone (t, fs);
@@ -35,16 +38,14 @@ public:
                 t.setIdentity(); // the engine applies it (flat at these rates anyway)
         }
         for (auto& b : hi)
-            b.assign (size_t (2 * chunk), 0.0);
+            b.assign (size_t (4 * chunk), 0.0);
         reset();
     }
 
     void reset()
     {
         engine.reset();
-        for (auto& u : up) u.reset();
-        for (auto& u : upSide) u.reset();
-        for (auto& d : down) d.reset();
+        for (auto& o : os) o.reset();
         for (auto& t : tone) t.reset();
     }
 
@@ -57,7 +58,7 @@ public:
     void setNote (int note) noexcept { engine.setNote (note); }
     void setResonanceLimiting (double kappa) noexcept { engine.setResonanceLimiting (kappa); }
 
-    int getLatencySamples() const noexcept { return oversampled ? oversamplingLatency : 0; }
+    int getLatencySamples() const noexcept { return os[0].latency(); }
     double getSampleRate() const noexcept { return fs; }
     const MotionEngine::Telemetry& getTelemetry() const noexcept { return engine.getTelemetry(); }
 
@@ -80,21 +81,22 @@ public:
             double* hr = hi[1].data();
             double* sl = hi[2].data();
             double* sr = hi[3].data();
+            const int f = factor;
             for (int i = 0; i < n; ++i)
             {
-                up[0].process (double (left[start + i]), hl[2 * i], hl[2 * i + 1]);
-                up[1].process (double (right[start + i]), hr[2 * i], hr[2 * i + 1]);
+                os[0].up (double (left[start + i]), hl + f * i);
+                os[1].up (double (right[start + i]), hr + f * i);
                 if (sideL != nullptr)
                 {
-                    upSide[0].process (double (sideL[start + i]), sl[2 * i], sl[2 * i + 1]);
-                    upSide[1].process (double (sideR != nullptr ? sideR[start + i] : sideL[start + i]), sr[2 * i], sr[2 * i + 1]);
+                    os[2].up (double (sideL[start + i]), sl + f * i);
+                    os[3].up (double (sideR != nullptr ? sideR[start + i] : sideL[start + i]), sr + f * i);
                 }
             }
-            engine.process (hl, hr, sideL != nullptr ? sl : nullptr, sideL != nullptr ? sr : nullptr, 2 * n, t);
+            engine.process (hl, hr, sideL != nullptr ? sl : nullptr, sideL != nullptr ? sr : nullptr, f * n, t);
             for (int i = 0; i < n; ++i)
             {
-                left[start + i] = Sample (tone[0].process (down[0].process (hl[2 * i], hl[2 * i + 1])));
-                right[start + i] = Sample (tone[1].process (down[1].process (hr[2 * i], hr[2 * i + 1])));
+                left[start + i] = Sample (tone[0].process (os[0].down (hl + f * i)));
+                right[start + i] = Sample (tone[1].process (os[1].down (hr + f * i)));
             }
             t.ppq += ppqPerSample * n;
         }
@@ -103,10 +105,10 @@ public:
 private:
     double fs = 48000.0;
     bool oversampled = true;
+    int factor = 4;
     Settings settings;
     MotionEngine engine;
-    std::array<Upsampler2x, 2> up, upSide;
-    std::array<Downsampler2x, 2> down;
+    std::array<Oversampler, 4> os; // L, R, sidechain L, sidechain R
     std::array<Biquad, 2> tone;
     std::array<std::vector<double>, 4> hi;
 };
