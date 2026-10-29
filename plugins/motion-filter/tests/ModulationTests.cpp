@@ -273,23 +273,38 @@ TEST_CASE ("Swing delays every second step", "[seq]")
     CHECK (StepSequencer::stepIndexAt (3.76, 16, 75.0) == 3);
 }
 
-TEST_CASE ("Envelope follower -> Freq follows the three test points", "[mod][follower]")
+TEST_CASE ("Envelope follower -> Freq follows the r2 target table", "[mod][follower]")
 {
-    struct P { double dbfs, oct; };
-    for (auto p : { P { -30.0, -0.73 }, P { -24.0, -1.45 }, P { -18.0, -2.42 } })
+    struct P { double amount, peak, oct; };
+    const P table[] = {
+        { 50, 0.01, 0.06 }, { 50, 0.072, 0.43 }, { 50, 0.135, 0.82 }, { 50, 0.26, 1.60 }, { 50, 0.51, 1.79 },
+        { -50, 0.01, -0.06 }, { -50, 0.072, -0.42 }, { -50, 0.135, -0.83 }, { -50, 0.26, -1.66 },
+        { 100, 0.01, 0.60 }, { 100, 0.072, 1.80 }, { 100, 0.135, 1.80 }, { 100, 0.26, 1.81 }, { 100, 0.51, 1.82 } };
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (const auto& p : table)
+        {
+            Settings s;
+            s.type = FilterType::HighPass;
+            s.smooth = 0.0;
+            s.freqNorm = freqKnob (2000.0);
+            s.mod[modFollower][destFreq] = p.amount;
+            auto e = makeEngine (s, fs);
+            const size_t n = size_t (0.3 * fs);
+            auto oct = traceTelemetry (e, n, [] (const auto& t) { return std::log2 (t.cutoffHz[0] / 2000.0); },
+                                       [&] (size_t i) { return p.peak * std::sin (2.0 * pi * 1000.0 * double (i) / fs); });
+            double mean = 0.0;
+            for (size_t i = n / 2; i < n; ++i) mean += oct[i];
+            mean /= double (n - n / 2);
+            INFO ("fs " << fs << " amount " << p.amount << " A " << p.peak << ": " << mean << " oct, expect " << p.oct);
+            CHECK (std::abs (mean - p.oct) <= std::max (0.2, 0.25 * std::abs (p.oct)));
+        }
+    // -50 % at A = 0.51: at least -4 octaves
     {
         Settings s;
-        s.freqNorm = freqKnob (4000.0);
+        s.smooth = 0.0;
+        s.freqNorm = freqKnob (2000.0);
         s.mod[modFollower][destFreq] = -50.0;
-        const double fs = 48000.0, amp = fromDb (p.dbfs);
-        auto e = makeEngine (s, fs);
-        auto oct = traceTelemetry (e, 24000, [] (const auto& t) { return std::log2 (t.cutoffHz[0] / 4000.0); },
-                                   [&] (size_t i) { return amp * std::sin (2.0 * pi * 1000.0 * double (i) / fs); });
-        double mean = 0.0;
-        for (size_t i = 12000; i < 24000; ++i) mean += oct[i];
-        mean /= 12000.0;
-        INFO (p.dbfs << " dBFS: " << mean << " oct, expect " << p.oct);
-        CHECK (offsetWithin (mean, p.oct));
+        CHECK (law::followerOctaves (0.51, -0.5) <= -4.0);
     }
     // fast ballistics: attack within 5 ms, release within 25 ms
     EnvelopeFollower f;

@@ -109,16 +109,6 @@ public:
     // Keyboard tracking (§6.4): the most recent MIDI note; -1 = none (no offset).
     void setNote (int note) noexcept { currentNote = note; }
 
-    // Test hook: disable the level-dependent resonance limiting (exactly linear SVF).
-    void setResonanceLimiting (double kappa) noexcept
-    {
-        for (auto& c : ch)
-        {
-            c.vcf.setResonanceLimiting (kappa);
-            c.vcfLoop.setResonanceLimiting (kappa);
-        }
-    }
-
     const Telemetry& getTelemetry() const noexcept { return telemetry; }
     double getSampleRate() const noexcept { return fs; }
 
@@ -154,8 +144,7 @@ public:
         {
             tAmount[modLfo][d] = law::taper (s.mod[modLfo][d] / 100.0, law::taperLfo);
             tAmount[modSeq][d] = law::taper (s.mod[modSeq][d] / 100.0, law::taperSeqFollower);
-            tAmount[modFollower][d] = law::taper (s.mod[modFollower][d] / 100.0, law::taperSeqFollower)
-                                      / law::taper (0.5, law::taperSeqFollower);
+            tAmount[modFollower][d] = law::followerAmountScale (s.mod[modFollower][d] / 100.0);
             for (int src = 0; src < 3; ++src)
                 anyMod = anyMod || tAmount[src][d] != 0.0 || amountSmoothers[size_t (src)][size_t (d)].y != 0.0;
         }
@@ -376,8 +365,7 @@ private:
         {
             amountSmoothers[modLfo][size_t (d)].reset (law::taper (s.mod[modLfo][d] / 100.0, law::taperLfo));
             amountSmoothers[modSeq][size_t (d)].reset (law::taper (s.mod[modSeq][d] / 100.0, law::taperSeqFollower));
-            amountSmoothers[modFollower][size_t (d)].reset (law::taper (s.mod[modFollower][d] / 100.0, law::taperSeqFollower)
-                                                            / law::taper (0.5, law::taperSeqFollower));
+            amountSmoothers[modFollower][size_t (d)].reset (law::followerAmountScale (s.mod[modFollower][d] / 100.0));
         }
         bypassFade.reset (s.bypass ? 1.0 : 0.0);
     }

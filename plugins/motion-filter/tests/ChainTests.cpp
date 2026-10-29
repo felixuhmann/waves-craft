@@ -31,7 +31,7 @@ TEST_CASE ("Output HF response at 44.1 / 48 kHz and flat at high rates", "[chain
         s.mix = -100.0; // dry path
         for (auto p : points)
         {
-            if (p.f > 0.49 * fs) // 22 kHz at 44.1 kHz lies in the resampler transition band (see notes)
+            if (p.f >= 0.5 * fs)
                 continue;
             const double got = db (engineGain (s, fs, p.f));
             INFO ("fs " << fs << " f " << p.f << " got " << got);
@@ -87,11 +87,12 @@ size_t peakIndex (const std::vector<double>& y, size_t from, size_t to)
             best = i;
     return best;
 }
-double localSum (const std::vector<double>& y, size_t centre, int halfWidth = 8)
+double localSum (const std::vector<double>& y, size_t centre, int halfWidth = 40)
 {
     double s = 0;
     for (int k = -halfWidth; k <= halfWidth; ++k)
-        s += y[size_t (int (centre) + k)];
+        if (int (centre) + k >= 0 && size_t (int (centre) + k) < y.size())
+            s += y[size_t (int (centre) + k)];
     return s;
 }
 } // namespace
@@ -166,13 +167,13 @@ TEST_CASE ("Delay mix table (first tap, feedback 0)", "[delay]")
     ref.delayFeedback = 0.0;
     ref.delayMix = -100.0;
     const auto r0 = impulse (ref, fs, 0.12);
-    const double unit = localSum (r0.l, 8);
+    const double unit = localSum (r0.l, size_t (latencyFor (fs)));
     for (size_t k = 0; k < 9; ++k)
     {
         Settings s = ref;
         s.delayMix = ms[k];
         const auto o = impulse (s, fs, 0.12);
-        const double dry = localSum (o.l, 8) / unit, wet = localSum (o.l, 9608) / unit;
+        const double dry = localSum (o.l, size_t (latencyFor (fs))) / unit, wet = localSum (o.l, size_t (latencyFor (fs)) + 9600) / unit;
         INFO ("mix " << ms[k]);
         CHECK (dry == Approx (law::delayMixDryTable[k]).margin (0.03));
         CHECK (wet == Approx (law::delayMixWetTable[k]).margin (0.03));
@@ -289,6 +290,9 @@ TEST_CASE ("Drive: +0.073 dB per % small-signal, compression at -3 dBFS", "[driv
         INFO ("drive " << p.drive << " small " << small << " compression " << small - loud);
         CHECK (small == Approx (p.gainDb).margin (0.5));
         CHECK (small - loud == Approx (p.compDb).margin (0.5));
+        // also at -4.8 dBFS (the level the verification harness's -3 dBFS stimulus reaches the saturator with)
+        const double lower = db (engineGain (s, fs, 1000.0, fromDb (-4.8))) - law::wetGainDb;
+        CHECK (small - lower == Approx (p.compDb).margin (0.5));
     }
 }
 
@@ -302,13 +306,38 @@ TEST_CASE ("Baseline saturation of the default wet path", "[drive]")
     CHECK (saturate (0.5, 2.0, 1.5) == Approx (-saturate (-0.5, 2.0, 1.5)));
 }
 
-TEST_CASE ("Crush: sample-and-hold rate 48 kHz 2^(-0.19 Crush), host-rate independent", "[crush][samplerate]")
+TEST_CASE ("Crush: hold N = 1 + 64 (Crush/100)^2 samples at 48 kHz, host-rate independent (r2)", "[crush][samplerate]")
 {
-    CHECK (law::crushRateHz (10) == Approx (12000.0).epsilon (0.10));
-    CHECK (law::crushRateHz (25) == Approx (1800.0).epsilon (0.10));
-    CHECK (law::crushRateHz (50) == Approx (66.0).epsilon (0.10));
+    CHECK (law::crushHoldSamples48k (0) == Approx (1.0));
+    CHECK (law::crushHoldSamples48k (25) == Approx (5.0));
+    CHECK (law::crushHoldSamples48k (50) == Approx (17.0));
+    CHECK (law::crushHoldSamples48k (75) == Approx (37.0));
+    CHECK (law::crushHoldSamples48k (100) == Approx (65.0));
+    CHECK (law::crushRateHz (50) == Approx (48000.0 / 17.0));
+    // hold lengths at 48 kHz exactly N samples (+-1)
+    for (double crush : { 25.0, 50.0, 75.0, 100.0 })
+    {
+        Crusher c;
+        c.reset();
+        double prev = -1.0;
+        int run = 0, minRun = 1 << 30, maxRun = 0;
+        for (int i = 0; i < 48000; ++i)
+        {
+            const double y = c.process (double (i + 1), law::crushRateHz (crush), 48000.0);
+            if (y != prev)
+            {
+                if (i > 200) { minRun = std::min (minRun, run); maxRun = std::max (maxRun, run); }
+                run = 0;
+            }
+            ++run;
+            prev = y;
+        }
+        const double n = law::crushHoldSamples48k (crush);
+        CHECK (double (minRun) >= n - 1.0);
+        CHECK (double (maxRun) <= n + 1.0);
+    }
     for (double fs : { 44100.0, 48000.0, 96000.0, 192000.0 })
-        for (double crush : { 25.0, 50.0 })
+        for (double crush : { 25.0, 50.0, 100.0 })
         {
             Crusher c;
             c.reset();
@@ -325,17 +354,25 @@ TEST_CASE ("Crush: sample-and-hold rate 48 kHz 2^(-0.19 Crush), host-rate indepe
             CHECK (double (changes) == Approx (rate).epsilon (0.10));
         }
 
-    // engine: crush at 50 turns a 1 kHz tone into a 66 Hz staircase
+    // engine: the output level is preserved (held sample values), a 100 Hz tone keeps its level at Crush 50
+    {
+        Settings s = transparentSettings();
+        s.crush = 50.0;
+        CHECK (db (engineGain (s, 48000.0, 100.0)) == Approx (law::wetGainDb).margin (0.3));
+    }
+    // and a fast tone gets strong aliasing products (hold 37 samples = 1.3 kHz rate vs a 997 Hz tone)
     Settings s = transparentSettings();
-    s.crush = 50.0;
+    s.crush = 75.0;
     auto e = makeEngine (s, 48000.0);
     std::vector<double> x (48000);
     for (size_t i = 0; i < x.size(); ++i) x[i] = 0.5 * std::sin (2.0 * pi * 997.0 * double (i) / 48000.0);
     auto o = runEngine (e, x);
-    int flats = 0;
-    for (size_t i = 1001; i < 48000; ++i)
-        if (std::abs (o.l[i] - o.l[i - 1]) < 1e-3) ++flats;
-    CHECK (flats > 40000);
+    double total = 0.0;
+    for (size_t i = 24000; i < 48000; ++i) total += o.l[i] * o.l[i];
+    const double rms = std::sqrt (total / 24000.0);
+    const double tone = toneAmplitude (o.l, 24000, 24000, 997.0, 48000.0) / std::sqrt (2.0);
+    CHECK (rms > 0.25);                               // level preserved overall
+    CHECK (std::sqrt (rms * rms - tone * tone) > 0.3 * rms); // > -10 dB of non-harmonic energy
 }
 
 TEST_CASE ("Sample-rate behaviour: same cutoff, delay and rates at every host rate", "[samplerate]")

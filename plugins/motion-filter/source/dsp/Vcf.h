@@ -43,19 +43,18 @@ public:
 
     void setType (FilterType t) noexcept { type = t; }
     void setSlope24 (bool s) noexcept { slope24 = s; }
-    void setResonanceLimiting (double kappa) noexcept { s1.kappa = s2.kappa = kappa; }
     double combMaxDelay() const noexcept { return comb.maxDelay(); }
     double typeWeight (FilterType t) const noexcept { return weights[size_t (t)]; }
 
     // Response of one SVF section for an SVF type (LP, HP, BP, BR).
-    static double svfResponse (int typeIndex, const SvfSection::Out& o, double x) noexcept
+    static double svfResponse (int typeIndex, const SvfSection::Out& o, double) noexcept
     {
         switch (typeIndex)
         {
             case 0: return o.lp;
             case 1: return o.hp;
             case 2: return o.bp;
-            case 3: return x - o.bp; // notch = LP + HP
+            case 3: return o.notch; // (1 + s^2)/D = LP + HP
             default: return 0.0;
         }
     }
@@ -108,7 +107,7 @@ inline double prototypeMagnitude (FilterType type, bool slope24, double f, doubl
     {
         case FilterType::LowPass:    num = 1.0; break;
         case FilterType::HighPass:   num = w * w; break;
-        case FilterType::BandPass:   num = w / q; break;
+        case FilterType::BandPass:   num = w; break; // s/D: peak gain Q (spec r2)
         case FilterType::BandReject: num = std::abs (1.0 - w * w); break;
         default:                     return 1.0;
     }

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace craft::mf
 {
@@ -78,11 +79,96 @@ private:
     int pos = 0;
 };
 
-// One 2x stage: up (1 -> 2 samples) and down (2 -> 1 samples) for one channel.
+// "Root half-band" low-pass: magnitude = sqrt of a Kaiser half-band's response, linear phase, N taps.
+// Used for both the up- and the down-sampling filter of the outer stage, the round trip of a linear signal
+// is |H(f)|^2 + |H(fs - f)|^2 = 1, i.e. flat up to the base Nyquist (a plain half-band pair loses ~6 dB there,
+// e.g. at 22 kHz for a 44.1 kHz host). Image/alias rejection is ~50 dB from 0.62 fs on.
 template <int N>
+class RootHalfbandFir
+{
+public:
+    static constexpr int numTaps = N;
+    static constexpr int centre = (N - 1) / 2;
+
+    static const std::array<double, N>& coefficients()
+    {
+        static const std::array<double, N> h = design();
+        return h;
+    }
+
+    void reset() noexcept
+    {
+        std::fill (state.begin(), state.end(), 0.0);
+        pos = 0;
+    }
+
+    double process (double x) noexcept
+    {
+        const auto& h = coefficients();
+        state[size_t (pos)] = x;
+        state[size_t (pos + N)] = x;
+        const double* w = &state[size_t (pos + 1)];
+        double y = h[size_t (centre)] * w[centre];
+        for (int m = 1; m <= centre; ++m)
+            y += h[size_t (centre + m)] * (w[centre + m] + w[centre - m]);
+        pos = (pos + 1) % N;
+        return y;
+    }
+
+private:
+    static double besselI0 (double x)
+    {
+        double sum = 1.0, term = 1.0;
+        for (int k = 1; k < 40; ++k)
+        {
+            term *= (x / (2.0 * k)) * (x / (2.0 * k));
+            sum += term;
+        }
+        return sum;
+    }
+
+    static std::array<double, N> design()
+    {
+        constexpr double kPi = 3.14159265358979323846;
+        const auto& hb = HalfbandFir<N>::coefficients();
+        // zero-phase amplitude of the half-band on a dense grid, its square root, inverse cosine transform
+        constexpr int K = 4096;
+        std::array<double, N> h {};
+        std::vector<double> amp (K + 1);
+        for (int i = 0; i <= K; ++i)
+        {
+            const double w = kPi * i / K;
+            double a = hb[size_t (centre)];
+            for (int m = 1; m <= centre; ++m)
+                a += 2.0 * hb[size_t (centre + m)] * std::cos (w * m);
+            amp[size_t (i)] = std::sqrt (std::max (0.0, a));
+        }
+        double sum = 0.0;
+        for (int n = 0; n < N; ++n)
+        {
+            const int m = n - centre;
+            double acc = 0.0;
+            for (int i = 0; i <= K; ++i) // trapezoidal rule
+                acc += (i == 0 || i == K ? 0.5 : 1.0) * amp[size_t (i)] * std::cos (kPi * i / K * m);
+            const double r = double (m) / centre;
+            const double win = besselI0 (3.0 * std::sqrt (std::max (0.0, 1.0 - r * r))) / besselI0 (3.0);
+            h[size_t (n)] = acc / K * win;
+            sum += h[size_t (n)];
+        }
+        for (auto& c : h)
+            c /= sum;
+        return h;
+    }
+
+    std::array<double, 2 * N> state {};
+    int pos = 0;
+};
+
+// One 2x stage: up (1 -> 2 samples) and down (2 -> 1 samples) for one channel.
+template <typename Fir>
 struct Stage2x
 {
-    HalfbandFir<N> upFir, downFir;
+    Fir upFir, downFir;
     void reset() noexcept { upFir.reset(); downFir.reset(); }
     void up (double x, double& y0, double& y1) noexcept
     {
@@ -98,7 +184,7 @@ struct Stage2x
 };
 
 // Up/down sampler by 1, 2 or 4 with an integer base-rate latency:
-//  2x: 63-tap stage, 2 x 31 high-rate samples = 31 base samples.
+//  2x: 63-tap root-half-band stage, 2 x 31 high-rate samples = 31 base samples.
 //  4x: outer 63-tap stage (31 base samples) + inner 23-tap stage (2 x 11 + 2 padding = 24 4x-samples = 6 base).
 class Oversampler
 {
@@ -148,8 +234,8 @@ public:
 private:
     static constexpr int outerLatency = 31, innerLatency = 6;
     int factor = 2;
-    Stage2x<63> outer;
-    Stage2x<23> inner0, inner1;
+    Stage2x<RootHalfbandFir<63>> outer;
+    Stage2x<HalfbandFir<23>> inner0, inner1;
     std::array<double, 2> pad {};
     int padPos = 0;
 };

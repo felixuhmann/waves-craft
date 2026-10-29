@@ -104,33 +104,29 @@ inline void designWetHighPass (Biquad& bq, double fs) noexcept
 }
 
 // Topology-preserving-transform state-variable filter section (Zavalishin). Normalised responses with
-// s = j w / wc: LP 1/D, BP (s/Q)/D (unity peak), HP s^2/D, with D = 1 + s/Q + s^2, prewarped so the
-// analog cutoff is hit exactly at any sample rate. The damping k = 1/Q grows with the band state's
-// level (kappa v1^2, previous sample) which limits resonance at high levels like an analog saturator.
+// s = j w / wc and D = 1 + s/Q + s^2 (spec r2 §5): LP 1/D, BP s/D (peak gain Q), HP s^2/D, notch (1 + s^2)/D,
+// prewarped so the analog cutoff is hit exactly at any sample rate. Linear (level-independent Q).
 struct SvfSection
 {
-    double ic1 = 0.0, ic2 = 0.0, v1Prev = 0.0;
-    double kappa = law::resonanceLimitKappa;
+    double ic1 = 0.0, ic2 = 0.0;
 
     struct Out
     {
-        double lp, bp, hp;
+        double lp, bp, hp, notch;
     };
 
-    void reset() noexcept { ic1 = ic2 = v1Prev = 0.0; }
+    void reset() noexcept { ic1 = ic2 = 0.0; }
 
-    // g = tan(pi fc / fs), k0 = 1/Q
-    Out process (double x, double g, double k0) noexcept
+    // g = tan(pi fc / fs), k = 1/Q
+    Out process (double x, double g, double k) noexcept
     {
-        const double k = std::min (k0 + kappa * v1Prev * v1Prev, 20.0);
         const double a1 = 1.0 / (1.0 + g * (g + k)), a2 = g * a1, a3 = g * a2;
         const double v3 = x - ic2;
         const double v1 = a1 * ic1 + a2 * v3;
         const double v2 = ic2 + a2 * ic1 + a3 * v3;
         ic1 = 2.0 * v1 - ic1;
         ic2 = 2.0 * v2 - ic2;
-        v1Prev = v1;
-        return { v2, k * v1, x - k * v1 - v2 };
+        return { v2, v1, x - k * v1 - v2, x - k * v1 };
     }
 };
 

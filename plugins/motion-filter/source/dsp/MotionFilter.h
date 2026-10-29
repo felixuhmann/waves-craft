@@ -56,7 +56,6 @@ public:
     }
     const Settings& getSettings() const noexcept { return settings; }
     void setNote (int note) noexcept { engine.setNote (note); }
-    void setResonanceLimiting (double kappa) noexcept { engine.setResonanceLimiting (kappa); }
 
     int getLatencySamples() const noexcept { return os[0].latency(); }
     double getSampleRate() const noexcept { return fs; }

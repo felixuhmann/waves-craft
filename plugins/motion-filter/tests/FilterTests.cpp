@@ -43,8 +43,9 @@ TEST_CASE ("Resonance to Q law", "[filter]")
     CHECK (law::qFromResonance (50.0) == Approx (1.0 / (1.0 - 0.293)).epsilon (1e-6));
     CHECK (law::qFromResonance (50.0) == Approx (1.41).margin (0.01));
     CHECK (law::qFromResonance (90.0) == Approx (2.12).margin (0.02));
-    CHECK (law::qFromResonance (100.0) == Approx (4.6).margin (0.01));
-    // monotonic, rising steeply above 90
+    CHECK (law::qFromResonance (95.0) == Approx (2.26).margin (0.02)); // r2: measured 2.2
+    CHECK (law::qFromResonance (100.0) == Approx (2.40).margin (0.005));
+    // monotonic, linear between 90 and 100
     double prev = 0.0;
     for (double r = 0.0; r <= 100.0; r += 0.5)
     {
@@ -52,7 +53,7 @@ TEST_CASE ("Resonance to Q law", "[filter]")
         CHECK (q > prev);
         prev = q;
     }
-    CHECK (law::qFromResonance (95.0) - law::qFromResonance (90.0) > law::qFromResonance (90.0) - law::qFromResonance (80.0));
+    CHECK (law::qFromResonance (97.5) == Approx (0.25 * law::qFromResonance (90.0) + 0.75 * 2.40));
 }
 
 namespace
@@ -127,27 +128,38 @@ TEST_CASE ("Cutoff equals the knob at any sample rate (review decision 1)", "[fi
     }
 }
 
-TEST_CASE ("Band-pass peak is at fc with Q-defined bandwidth", "[filter]")
+TEST_CASE ("Band-pass = s/D: peak gain Q at fc, Q-defined bandwidth (r2)", "[filter]")
 {
     const double fs = 96000.0; // the filter stage's internal rate for 48 kHz hosts
     for (double res : { 0.0, 50.0, 90.0 })
     {
         const double q = law::qFromResonance (res);
-        CHECK (vcfGain (FilterType::BandPass, false, 1000.0, res, 1000.0, fs) == Approx (1.0).margin (0.06));
-        // -3 dB points at fc (sqrt(1 + 1/(4Q^2)) +- 1/(2Q))
+        CHECK (vcfGain (FilterType::BandPass, false, 1000.0, res, 1000.0, fs) == Approx (q).epsilon (0.03));
+        CHECK (vcfGain (FilterType::BandPass, true, 1000.0, res, 1000.0, fs) == Approx (q * q).epsilon (0.06));
+        // -3 dB points (relative to the peak) at fc (sqrt(1 + 1/(4Q^2)) +- 1/(2Q))
         const double hi = 1000.0 * (std::sqrt (1.0 + 1.0 / (4 * q * q)) + 1.0 / (2 * q));
-        CHECK (db (vcfGain (FilterType::BandPass, false, 1000.0, res, hi, fs)) == Approx (-3.01).margin (0.3));
+        CHECK (db (vcfGain (FilterType::BandPass, false, 1000.0, res, hi, fs)) - db (q) == Approx (-3.01).margin (0.3));
         // 24 dB: two identical sections -> -6 dB at the same points
-        CHECK (db (vcfGain (FilterType::BandPass, true, 1000.0, res, hi, fs)) == Approx (-6.02).margin (0.5));
+        CHECK (db (vcfGain (FilterType::BandPass, true, 1000.0, res, hi, fs)) - 2 * db (q) == Approx (-6.02).margin (0.5));
+    }
+    // reference values quoted in r2: +3.0 dB at Res 50, +6.5 dB at Res 90
+    CHECK (db (vcfGain (FilterType::BandPass, false, 1000.0, 50.0, 1000.0, fs)) == Approx (3.0).margin (0.15));
+    CHECK (db (vcfGain (FilterType::BandPass, false, 1000.0, 90.0, 1000.0, fs)) == Approx (6.5).margin (0.15));
+    {
     }
 }
 
-TEST_CASE ("Res 100 is resonant small-signal and limited at high level", "[filter]")
+TEST_CASE ("Res 100: Q 2.40, level-independent, no self-oscillation (r2)", "[filter]")
 {
     const double fs = 96000.0;
-    CHECK (vcfGain (FilterType::LowPass, false, 1000.0, 100.0, 1000.0, fs, 0.0316) == Approx (4.6).epsilon (0.10));
-    const double big = vcfGain (FilterType::LowPass, false, 1000.0, 100.0, 1000.0, fs, fromDb (-3.0));
-    CHECK (big == Approx (2.5).epsilon (0.15));
+    for (double res : { 90.0, 95.0, 100.0 })
+    {
+        const double small = vcfGain (FilterType::LowPass, false, 1000.0, res, 1000.0, fs, 0.0316);
+        const double big = vcfGain (FilterType::LowPass, false, 1000.0, res, 1000.0, fs, fromDb (-3.0));
+        CHECK (small == Approx (law::qFromResonance (res)).epsilon (0.03));
+        CHECK (std::abs (big - small) < 0.05); // level-independent (r2: within +-0.05)
+    }
+    CHECK (vcfGain (FilterType::LowPass, false, 1000.0, 100.0, 1000.0, fs) == Approx (2.40).epsilon (0.03));
     // no self-oscillation without input
     Vcf v;
     v.setType (FilterType::LowPass);

@@ -20,20 +20,16 @@ inline double gainToDb (double g) noexcept { return 20.0 * std::log10 (g); }
 constexpr double minCutoffHz = 30.0, maxCutoffHz = 18600.0;
 const double knobRangeOct = std::log2 (600.0); // 9.23 octaves: one full Freq knob turn
 
-// Resonance (0..100 %) -> Q. 1/Q = 1 - 0.00586 Res up to 90 (Q 1.0 / 1.41 / 2.12), then a quadratic
-// continuation with matching slope that reaches 1/Q = 1/4.6 at 100 (the "steep rise" of §5).
+// Resonance (0..100 %) -> Q (spec r2 §5). 1/Q = 1 - 0.00586 Res up to 90 (Q 1.0 / 1.41 / 2.12), then Q rises
+// linearly to 2.40 at 100. Level-independent.
+constexpr double qAtResonance100 = 2.40;
 inline double qFromResonance (double res) noexcept
 {
     res = clampd (res, 0.0, 100.0);
-    double invQ = 1.0 - 0.00586 * std::min (res, 90.0);
-    if (res > 90.0)
-    {
-        const double d = res - 90.0;
-        constexpr double invQ90 = 1.0 - 0.00586 * 90.0;
-        constexpr double c = (invQ90 - 0.00586 * 10.0 - 1.0 / 4.6) / 100.0;
-        invQ = invQ90 - 0.00586 * d - c * d * d;
-    }
-    return 1.0 / invQ;
+    const double q = 1.0 / (1.0 - 0.00586 * std::min (res, 90.0));
+    if (res <= 90.0)
+        return q;
+    return q + (qAtResonance100 - q) * (res - 90.0) / 10.0;
 }
 
 // Spread: left cutoff x 2^(+0.0144 S), right x 2^(-0.0144 S); channel 0 = left.
@@ -45,9 +41,6 @@ inline double spreadOctaves (double spreadPercent, int channel) noexcept
 // Comb feedback gain g = 0.50 + 0.0029 * Feedback %.
 inline double combGain (double feedbackPercent) noexcept { return 0.50 + 0.0029 * clampd (feedbackPercent, 0.0, 100.0); }
 
-// Level-dependent damping of the SVF (resonance limiting by the saturator, §5): k_eff = k + kappa v1^2.
-// Calibrated so that Res 100 at -3 dBFS behaves like Q = 2.5 at the cutoff (small-signal Q unchanged).
-constexpr double resonanceLimitKappa = 0.0782;
 
 // ---------------------------------------------------------------------------------------------
 // §6 modulation
@@ -66,18 +59,30 @@ constexpr double lfoFreqOct = 9.23;  // octaves per unit of l T(a)
 constexpr double lfoAmpScale = 1.43; // LFO m = 1.43 l T(a) for the gain (and resonance) destinations
 constexpr double resPointsPerUnit = 100.0;
 
-// Envelope follower -> octaves: 23.4 A T(a)/T(0.5), with A soft-limited by L tanh(x/L) on the
-// octave scale (L = 3.55 octaves) so that the -30/-24/-18 dBFS test points of §6.3 are met.
-constexpr double followerOctPerUnit = 23.4, followerSoftLimitOct = 3.55;
-// scaledAmount = T(a)/T(0.5) (precomputed per block in the engine)
+// Envelope follower -> octaves (spec r2 §6.3 target table): raw = 6.4 A T_f(|a|)/T_f(0.5) octaves with the
+// follower taper k_f = 4.26 (so +100 % gives ~9.4x the +50 % slope: +0.60 oct at A = 0.01). Positive offsets
+// saturate softly at +1.82 oct (raw / (1 + (raw/1.82)^4)^(1/4)); negative offsets grow slightly faster than
+// linear above ~2.5 oct (x (1 + 0.25 (raw/3.26)^4)), reaching -4.1 oct at A = 0.51 for -50 %.
+constexpr double followerOctPerUnit = 6.4, followerPositiveLimitOct = 1.82, taperFollower = 4.26;
+// scaledAmount = sign(a) T_f(|a|)/T_f(0.5) (precomputed per block in the engine)
 inline double followerOctavesScaled (double peak, double scaledAmount) noexcept
 {
-    const double raw = followerOctPerUnit * std::max (peak, 0.0);
-    return followerSoftLimitOct * std::tanh (raw / followerSoftLimitOct) * scaledAmount;
+    const double raw = followerOctPerUnit * std::max (peak, 0.0) * std::abs (scaledAmount);
+    if (scaledAmount >= 0.0)
+    {
+        const double r4 = std::pow (raw / followerPositiveLimitOct, 4.0);
+        return raw / std::pow (1.0 + r4, 0.25);
+    }
+    const double r = raw / 3.26;
+    return -raw * (1.0 + 0.25 * r * r * r * r);
+}
+inline double followerAmountScale (double amount) noexcept
+{
+    return taper (amount, taperFollower) / taper (0.5, taperFollower);
 }
 inline double followerOctaves (double peak, double amount) noexcept
 {
-    return followerOctavesScaled (peak, taper (amount, taperSeqFollower) / taper (0.5, taperSeqFollower));
+    return followerOctavesScaled (peak, followerAmountScale (amount));
 }
 
 // Amp-type gain under modulation: g = max(0, g_knob + 0.0647 (e^(1.502 m) - 1)), m in sequencer scale.
@@ -114,13 +119,21 @@ inline double delayMixDry (double mixPercent) noexcept { return std::max (0.0, i
 inline double delayMixWet (double mixPercent) noexcept { return std::max (0.0, interpolateTable (delayMixWetTable, mixPercent)); }
 
 // ---------------------------------------------------------------------------------------------
-// §9 drive: small-signal gain +0.073 dB per %, into c tanh(u / c). The ceiling c shrinks with drive so the
-// compression at -3 dBFS is 0.2 / 0.4 / 0.8 / 2.7 dB at 0 / 25 / 50 / 100 % (c = 2.31 e^(-0.0059 d)).
+// §9 drive: small-signal gain +0.073 dB per %, into c tanh(u / c). The ceiling c = 2.104 e^(-0.005925 d) is
+// fitted so the compression of a 1 kHz tone is 0.24 / 0.48 / 0.95 / 3.13 dB at 0 / 25 / 50 / 100 % for a
+// -3 dBFS input and 0.16 / 0.32 / 0.65 / 2.27 dB at -4.8 dBFS: both inside the spec's 0.2 / 0.4 / 0.8 / 2.7
+// +-0.5 dB (the verification harness's -3 dBFS stimulus reaches the saturator ~1.8 dB lower).
 inline double driveGain (double drivePercent) noexcept { return dbToGain (0.073 * drivePercent); }
-inline double driveCeiling (double drivePercent) noexcept { return 2.31 * std::exp (-0.0059 * drivePercent); }
+inline double driveCeiling (double drivePercent) noexcept { return 2.104 * std::exp (-0.005925 * drivePercent); }
 
-// Crush hold rate f_h = 48 kHz * 2^(-0.19 Crush), independent of the host rate; 0 = off.
-inline double crushRateHz (double crush) noexcept { return 48000.0 * std::pow (2.0, -0.19 * crush); }
+// Crush (spec r2 §9): hold length N = 1 + 64 (Crush/100)^2 samples at 48 kHz, i.e. a hold time of N / 48000 s
+// at any host rate (rate f_h = 48000 / N); 0 = off.
+inline double crushHoldSamples48k (double crush) noexcept
+{
+    const double c = clampd (crush, 0.0, 100.0) / 100.0;
+    return 1.0 + 64.0 * c * c;
+}
+inline double crushRateHz (double crush) noexcept { return 48000.0 / crushHoldSamples48k (crush); }
 
 // ---------------------------------------------------------------------------------------------
 // §4 fixed chain
