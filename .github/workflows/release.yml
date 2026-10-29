@@ -1,0 +1,96 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: 0.1.${{ github.run_number }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-x64
+          - os: ubuntu-22.04
+            platform: linux-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev \
+            libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev \
+            libxrandr-dev libxrender-dev libglu1-mesa-dev
+
+      - name: Cache dependency downloads
+        uses: actions/cache@v4
+        with:
+          path: .deps
+          key: deps-${{ matrix.os }}-${{ hashFiles('CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      - name: Set up MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DFETCHCONTENT_BASE_DIR="${{ github.workspace }}/.deps"
+
+      - name: Build
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Unit tests
+        shell: bash
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        shell: bash
+        run: python ci/package.py build "$VERSION" "${{ matrix.platform }}" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugins-${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plugins-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "v$VERSION" dist/*.zip \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Craft stereo imager v$VERSION" \
+            --notes "Automated build of ${{ github.sha }}. Craft Shuffler, Craft Imager and Craft MS Matrix as VST3 and CLAP for Windows x64 and Linux x64. Licensed under AGPL-3.0 (see LICENSE and THIRD_PARTY.md)." \
+            --latest

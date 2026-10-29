@@ -5,6 +5,82 @@ Tick a plugin off by changing `[ ]` to `[x]` in the **Done** column.
 
 **Progress:** 0 / 250
 
+## Implementation queue
+
+The plugins from the original offline install, ordered by estimated ease of a clean-room reimplementation
+(see [docs/process.md](docs/process.md)). We work top to bottom, one plugin at a time. Ease is judged by how
+much of the behaviour can be pinned down by black-box measurement: static/linear processing is easiest,
+then deterministic time-varying effects, then dynamics, then analog-modelled nonlinearities, and last
+adaptive or analysis/resynthesis processors. Reimplementations ship under our own names, never the vendor's
+or third-party trademarks (SSL, CLA, Abbey Road, …).
+
+| # | Done | Plugin | Kind | Why this rank |
+|---:|:---:|---|---|---|
+| 1 | [ ] | S1 Stereo Imager | Stereo matrix + shuffler | Linear, time-invariant; fully measured, spec r1 approved, build in progress |
+| 2 | [ ] | ModFX Autopan | Modulation | Simple LFO gain/pan modulation |
+| 3 | [ ] | ModFX Delay | Delay | Basic delay/feedback; deterministic |
+| 4 | [ ] | ModFX Chorus | Modulation | Short modulated delay lines; deterministic |
+| 5 | [ ] | MetaFlanger | Modulation | Flanger with LFO/feedback; deterministic, few controls |
+| 6 | [ ] | H-Delay | Delay | Delay + filters + modulation; deterministic, more controls |
+| 7 | [ ] | MannyM-Delay | Delay | Delay with filtering/ducking; builds on #3/#6 |
+| 8 | [ ] | Doubler | Pitch/delay | Detuned delayed voices; small pitch-shift component |
+| 9 | [ ] | MetaFilter | Filter | Resonant filter with LFO/envelope modulation |
+| 10 | [ ] | ModFX Limiter | Dynamics | Simple limiter, few controls |
+| 11 | [ ] | L1 | Dynamics | Look-ahead brickwall limiter; measurable with steps/bursts |
+| 12 | [ ] | ModFX Compressor | Dynamics | Basic compressor, few controls |
+| 13 | [ ] | DeEsser | Dynamics | Band-limited sidechain compression |
+| 14 | [ ] | RVox | Dynamics | One-knob compressor/gate/limiter chain |
+| 15 | [ ] | C1 | Dynamics | Compressor/gate/expander with sidechain EQ; many modes |
+| 16 | [ ] | L2 | Dynamics | Limiter with adaptive release and dither |
+| 17 | [ ] | SSL E-Channel | Channel strip | EQ curves measurable; dynamics section adds work |
+| 18 | [ ] | SSL G-Channel | Channel strip | Same family as #17 |
+| 19 | [ ] | C4 | Multiband dynamics | Crossover + 4 compressors; many interacting parameters |
+| 20 | [ ] | Vocal Rider | Gain riding | Level-detection/ride behaviour needs long-signal measurement |
+| 21 | [ ] | ModFX Distortion | Saturation | Static nonlinearity, but must model the curve |
+| 22 | [ ] | MannyM-Distortion | Saturation | Multi-stage distortion; nonlinear |
+| 23 | [ ] | H-Comp | Dynamics | Analog-style compressor with punch/hold; nonlinear |
+| 24 | [ ] | CLA-76 | Analog model | FET compressor model; level- and frequency-dependent nonlinearity |
+| 25 | [ ] | CLA-2A | Analog model | Opto compressor model; program-dependent release |
+| 26 | [ ] | CLA-3A | Analog model | Opto compressor/limiter model |
+| 27 | [ ] | Vitamin | Multiband enhancer | Multiband harmonic processing |
+| 28 | [ ] | L3 Multi | Multiband limiter | Multiband peak limiting with adaptive behaviour |
+| 29 | [ ] | L3 Ultra | Multiband limiter | Same family as #28 |
+| 30 | [ ] | L3-LL Multi | Multiband limiter | Low-latency variant of #28 |
+| 31 | [ ] | L3-LL Ultra | Multiband limiter | Low-latency variant of #29 |
+| 32 | [ ] | ModFX Reverb | Reverb | Simple algorithmic reverb; hard to match exactly |
+| 33 | [ ] | RVerb | Reverb | Algorithmic reverb, many parameters |
+| 34 | [ ] | H-Reverb | Reverb | Long FIR-based reverb with dynamics/modulation |
+| 35 | [ ] | MannyM-Reverb | Reverb | Preset-style reverb with extra processing |
+| 36 | [ ] | J37 | Analog model | Tape machine model (saturation, wow/flutter, noise) |
+| 37 | [ ] | KingsMic | Analog model | Microphone/preamp modelling |
+| 38 | [ ] | CLA Vocals | Composite | Multi-effect chain (EQ, comp, reverb, delay, pitch) |
+| 39 | [ ] | NS1 | Adaptive | Adaptive noise suppression; behaviour depends on learned noise profile |
+| 40 | [ ] | Vocal Bender | Pitch/formant | Pitch and formant shifting |
+| 41 | [ ] | Waves Tune Real-Time | Pitch correction | Real-time pitch detection and correction |
+| 42 | [ ] | OVox | Resynthesis | Vocal resynthesis/vocoder engine; hardest to specify |
+
+The ModFX folder contains seven small plugins (Autopan, Chorus, Compressor, Delay, Distortion, Limiter, Reverb),
+so the original install is 42 plugins in total, counting S1 as one bundle.
+
+## Craft stereo imager (first implementation)
+
+The first clean-room implementation, built only from [spec/r1](spec/r1/SPEC.md): **Craft Shuffler**,
+**Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
+phase-compensated low-frequency shuffler, an original vector-drawn GUI, zero latency. Formats: VST3, CLAP and
+Standalone for Windows x64 and Linux x64. Licensed AGPL-3.0 (JUCE); see [THIRD_PARTY.md](THIRD_PARTY.md).
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+Plug-ins land in `build/<Target>_artefacts/Release/`. Every push to `main` publishes a GitHub release with
+zipped VST3/CLAP bundles per platform. Architecture, spec mapping, tests, assumptions and platform build notes:
+[IMPLEMENTATION_NOTES.md](IMPLEMENTATION_NOTES.md).
+
+## Full catalogue
+
 | Done | Plugin | Category |
 |:---:|---|---|
 | [ ] | [Abbey Road Chambers](https://www.waves.com/plugins/abbey-road-chambers) | Abbey Road |
