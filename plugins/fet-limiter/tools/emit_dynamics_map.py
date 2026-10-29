@@ -26,8 +26,8 @@ out.append("""// Craft FET Limiter - gain-cell parameters per Revision / Ratio /
 //
 // The parameters of dsp/Dynamics.h were fitted (least squares, tools/fit_dynamics.py) to every configuration of
 // tables/timing.csv and tables/release_trajectories.csv:
-//   - attack group (tauAttack, beta, tauC) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
-//   - release group (tauHCharge, tauKCharge, tau1, tau2, tau3, offset) for revision A ratio 4 at Release 1 .. 7,
+//   - attack group (tauAttack, beta, tauC; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
+//   - release group (tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel) for revision A ratio 4 at Release 1 .. 7,
 //   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), and for revision B
 //     (ratio 4) at (1, 1), (3, 4), (7, 7).
 // Between anchors parameters are interpolated linearly in the setting (times geometrically, i.e. linearly in log,
@@ -49,9 +49,10 @@ namespace craft::fet_limiter::dsp
 
 namespace dynmap
 {
-    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset
-    using Vec = std::array<double, 9>;
-    inline constexpr bool isLog[9] = { true, false, true, true, true, true, true, true, false };
+    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset, accel, depthExp
+    inline constexpr int numParams = 11;
+    using Vec = std::array<double, numParams>;
+    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, false, false, false };
 """)
 out.append("    inline constexpr Vec attackA4[4] = { // Attack 1, 3, 5, 7 (attack group used)")
 out += [f"        Vec {vec(v)}," for v in attack_a4]
@@ -78,9 +79,9 @@ out.append("""
         const double r = std::clamp (release, 1.0, 7.0);
         int j = std::min (5, int (r - 1.0));
         const double tr = r - 1.0 - double (j);
-        for (int k = 0; k < 9; ++k)
+        for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3;
+            const bool att = k < 3 || k == 10;
             const double x0 = att ? attackA4[i][size_t (k)] : releaseA4[j][size_t (k)];
             const double x1 = att ? attackA4[i + 1][size_t (k)] : releaseA4[j + 1][size_t (k)];
             const double t = att ? ta : tr;
@@ -94,7 +95,7 @@ out.append("""
     {
         const Vec b = baseA4 (attack, release);
         Vec m {};
-        for (int k = 0; k < 9; ++k)
+        for (int k = 0; k < numParams; ++k)
             m[size_t (k)] = isLog[k] ? std::log (fit[size_t (k)] / b[size_t (k)]) : fit[size_t (k)] - b[size_t (k)];
         return m;
     }
@@ -111,9 +112,9 @@ out.append("""
     Vec interpolate (const std::array<Anchor, N>& anchors, double attack, double release) noexcept
     {
         Vec m {};
-        for (int k = 0; k < 9; ++k)
+        for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3;
+            const bool att = k < 3 || k == 10;
             const double s = att ? attack : release;
             auto key = [att] (const Anchor& an) { return att ? an.attack : an.release; };
             double value;
@@ -170,7 +171,7 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
         case Ratio::R12:
         {
             const Vec a = interpolate (M.r8, attack, release), b = interpolate (M.r20, attack, release);
-            for (size_t k = 0; k < 9; ++k)
+            for (size_t k = 0; k < size_t (numParams); ++k)
                 mod[k] = 0.5 * (a[k] + b[k]);
             break;
         }
@@ -179,10 +180,10 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
     if (rev == Revision::B)
     {
         const Vec b = interpolate (M.revB, attack, release);
-        for (size_t k = 0; k < 9; ++k)
+        for (size_t k = 0; k < size_t (numParams); ++k)
             mod[k] += b[k];
     }
-    for (size_t k = 0; k < 9; ++k)
+    for (size_t k = 0; k < size_t (numParams); ++k)
         v[k] = isLog[k] ? v[k] * std::exp (mod[k]) : v[k] + mod[k];
 
     DynParams p;
@@ -195,6 +196,8 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
     p.tau2Ms = v[6];
     p.tau3Ms = v[7];
     p.releaseOffsetDb = std::max (0.0, v[8]);
+    p.accel = std::max (0.0, v[9]);
+    p.depthExp = v[10];
     return p;
 }
 

@@ -16,7 +16,7 @@ static double interp (const double* xs, const double* ys, int n, double x)
     return ys[i] + t * (ys[i + 1] - ys[i]);
 }
 
-// p: tauAttack, beta, tauC, tauHCharge, tauKCharge, tau1, tau2, tau3, offset
+// p: tauAttack, beta, tauC, tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel, depthExp
 // Simulates: preMs at xBurst-30, burstMs at xBurst, postMs at xBurst-30 (peak envelope of a carrier). Writes the
 // gain reduction (dB, >= 0) for every sample from the burst start on (burst + post) into out.
 extern "C" int fet_sim (const double* p, double fs, const double* sx, const double* sr, int ns, double xBurst,
@@ -24,7 +24,7 @@ extern "C" int fet_sim (const double* p, double fs, const double* sx, const doub
 {
     DynParams d;
     d.tauAttackMs = p[0]; d.beta = p[1]; d.tauCMs = p[2]; d.tauHChargeMs = p[3]; d.tauKChargeMs = p[4];
-    d.tau1Ms = p[5]; d.tau2Ms = p[6]; d.tau3Ms = p[7]; d.releaseOffsetDb = p[8];
+    d.tau1Ms = p[5]; d.tau2Ms = p[6]; d.tau3Ms = p[7]; d.releaseOffsetDb = p[8]; d.accel = p[9]; d.depthExp = p[10];
     GainCell cell;
     cell.prepare (fs);
     cell.setParams (d);

@@ -32,8 +32,8 @@ FetLimiterEditor::FetLimiterEditor (FetLimiterProcessor& p)
     : AudioProcessorEditor (p), processor (p),
       input (param (p, ids::input), "Input", true, levelScale()),
       output (param (p, ids::output), "Output", true, levelScale()),
-      attack (param (p, ids::attack), "Attack", false, timeScale(), "slow  <  >  fast"),
-      release (param (p, ids::release), "Release", false, timeScale(), "slow  <  >  fast"),
+      attack (param (p, ids::attack), "Attack", false, timeScale(), "slow  <   >  fast"),
+      release (param (p, ids::release), "Release", false, timeScale(), "slow  <   >  fast"),
       mix (param (p, ids::mix), "Mix", false),
       trim (param (p, ids::trim), "Trim", false),
       ratio (param (p, ids::ratio), { "20", "12", "8", "4", "All" }, true),
@@ -182,9 +182,9 @@ void FetLimiterEditor::resized()
     bottomArea = r.removeFromBottom (86);
     r.removeFromBottom (10);
 
-    gainArea = r.removeFromLeft (340);
+    gainArea = r.removeFromLeft (320);
     r.removeFromLeft (10);
-    meterArea = r.removeFromRight (290);
+    meterArea = r.removeFromRight (330);
     r.removeFromRight (10);
     dynArea = r;
 
@@ -200,13 +200,13 @@ void FetLimiterEditor::resized()
         auto col = a.removeFromRight (64);
         ratio.setBounds (col.withTrimmedTop (22).withTrimmedBottom (4));
         a.removeFromRight (6);
-        attack.setBounds (a.removeFromLeft (a.getWidth() / 2).withTrimmedTop (16).withTrimmedBottom (16));
-        release.setBounds (a.withTrimmedTop (16).withTrimmedBottom (16));
+        attack.setBounds (a.removeFromLeft (a.getWidth() / 2).withTrimmedTop (8));
+        release.setBounds (a.withTrimmedTop (8));
     }
     // Meter: needle meter + GR / In / Out column + Comp Off
     {
         auto a = meterArea.reduced (10).withTrimmedTop (22);
-        auto col = a.removeFromRight (76);
+        auto col = a.removeFromRight (80);
         compOff.setBounds (col.removeFromBottom (30));
         col.removeFromBottom (8);
         meterMode.setBounds (col);

@@ -142,7 +142,7 @@ public:
                 w = filters[size_t (c)].process (w) * gOut;
                 if (analogOn)
                     w += noise.sample (c);
-                const double y = tr * (mx * w + (1.0 - mx) * dry[c]);
+                const double y = protectOutput (tr * (mx * w + (1.0 - mx) * dry[c]));
                 outPeak = std::max (outPeak, std::abs (y));
                 channels[c][i] = Sample (y);
             }

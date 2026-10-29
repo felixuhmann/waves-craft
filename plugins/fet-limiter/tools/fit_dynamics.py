@@ -22,12 +22,12 @@ from scipy.optimize import least_squares
 
 import fetfit_common as fc
 
-NAMES = ["tauA", "beta", "tauC", "tauHc", "tauKc", "tau1", "tau2", "tau3", "offset"]
+NAMES = ["tauA", "beta", "tauC", "tauHc", "tauKc", "tau1", "tau2", "tau3", "offset", "accel", "depthExp"]
 ATTACK = [0, 1, 2]
-RELEASE = [3, 4, 5, 6, 7, 8]
-LOG = [True, False, True, True, True, True, True, True, False]
-LO = [0.01, -0.6, 0.3, 0.3, 1.0, 3.0, 3.0, 3.0, 0.0]
-HI = [20.0, 0.6, 300.0, 1000.0, 5000.0, 20000.0, 20000.0, 20000.0, 40.0]
+RELEASE = [3, 4, 5, 6, 7, 8, 9]
+LOG = [True, False, True, True, True, True, True, True, False, False, False]
+LO = [0.01, -0.6, 0.3, 0.3, 1.0, 3.0, 3.0, 3.0, 0.0, 0.0, 0.0]
+HI = [20.0, 0.6, 300.0, 1000.0, 5000.0, 20000.0, 20000.0, 20000.0, 40.0, 10.0, 4.0]
 
 
 def to_t(p):
@@ -92,16 +92,22 @@ def residuals_for(p, lib, name, times, traj_tab):
     return res
 
 
-def fit(lib, name, base, free):
+def fit(lib, name, base, free, init=None):
     times, traj_tab = fc.load_traj()
     base = np.array(base, float)
+    if init is not None:  # warm start of the free parameters
+        base = base.copy()
+        base[free] = np.array(init, float)[free]
     tb = to_t(base)
     lo, hi = to_t(LO)[free], to_t(HI)[free]
 
     def res(tf):
         t = tb.copy()
         t[free] = tf
-        return np.array(residuals_for(from_t(t), lib, name, times, traj_tab))
+        r = []
+        for n in name.split("+"):
+            r += residuals_for(from_t(t), lib, n, times, traj_tab)
+        return np.array(r)
 
     best = None
     rng = np.random.default_rng(7)
@@ -119,6 +125,8 @@ def fit(lib, name, base, free):
 
 
 def report(lib, name, p):
+    if "+" in name:
+        return "\n".join(report(lib, n, p) for n in name.split("+"))
     times, traj_tab = fc.load_traj()
     rows = config_rows(name)
     rev, ratio = rows[0]["revision"], rows[0]["ratio"]
@@ -138,7 +146,10 @@ def report(lib, name, p):
 
 def _job(args):
     lib, name, base, free = args
-    p = fit(lib, name, base, free)
+    warm = WARM.get(name)
+    if warm is not None:
+        warm = list(warm[:10]) + [base[10]]
+    p = fit(lib, name, base, free, warm)
     return name, list(p), report(lib, name, p)
 
 
@@ -149,21 +160,28 @@ def run_stage(pool, lib, jobs):
     return {n: p for n, p, t in results}
 
 
+WARM = {}
+if len(sys.argv) > 2:  # optional warm start: output file of a previous run (JSON on its last line)
+    WARM = json.loads(open(sys.argv[2]).read().strip().splitlines()[-1])
+    WARM = {k: (v + [0.3 if "All" in k else 0.0, 1.5])[:11] for k, v in WARM.items()}
+    WARM["rel_4_a3+lvl_in-24_a3_r4"] = WARM["rel_4_a3"]
+
 if __name__ == "__main__":
     lib = sys.argv[1]
-    ALL = list(range(9))
-    init = [0.6, 0.15, 15.0, 15.0, 40.0, 700.0, 600.0, 900.0, 1.0]
+    ALL = list(range(11))
+    NOEXP = list(range(10))  # depthExp is global: fitted in stage 1 only
+    init = WARM.get("rel_4_a3", [0.6, 0.15, 15.0, 15.0, 40.0, 700.0, 600.0, 900.0, 1.0, 0.0, 1.5])
     params = {}
     with multiprocessing.Pool(16) as pool:
-        params.update(run_stage(pool, lib, [("rel_4_a3", init, ALL)]))
-        base = params["rel_4_a3"]
+        params.update(run_stage(pool, lib, [("rel_4_a3+lvl_in-24_a3_r4", init, ALL)]))
+        params["rel_4_a3"] = base = params.pop("rel_4_a3+lvl_in-24_a3_r4")
         stage2 = [(f"att_{a}_r4", base, ATTACK) for a in (1, 5, 7)]
         stage2 += [(f"rel_{r}_a3", base, RELEASE) for r in (1, 2, 3, 5, 6, 7)]
-        stage2 += [(n, base, ALL) for n in ("rat_8_a3_r4", "rat_20_a3_r4", "rat_All_a3_r4", "revB_a3_r4")]
+        stage2 += [(n, base, NOEXP) for n in ("rat_8_a3_r4", "rat_20_a3_r4", "rat_All_a3_r4", "revB_a3_r4")]
         params.update(run_stage(pool, lib, stage2))
         a7 = params["att_7_r4"][:3] + params["rel_7_a3"][3:]
         a1 = params["att_1_r4"][:3] + params["rel_1_a3"][3:]
-        stage3 = [(n, a7, ALL) for n in ("rat_8_a7_r7", "rat_20_a7_r7", "rat_All_a7_r7", "revB_a7_r7")]
-        stage3 += [("revB_a1_r1", a1, ALL)]
+        stage3 = [(n, a7, NOEXP) for n in ("rat_8_a7_r7", "rat_20_a7_r7", "rat_All_a7_r7", "revB_a7_r7")]
+        stage3 += [("revB_a1_r1", a1, NOEXP)]
         params.update(run_stage(pool, lib, stage3))
     print(json.dumps(params))

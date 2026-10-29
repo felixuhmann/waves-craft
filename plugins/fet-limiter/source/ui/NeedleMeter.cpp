@@ -18,9 +18,9 @@ constexpr float levelReferenceDbfs = -18.0f;
 
 float NeedleMeter::scaleToNorm (float db)
 {
-    // slightly compressed towards the bottom, like a classic moving-coil scale: sqrt-ish law on the dB range
-    const float t = juce::jlimit (0.0f, 1.0f, (db - scaleMin) / (scaleMax - scaleMin));
-    return std::pow (t, 1.6f);
+    // moving-coil law: deflection proportional to the linear amplitude, so the scale spreads towards the top
+    const float lo = std::pow (10.0f, scaleMin / 20.0f), hi = std::pow (10.0f, scaleMax / 20.0f);
+    return juce::jlimit (0.0f, 1.0f, (std::pow (10.0f, db / 20.0f) - lo) / (hi - lo));
 }
 
 void NeedleMeter::setMode (Mode m)
@@ -65,8 +65,11 @@ void NeedleMeter::paint (juce::Graphics& g)
     g.setGradientFill (grad);
     g.fillRoundedRectangle (face, 4.0f);
 
-    const juce::Point<float> pivot (face.getCentreX(), face.getBottom() + face.getHeight() * 0.32f);
-    const float radius = face.getHeight() * 1.05f;
+    // geometry: the scale arc spans the face width with room for the labels; the pivot sits below the face
+    const float coverH = face.getHeight() * 0.16f;
+    const float radius = std::min ((face.getWidth() * 0.5f - 18.0f) / std::sin (sweep) / 0.99f,
+                                   (face.getHeight() - coverH - 26.0f) / (1.0f - std::cos (sweep) * 0.62f));
+    const juce::Point<float> pivot (face.getCentreX(), face.getY() + 24.0f + radius);
     auto angleFor = [] (float db) { return -sweep + 2.0f * sweep * scaleToNorm (db); };
 
     // scale arc: normal range in dim text colour, the range above 0 in the accent
@@ -95,7 +98,7 @@ void NeedleMeter::paint (juce::Graphics& g)
     g.setColour (colours::textDim);
     g.setFont (juce::Font (uiFont (10.0f, true)));
     g.drawText (mode == Mode::GainReduction ? "GAIN REDUCTION dB" : "LEVEL dB (0 = -18 dBFS)",
-                face.withTrimmedTop (face.getHeight() * 0.52f).withHeight (14.0f), juce::Justification::centred);
+                face.withTop (face.getBottom() - coverH - 18.0f).withHeight (14.0f), juce::Justification::centred);
 
     // needle (clipped to the face)
     {
@@ -110,9 +113,9 @@ void NeedleMeter::paint (juce::Graphics& g)
     }
     // pivot cover
     g.setColour (colours::panel);
-    g.fillRect (face.withTop (face.getBottom() - face.getHeight() * 0.16f));
+    g.fillRect (face.withTop (face.getBottom() - coverH));
     g.setColour (colours::panelEdge);
-    g.drawLine (face.getX(), face.getBottom() - face.getHeight() * 0.16f, face.getRight(), face.getBottom() - face.getHeight() * 0.16f, 1.0f);
+    g.drawLine (face.getX(), face.getBottom() - coverH, face.getRight(), face.getBottom() - coverH, 1.0f);
 
     // over LED (top-right corner)
     const auto led = juce::Rectangle<float> (9.0f, 9.0f).withCentre ({ face.getRight() - 12.0f, face.getY() + 12.0f });

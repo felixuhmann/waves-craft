@@ -54,7 +54,7 @@ void Knob::refreshText()
 juce::Rectangle<float> Knob::dialArea() const
 {
     auto r = getLocalBounds().toFloat();
-    r.removeFromTop (18.0f);    // title
+    r.removeFromTop (caption.isNotEmpty() ? 30.0f : 18.0f); // title (+ caption)
     r.removeFromBottom (22.0f); // readout
     if (! scale.empty())
         r = r.reduced (large ? 22.0f : 16.0f, large ? 14.0f : 10.0f);
@@ -150,8 +150,7 @@ void Knob::paint (juce::Graphics& g)
     {
         g.setColour (colours::textDim);
         g.setFont (juce::Font (uiFont (10.0f)));
-        g.drawText (caption, juce::Rectangle<float> (area.getX() - 20.0f, area.getBottom() - 4.0f, area.getWidth() + 40.0f, 12.0f),
-                    juce::Justification::centred);
+        g.drawText (caption, getLocalBounds().withY (16).withHeight (12), juce::Justification::centred);
     }
 }
 

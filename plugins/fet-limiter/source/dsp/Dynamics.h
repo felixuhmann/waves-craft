@@ -7,9 +7,13 @@
 //   C  level memory     follows T with tauC (one pole); the attack aims at Teff = T - beta (T - C), so a level
 //                       step first settles at (1 - beta) T and then creeps to T (beta > 0), or overshoots and
 //                       settles back (beta < 0, the "feedback" overshoot of spec 6.1)
-//   F  output state     attacks towards Teff with tauAttack, releases towards max(H, Teff) with tau1
+//   F  output state     attacks towards Teff with tauAttack * (21 dB / T)^depthExp (feedback-style: a deeper
+//                       step attacks faster, light compression slower; factor limited to 0.25 .. 30), releases
+//                       towards max(H, Teff) with tau1
 //   H  intermediate     charges towards T with tauHCharge, releases towards max(K, T) with tau2
-//   K  program memory   charges towards T with tauKCharge, releases towards T - offset with tau3 (floored at T)
+//   K  program memory   charges towards T with tauKCharge, releases towards T - offset with tau3 (floored at T);
+//                       with accel > 0 the release speeds up as K falls below its recent peak M (a slowly
+//                       decaying peak hold of K), giving the accelerating, nearly linear recovery of the All ratio
 //
 //   GR = F  (dB reduction)
 //
@@ -38,6 +42,8 @@ struct DynParams
     double tau2Ms = 600.0;
     double tau3Ms = 600.0;
     double releaseOffsetDb = 0.0;
+    double accel = 0.0;
+    double depthExp = 0.0;
 };
 
 // Coefficient of a one-pole smoother with time constant tau (ms) at sample rate fs.
@@ -98,6 +104,9 @@ private:
 class GainCell
 {
 public:
+    static constexpr double peakMemoryMs = 3000.0;
+    static constexpr double referenceDepthDb = 21.0;
+
     void prepare (double sampleRate) noexcept
     {
         fs = sampleRate;
@@ -105,7 +114,7 @@ public:
         reset();
     }
 
-    void reset() noexcept { c = f = h = k = 0.0; }
+    void reset() noexcept { c = f = h = k = m = 0.0; }
 
     void setParams (const DynParams& p) noexcept
     {
@@ -121,11 +130,15 @@ public:
         c += (target - c) * cC;
         const double teff = target - params.beta * (target - c);
 
-        // K: program memory
+        // K: program memory (M: slowly decaying peak hold of K)
         if (target > k)
             k += (target - k) * cKc;
         else
-            k = std::max (target, k + (target - params.releaseOffsetDb - k) * c3);
+            k = std::max (target, k + (target - params.releaseOffsetDb - k - params.accel * (m - k)) * c3);
+        if (k >= m)
+            m = k;
+        else
+            m += (k - m) * cM;
 
         // H: intermediate stage
         if (target > h)
@@ -134,6 +147,12 @@ public:
             h += (std::max (k, target) - h) * c2;
 
         // F: output stage
+        if (target != lastTarget)
+        {
+            lastTarget = target;
+            const double factor = std::clamp (std::pow (referenceDepthDb / std::max (target, 0.01), params.depthExp), 0.25, 30.0);
+            cA = onePoleCoeff (params.tauAttackMs * factor, fs);
+        }
         if (teff > f)
             f += (teff - f) * cA;
         else
@@ -147,19 +166,20 @@ public:
 private:
     void updateCoefficients() noexcept
     {
-        cA = onePoleCoeff (params.tauAttackMs, fs);
+        lastTarget = -1.0; // attack coefficient follows the target (see process)
         cC = onePoleCoeff (params.tauCMs, fs);
         cHc = onePoleCoeff (params.tauHChargeMs, fs);
         cKc = onePoleCoeff (params.tauKChargeMs, fs);
         c1 = onePoleCoeff (params.tau1Ms, fs);
         c2 = onePoleCoeff (params.tau2Ms, fs);
         c3 = onePoleCoeff (params.tau3Ms, fs);
+        cM = onePoleCoeff (peakMemoryMs, fs);
     }
 
     DynParams params;
     double fs = 48000.0;
-    double cA = 1.0, cC = 1.0, cHc = 1.0, cKc = 1.0, c1 = 1.0, c2 = 1.0, c3 = 1.0;
-    double c = 0.0, f = 0.0, h = 0.0, k = 0.0;
+    double cM = 1.0, cA = 1.0, cC = 1.0, cHc = 1.0, cKc = 1.0, c1 = 1.0, c2 = 1.0, c3 = 1.0;
+    double c = 0.0, f = 0.0, h = 0.0, k = 0.0, m = 0.0, lastTarget = -1.0;
 };
 
 } // namespace craft::fet_limiter::dsp
