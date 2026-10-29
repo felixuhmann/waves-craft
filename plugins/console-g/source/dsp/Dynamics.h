@@ -186,6 +186,15 @@ public:
     }
 
     double onsetDb (double T) const noexcept { return interpLinear (ts, onset, T); }
+    // Onset for a given range: the slope region of ranges 20 / 30 lies slightly below the range-40 line
+    // (exp_static: about 0.5 / 0.2 dB less attenuation); offsets fitted per threshold, linear in range, clamped.
+    double onsetDb (double T, double range) const noexcept
+    {
+        const double base = onsetDb (T);
+        const double o20 = interpLinear (ts, shift20, T), o30 = interpLinear (ts, shift30, T);
+        static const std::vector<double> rs { 20.0, 30.0, 40.0 };
+        return base + interpLinear (rs, std::vector<double> { o20, o30, 0.0 }, range);
+    }
     double slope (double T) const noexcept { return interpLinear (ts, slopes, T); }
     double gateOpenDb (double T) const noexcept { return interpLinear (gateTs, gateOpen, T); }
     double gateCloseDb (double T) const noexcept { return interpLinear (gateTs, gateClose, T); }
@@ -249,6 +258,26 @@ private:
             ts.push_back (T);
             slopes.push_back (sl.first);
             onset.push_back (sl.second);
+            // onset shift of ranges 20 / 30 with the same slope: mean residual over their settled slope points
+            for (double range : { 20.0, 30.0 })
+            {
+                double acc = 0.0;
+                int n = 0;
+                for (const auto& row : rows)
+                {
+                    if (row.mode != "expander" || row.dir != "down" || row.T != T || std::abs (row.range - range) > 1e-9)
+                        continue;
+                    const double floorAtt = 1.375 * range - 6.1;
+                    for (size_t k = 0; k < levels.size(); ++k)
+                        if (row.g[k] < -1.0 && -row.g[k] < floorAtt - 4.0)
+                        {
+                            // g = s (L - Lth')  ->  Lth' = L - g / s
+                            acc += (levels[k] - row.g[k] / sl.first) - sl.second;
+                            ++n;
+                        }
+                }
+                (range == 20.0 ? shift20 : shift30).push_back (n > 0 ? acc / n : 0.0);
+            }
         }
 
         // floors: settled values (down staircase at -54 dBFS, highest threshold)
@@ -308,10 +337,10 @@ private:
             gateClose.push_back (closeAt.count (T) ? closeAt[T] : o - 3.0);
         }
         gateFloor20 = -gateFloor20;
-        gateOffsetDb = 2.0; // attenuation starts once the closing state passes this depth (post-silence step, spec 9.2)
+        gateOffsetDb = offsetDb; // same depth offset as the expander (fits the gate post-silence steps, spec 9.2)
     }
 
-    std::vector<double> ts, slopes, onset, gateTs, gateOpen, gateClose;
+    std::vector<double> ts, slopes, onset, shift20, shift30, gateTs, gateOpen, gateClose;
     double depthPerDb = 1.375, offsetDb = 6.1;
     double gateFloor20 = 0.0;
     static constexpr double gateFloor40 = 52.7; // spec 6: gate floor -52.7 dB at range 40
