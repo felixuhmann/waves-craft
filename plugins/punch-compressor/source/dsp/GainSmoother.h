@@ -27,7 +27,7 @@ struct ReleaseLaw
 {
     static constexpr double K = 2.0;
     // fast stage / charge time constants: tf = min(f0 (Rel/100)^pf, kf Rel), tc = c0 (Rel/100)^pc  [ms]
-    static constexpr double fastF0 = 5.0, fastPf = 0.0, fastKf = 0.3, chargeC0 = 50.0, chargePc = 0.0;
+    static constexpr double fastF0 = 7.008, fastPf = 0.748, fastKf = 0.224, chargeC0 = 79.85, chargePc = 0.0;
     // anchors (ms) and fitted gamma / a
     static constexpr std::array<double, 8> relMs { 3.0, 30.0, 100.0, 250.0, 300.0, 500.0, 1000.0, 3000.0 };
     static constexpr std::array<double, 8> gamma { 0.787, 1.009, 0.817, 0.346, 0.452, 0.432, 0.573, 1.113 };
