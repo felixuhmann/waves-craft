@@ -29,6 +29,13 @@ if (CRAFT_BUILD_PLUGINS)
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable (JUCE)
 
+    # CLAP wrapper for JUCE (MIT). Uses git submodules (clap, clap-helpers), so it is pinned by commit.
+    FetchContent_Declare (clap-juce-extensions
+        GIT_REPOSITORY https://github.com/free-audio/clap-juce-extensions.git
+        GIT_TAG 7adee3a1bd4684d4caa5601100e364abccff4b4d
+        GIT_SUBMODULES_RECURSE TRUE)
+    FetchContent_MakeAvailable (clap-juce-extensions)
+
     set (CRAFT_PLUGIN_SOURCES
         source/plugin/PluginProcessor.cpp
         source/plugin/PluginProcessor.h
@@ -45,8 +52,8 @@ if (CRAFT_BUILD_PLUGINS)
         source/ui/Meters.cpp
         source/ui/Meters.h)
 
-    # craft_add_variant (<target> <product name> <plugin code> <variant index>)
-    function (craft_add_variant target productName pluginCode variantIndex)
+    # craft_add_variant (<target> <product name> <plugin code> <variant index> <clap id suffix>)
+    function (craft_add_variant target productName pluginCode variantIndex clapName)
         juce_add_plugin (${target}
             VERSION ${PROJECT_VERSION}
             COMPANY_NAME "Craft Audio"
@@ -71,10 +78,10 @@ if (CRAFT_BUILD_PLUGINS)
         target_compile_definitions (${target}
             PUBLIC
                 CRAFT_VARIANT=${variantIndex}
+                CRAFT_VERSION_STRING="${PROJECT_VERSION}"
                 JUCE_WEB_BROWSER=0
                 JUCE_USE_CURL=0
-                JUCE_VST3_CAN_REPLACE_VST2=0
-                JUCE_DISPLAY_SPLASH_SCREEN=0)
+                JUCE_VST3_CAN_REPLACE_VST2=0)
 
         target_link_libraries (${target}
             PRIVATE
@@ -86,11 +93,28 @@ if (CRAFT_BUILD_PLUGINS)
                 juce::juce_recommended_config_flags
                 juce::juce_recommended_lto_flags
                 juce::juce_recommended_warning_flags)
+
+        clap_juce_extensions_plugin (TARGET ${target}
+            CLAP_ID "com.craftaudio.${clapName}"
+            CLAP_FEATURES audio-effect stereo utility)
     endfunction()
 
-    craft_add_variant (CraftShuffler  "Craft Shuffler"  CShf 0)
-    craft_add_variant (CraftImager    "Craft Imager"    CImg 1)
-    craft_add_variant (CraftMsMatrix  "Craft MS Matrix" CMsm 2)
+    craft_add_variant (CraftShuffler  "Craft Shuffler"  CShf 0 shuffler)
+    craft_add_variant (CraftImager    "Craft Imager"    CImg 1 imager)
+    craft_add_variant (CraftMsMatrix  "Craft MS Matrix" CMsm 2 msmatrix)
+
+    # Development aid: renders each editor to PNG (not installed / released).
+    option (CRAFT_BUILD_SNAPSHOT "Build the editor snapshot tool" OFF)
+    if (CRAFT_BUILD_SNAPSHOT)
+        juce_add_console_app (craft_ui_snapshot PRODUCT_NAME "craft_ui_snapshot")
+        target_sources (craft_ui_snapshot PRIVATE tools/Snapshot.cpp ${CRAFT_PLUGIN_SOURCES})
+        target_include_directories (craft_ui_snapshot PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/source)
+        target_compile_definitions (craft_ui_snapshot PRIVATE
+            CRAFT_VARIANT=0 CRAFT_VERSION_STRING="${PROJECT_VERSION}"
+            JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_STANDALONE_APPLICATION=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+        target_link_libraries (craft_ui_snapshot PRIVATE craft_dsp juce::juce_audio_utils juce::juce_gui_basics
+            juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------------------------
