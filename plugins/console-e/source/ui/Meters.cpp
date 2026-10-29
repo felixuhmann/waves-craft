@@ -53,7 +53,10 @@ void ReductionMeter::paint (juce::Graphics& g)
         g.setColour (colours::panelEdge.brighter (0.4f));
         g.fillRect (juce::Rectangle<float> (tx - 0.5f, bar.getBottom() - 4, 1.0f, 3.0f));
         g.setColour (colours::textDim);
-        g.drawText (juce::String (int (t)), juce::Rectangle<float> (tx - 12, labelRow.getY(), 24, 12), juce::Justification::centred);
+        const float lx = juce::jlimit (labelRow.getX(), labelRow.getRight() - 24.0f, tx - 12.0f);
+        g.drawText (juce::String (int (t)), juce::Rectangle<float> (lx, labelRow.getY(), 24, 12),
+                    tx - 12.0f < labelRow.getX() ? juce::Justification::centredLeft
+                    : tx + 12.0f > labelRow.getRight() ? juce::Justification::centredRight : juce::Justification::centred);
     }
     g.setColour (colours::textDim);
     g.setFont (juce::Font (uiFont (9.5f, true)));
@@ -96,6 +99,7 @@ void LevelMeter::paint (juce::Graphics& g)
     const int n = mono ? 1 : 2;
     const float gap = 3.0f;
     const float w = (bars.getWidth() - gap * float (n + 1)) / float (n);
+    bars.reduce (0.0f, 6.0f); // room for the end labels of the scale
     auto yFor = [&bars] (float db) { return bars.getBottom() - 2.0f - fraction (db) * (bars.getHeight() - 4.0f); };
     for (int c = 0; c < n; ++c)
     {
