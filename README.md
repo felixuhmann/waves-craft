@@ -20,13 +20,13 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 2 | n/a | ModFX Autopan | Modulation | Internal module, not loadable as a host plugin — cannot be measured |
 | 3 | n/a | ModFX Delay | Delay | Internal module, not loadable as a host plugin — cannot be measured |
 | 4 | n/a | ModFX Chorus | Modulation | Internal module, not loadable as a host plugin — cannot be measured |
-| 5 | [ ] | MetaFlanger | Modulation | Flanger with LFO/feedback; deterministic, few controls |
+| 5 | [x] | MetaFlanger | Modulation | Flanger with LFO/feedback; deterministic, few controls  — released as Craft Flanger |
 | 6 | [ ] | H-Delay | Delay | Delay + filters + modulation; deterministic, more controls |
 | 7 | [ ] | MannyM-Delay | Delay | Delay with filtering/ducking; builds on #3/#6 |
 | 8 | [ ] | Doubler | Pitch/delay | Detuned delayed voices; small pitch-shift component |
 | 9 | [ ] | MetaFilter | Filter | Resonant filter with LFO/envelope modulation |
 | 10 | n/a | ModFX Limiter | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
-| 11 | [ ] | L1 | Dynamics | Look-ahead brickwall limiter; measurable with steps/bursts |
+| 11 | [x] | L1 | Dynamics | Look-ahead brickwall limiter; measurable with steps/bursts  — released as Craft Peak Limiter |
 | 12 | n/a | ModFX Compressor | Dynamics | Internal module, not loadable as a host plugin — cannot be measured |
 | 13 | [ ] | DeEsser | Dynamics | Band-limited sidechain compression |
 | 14 | [ ] | RVox | Dynamics | One-knob compressor/gate/limiter chain |
@@ -74,6 +74,8 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 |---|---|---|---|
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
 | [`doubler`](plugins/doubler) | Craft Doubler 4, Craft Doubler 2 | [r1](spec/doubler/r1/SPEC.md) | [notes](plugins/doubler/IMPLEMENTATION_NOTES.md) |
+| [`peak-limiter`](plugins/peak-limiter) | Craft Peak Limiter (stereo / mono, look-ahead 64/128/256 samples) | [r1](spec/peak-limiter/r1/SPEC.md) | [notes](plugins/peak-limiter/IMPLEMENTATION_NOTES.md) |
+| [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
@@ -94,6 +96,8 @@ ctest --test-dir build --output-on-failure
 
 Plug-ins land in `build/plugins/<slug>/<Target>_artefacts/Release/` (e.g. `build/plugins/doubler/CraftDoubler4_artefacts/Release/`
 for Craft Doubler 4; `ctest -R doubler` runs only the doubler tests). `-DCRAFT_BUILD_PLUGINS=OFF` builds only the
+Plug-ins land in `build/plugins/<slug>/<Target>_artefacts/Release/` (e.g. `build/plugins/flanger/CraftFlanger_artefacts/Release/`
+for Craft Flanger; `ctest -R flanger/` runs only the flanger tests). `-DCRAFT_BUILD_PLUGINS=OFF` builds only the
 DSP unit tests (no JUCE download). Every push to `main` publishes a GitHub release with one zip per plugin and a
 combined `craft-audio-bundle-<version>-<platform>.zip` per platform (packaged by `ci/package.py`).
 
