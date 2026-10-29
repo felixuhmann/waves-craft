@@ -44,13 +44,14 @@ struct ReleaseLaw
     struct Envelope
     {
         double attackMs, attackWarp, releaseMs, releaseWarp, releaseDest, releaseOwn;
+        double destLimitDb = 1.0e9; // x_target enters as limit * tanh(x_target / limit) (saturating)
     };
     // Fitted constants (IMPLEMENTATION_NOTES.md, "Release law").
-    Envelope transient { 5.30379, -5.99984, 0.484878, 2.97445, 5.52281, -2.13282 };
-    Envelope charge { 84.2716, -0.534874, 4043.02, -4.18115, 7.37458, 0.93162 };
-    Envelope medium { 84.1112, 0.37478, 7.55183, -0.270362, 1.66276, 0.78227 };
-    Envelope slow1 { 58.244, -1.17602, 56.6068, -0.0169284, 2.26787, -1.81941 };
-    Envelope slow2 { 172.087, -0.74591, 326.627, 0.035831, 0.622106, -0.330568 };
+    Envelope transient { 3.68839, -5.67354, 0.0564398, -0.47855, 9.49578, -1.46004, 13.2321 };
+    Envelope charge { 100.68, -0.670199, 231.374, -2.91638, 9.22421, 1.65014 };
+    Envelope medium { 35.5831, -0.411881, 2.73824, 1.56803, 2.22862, 0.569452 };
+    Envelope slow1 { 51.9124, -0.871865, 40.6393, -0.395307, 1.86936, -1.43571 };
+    Envelope slow2 { 163.584, -1.09978, 332.482, 0.427679, 0.8516, -0.533941 };
     double holdMs = 5.0261;
     // The charge / medium / slow envelopes are updated at a control rate of about 12 kHz; the fast path and the
     // transient envelope run per sample. Each control step sees the maximum level of its block.
@@ -117,7 +118,7 @@ public:
 private:
     struct State
     {
-        double ca = 0.0, la = 1.0, lr = 1.0, releaseMs = 1.0, dest = 0.0, own = 0.0, rate = 48000.0;
+        double ca = 0.0, la = 1.0, lr = 1.0, releaseMs = 1.0, dest = 0.0, own = 0.0, destLimit = 1.0e9, rate = 48000.0;
         double level = 0.0;
     };
 
@@ -146,6 +147,7 @@ private:
         s.releaseMs = e.releaseMs;
         s.dest = e.releaseDest;
         s.own = e.releaseOwn;
+        s.destLimit = e.destLimitDb;
     }
 
     static double warp (double z, double lambda) noexcept
@@ -177,7 +179,10 @@ private:
             {
                 lambda = s.lr;
                 constexpr double dbPerLn = 8.685889638065035; // 20 / ln(10)
-                const double xTarget = dbPerLn * std::log (target), xOwn = dbPerLn * std::log (z);
+                const double xOwn = dbPerLn * std::log (z);
+                double xTarget = dbPerLn * std::log (target);
+                if (s.destLimit < 1.0e6)
+                    xTarget = s.destLimit * std::tanh (xTarget / s.destLimit);
                 // floor: at least ~2 samples at 48 kHz, so the law does not depend on the sample rate
                 const double tauMs = std::max (minReleaseMs, s.releaseMs * std::exp ((s.dest * xTarget + s.own * xOwn) * 0.1));
                 c = onePoleCoeff (tauMs, s.rate);

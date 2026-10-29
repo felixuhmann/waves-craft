@@ -232,31 +232,39 @@ TEST_CASE ("Release after other level patterns (9.7) within tolerance", "[releas
     }
 }
 
-TEST_CASE ("Steady low-frequency tones: gain ripple within 9.8 + 0.15 dB", "[release]")
+TEST_CASE ("Steady low-frequency tones: gain ripple within 9.8 + 0.15 dB (r3 stimulus)", "[release]")
 {
     struct R
     {
-        double comp, f, ref;
+        double comp, f, ref[4]; // windows starting 1.0 / 1.5 / 2.0 / 3.5 s after onset
     };
-    const R table[] = { { -6, 50, 0.69 }, { -6, 100, 0.24 }, { -6, 200, 0.02 },  { -18, 50, 0.20 }, { -18, 100, 0.04 },
-                        { -18, 200, 0.00 }, { -36, 50, 0.11 }, { -36, 100, 0.03 }, { -36, 200, 0.00 } };
+    const R table[] = { { -6, 50, { 0.69, 0.58, 0.56, 0.55 } },  { -6, 100, { 0.24, 0.19, 0.17, 0.17 } },
+                        { -6, 200, { 0.02, 0.01, 0.01, 0.01 } }, { -18, 50, { 0.20, 0.13, 0.12, 0.12 } },
+                        { -18, 100, { 0.04, 0.02, 0.02, 0.02 } }, { -18, 200, { 0.00, 0.00, 0.00, 0.00 } },
+                        { -36, 50, { 0.11, 0.06, 0.05, 0.05 } },  { -36, 100, { 0.03, 0.01, 0.01, 0.01 } },
+                        { -36, 200, { 0.00, 0.00, 0.00, 0.00 } } };
+    const double windows[4] = { 1000, 1500, 2000, 3500 };
     const double fs = GENERATE (44100.0, 48000.0, 96000.0);
-    // steady state: the tone length is not stated in the spec; checked for 2 s and 3 s tones (assumption A9)
-    for (double seconds : { 2.0, 3.0 })
-        for (const auto& t : table)
+    for (const auto& t : table)
+    {
+        // 1.5 s silence, then a -6 dBFS sine from phase 0 held 4 s
+        const long onset = ms (1500, fs);
+        const auto x = sineSchedule ({ { -999.0, onset }, { -6.0, ms (4000, fs) } }, fs, t.f);
+        const auto r = run (x, fs, settings (t.comp));
+        for (int w = 0; w < 4; ++w)
         {
-            const auto x = sineSchedule ({ { -6.0, ms (seconds * 1000.0, fs) } }, fs, t.f);
-            const auto r = run (x, fs, settings (t.comp));
             double lo = 1e9, hi = -1e9;
-            for (long i = long (x.size()) - ms (500, fs); i < long (x.size()); ++i)
+            const long from = onset + ms (windows[w], fs);
+            for (long i = from; i < from + ms (500, fs); ++i)
                 if (std::abs (x[std::size_t (i)]) > 0.5 * dbToLin (-6.0))
                 {
                     lo = std::min (lo, gainDb (r, i));
                     hi = std::max (hi, gainDb (r, i));
                 }
-            INFO ("fs " << fs << " " << seconds << " s, comp " << t.comp << " f " << t.f << ": ripple " << hi - lo);
-            CHECK (hi - lo <= t.ref + 0.15);
+            INFO ("fs " << fs << " comp " << t.comp << " f " << t.f << " window " << windows[w] << " ms: ripple " << hi - lo);
+            CHECK (hi - lo <= t.ref[w] + 0.15);
         }
+    }
 }
 
 TEST_CASE ("Short transients recover within a few milliseconds (4.4 item 1)", "[release]")

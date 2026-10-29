@@ -180,9 +180,13 @@ TEST_CASE ("Detection is frequency independent (50 Hz - 12 kHz within 0.1 dB)", 
         for (long i = ms (1000, fs); i < ms (1100, fs); ++i)
             peak = std::max (peak, std::abs (x[std::size_t (i)]));
         const double expected = staticGainDb (-18.0, linToDb (peak));
+        // gain applied at the signal crests (low-frequency tones may ripple between crests, section 9.8)
+        double crestGain = 1e9;
+        for (long i = ms (1880, fs); i < ms (1900, fs); ++i)
+            crestGain = std::min (crestGain, gainDb (r, i));
         INFO ("f " << f);
-        CHECK_THAT (gainDb (r, ms (1900, fs)), WithinAbs (expected, 0.1));
-        CHECK_THAT (gainDb (r, ms (1900, fs)), WithinAbs (staticGainDb (-18.0, -12.0), 0.1));
+        CHECK_THAT (crestGain, WithinAbs (expected, 0.1));
+        CHECK_THAT (crestGain, WithinAbs (staticGainDb (-18.0, -12.0), 0.1));
     }
 }
 
