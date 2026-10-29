@@ -105,7 +105,7 @@ private:
 struct DetectorTuning
 {
     double envelopeTau = 1.5e-3;  // s, averaging of the envelope in the compressed domain (programme / noise)
-    double fastTau = 0.05e-3;     // s, averaging while an onset is being acquired
+    double fastTau = 0.02e-3;     // s, averaging while an onset is being acquired
     double onsetDb = 15.0;        // envelope this far above the average starts onset acquisition ...
     double onsetHold = 2.0e-3;    // s, ... for this long (keeps burst attacks close to an ideal level step)
     double fallDb = 8.0;          // envelope this far below the average ...
