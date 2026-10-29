@@ -229,3 +229,31 @@ TEST_CASE ("Smoothing and crossfades are click-free and settle within 20 ms", "[
     const auto in2 = sine (int (0.2 * fs), fs, 1000.0, -20.0);
     CHECK (ratioDb (x, in2, 4800 + 960, 4800 + 960 + 480) == Approx (10.0).margin (0.05));
 }
+
+TEST_CASE ("Output limit catches onsets from silence at extreme gains (no runaway)", "[limit]")
+{
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+    {
+        Settings s;
+        s.ratioPos = 0.8;
+        s.compThresholdDb = -80.0;
+        s.peakRef = true;        // +40 dB offset
+        s.makeupDb = 40.0;
+        s.compAttackMs = 1000.0; // the detector catches up only slowly
+        s.outputGainDb = 18.0;
+        s.gateOpenDb = -10.0;    // gate closed at low level ...
+        s.floorValue = 12.0;     // ... with a +12 dB floor
+        const int n = int (0.6 * fs), start = int (0.3 * fs);
+        std::vector<double> in (static_cast<size_t> (n), 0.0);
+        for (int i = start; i < n; ++i)
+            in[size_t (i)] = ((i / 40) % 2 == 0) ? 1.0 : -1.0; // full-scale square
+        auto e = makeEngine (s, fs);
+        auto out = runStereo (e, in, in);
+        double peak = 0.0;
+        for (double v : out.l)
+            peak = std::max (peak, std::abs (v));
+        INFO ("fs " << fs << " peak " << 20.0 * std::log10 (peak) << " dBFS");
+        // limited module output <= +2.83 dBFS, then the gate floor +12 dB and the output gain +18 dB
+        CHECK (20.0 * std::log10 (peak) <= 2.9 + 12.0 + 18.0);
+    }
+}

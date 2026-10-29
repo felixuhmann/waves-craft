@@ -88,6 +88,7 @@ public:
     static constexpr double expGainAtt = 0.384;        // EXP_GAIN_ATT
     static constexpr double expGainRel = 0.842;        // EXP_GAIN_REL
     static constexpr double gateDetectorMaxAttackMs = 2.0;
+    static constexpr double peakHoldReleaseMs = 20.0;  // instantaneous-peak follower for the output limit
     static constexpr double paramSmoothingMs = 4.0;    // one-pole time constant, settles well within 20 ms
     static constexpr double crossfadeMs = 10.0;        // switched settings (spec 8: <= 20 ms)
 
@@ -296,6 +297,8 @@ private:
         FilterChannel filt[2];
 
         double compM[2] = { 0.0, 0.0 }, gateM[2] = { 0.0, 0.0 }; // rectifier states
+        double peakHold = 0.0; // held instantaneous input peak (output-limit safety, IMPLEMENTATION_NOTES.md)
+        int peakHoldLeft = 0;  // samples the peak is held (covers the lookahead delay)
         double compE = -120.0, compESlow = -120.0, compGainDb = 0.0, slowMemory = 0.0;
         double gateE = -120.0, gateG = 1.0, gateGain = 1.0, expV = 0.0;
         bool gateIsOpen = true;
@@ -355,7 +358,18 @@ private:
                 double g = -((1.0 - slowWeight) * t + slowWeight * slowMemory) + fr.makeup;
                 if (fr.peakRefAmount > 0.0)
                     g += fr.peakRefAmount * curves::peakRefOffsetDb (fr.ratio, fr.threshold);
-                compGainDb = curves::limitFinalGainDb (g, ee); // output limit on the final output (r2 10.9)
+                double xmax = 0.0;
+                for (int c = 0; c < nch; ++c)
+                    xmax = std::max (xmax, std::abs (x[c]));
+                if (xmax >= peakHold)
+                    peakHold = xmax, peakHoldLeft = lookaheadSamples;
+                else if (peakHoldLeft > 0)
+                    --peakHoldLeft;
+                else
+                    peakHold = std::max (xmax, peakHold * e.cPeakRel);
+                const double pk = peakHold;
+                // output limit on the final output (r2 10.9)
+                compGainDb = curves::limitFinalGainDb (g, ee, 20.0 * std::log10 (pk + 1.0e-20));
             }
 
             // gate / expander detector and gain (spec 4, 6)
@@ -578,6 +592,7 @@ private:
         }
         cExpGainAtt = coeffMs (expGainAtt * s.gateAttackMs);
         cExpGainRel = coeffMs (expGainRel * s.gateReleaseMs);
+        cPeakRel = coeffMs (peakHoldReleaseMs);
         pdrOn = s.pdrMs > 0.0;
         cPdrFastRel = coeffMs (pdrFastReleaseMs);
         cPdrSlowAtt = coeffMs (0.5 * std::max (s.pdrMs, 1.0e-3));
@@ -599,7 +614,7 @@ private:
     int designCountdown = 0;
 
     double rectCoeff = 0.0, cSlow = 0.0, cExpDetRel = 0.0, cExpGainAtt = 0.0, cExpGainRel = 0.0;
-    double expCalibrationDb = 0.0, calAtt = -1.0, calRel = -1.0, calFs = -1.0;
+    double expCalibrationDb = 0.0, calAtt = -1.0, calRel = -1.0, calFs = -1.0, cPeakRel = 0.0;
     double cCompAtt = 0.0, cCompRel = 0.0, cPdrFastRel = 0.0, cPdrSlowAtt = 0.0;
     double cGateAtt = 0.0, cGateRel = 0.0, cGateDetAtt = 0.0;
     bool pdrOn = false;

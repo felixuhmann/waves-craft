@@ -85,11 +85,13 @@ inline double outputLimitDb (double y) noexcept
 
 // Output limit on the module's final output (spec r2 5 / 10.3 / 10.9): a positive gain G (dB, after PeakRef and
 // Makeup) is reduced so that the estimated output peak e - 1.277 + G follows the limit law; never below 0 dB.
-inline double limitFinalGainDb (double gainDb, double e) noexcept
+inline double limitFinalGainDb (double gainDb, double e, double instantPeakDb = -400.0) noexcept
 {
     if (! (gainDb > 0.0))
         return gainDb;
-    const double y = e - sinePeakToDetectorDb + gainDb;
+    // output peak estimate: the detector's sine-peak reading, or the held instantaneous peak when that is higher
+    // (onsets from silence, before the detector has caught up)
+    const double y = std::max (e - sinePeakToDetectorDb, instantPeakDb) + gainDb;
     if (y <= 0.0)
         return gainDb;
     return gainDb - std::min (gainDb, y - outputLimitDb (y));

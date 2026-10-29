@@ -161,7 +161,12 @@ The engine implements the r2 §4–§5 compressor law literally (constants of §
 
 1. **Expansion output limit.** A static law on the estimated output peak `e − 1.277 + G`, applied to the module's
    final gain G (after PeakRef and Makeup) when G > 0, never below 0 dB (r2 §10.9). The unlimited curves above
-   the limit are reconstructed (see "Static curve tables").
+   the limit are reconstructed (see "Static curve tables"). Safety addition: the peak estimate is
+   `max(e − 1.277, held input peak)`, where the input peak is held for the 340-sample lookahead window and then
+   released with 20 ms. Without it, a burst after silence meets the full low-level gain, which can be about +80 dB
+   with PeakRef +40 and Makeup +40, until the detector's attack catches up; `tools/hoststress` reported outputs
+   above +40 dBFS. On steady signals the held peak does not exceed `e − 1.277`, so the r2 statics and trajectories
+   are unchanged; a regression test covers the onset case.
 2. **Expander static calibration (my addition).** With EXP_DET_REL the expander detector reads a steady 1 kHz sine
    lower than the slower (Attack, Release) detector. At the default 2/30 ms it reads +0.03 dB re peak against the
    +1.13 dB that Appendix B's coordinates imply, so a literal r2 expander would sit about 1.1 dB below Appendix B. The
@@ -213,7 +218,7 @@ Latest local results (CI builds and tests Windows and Linux):
 
 | Item | Result |
 |---|---|
-| Unit tests | 34 test cases / 3763 assertions, all passing (Windows MSVC Release and Linux GCC 13) |
+| Unit tests | 35 test cases / 3766 assertions, all passing (Windows MSVC Release and Linux GCC 13) |
 | Windows x64 Release (MSVC, VS 2022) | all four products build (VST3, CLAP, Standalone); installed locally for host testing |
 | Linux x64 | DSP tests built and passing locally (GCC 13); the plug-in targets are built by CI (no X11/ALSA dev packages locally) |
 
