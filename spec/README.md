@@ -9,3 +9,4 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | Slug | Revision | Target | Status | SHA-256 |
 |---|---|---|---|---|
 | `stereo-imager` | [r1](stereo-imager/r1/SPEC.md) | Stereo imager (Full / Imager / MS matrix) | Approved 2026-10-29 | dad6a104e00c7296284e86a984cf5c10ce8e29b2b2bb06d9ee9b969ec0955dcc |
+| `de-esser` | [r1](de-esser/r1/SPEC.md) | De-esser (HP/BP sidechain, split/wideband, monitor) | Approved 2026-10-29 | db412694de49002fa324bbfe9253bd1951c4ae211289d937e4f2bf2cdea4c651 |
