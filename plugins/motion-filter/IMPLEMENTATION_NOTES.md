@@ -101,11 +101,10 @@ Delay mix: Catmull-Rom interpolation of the 9-point dry/tap table. Digital: new 
 between old and new taps; analog: read position glides with a 100 ms one-pole (pitch bend). Max 8.5 s.
 
 **§9 Drive / Crush.** Drive: gain 10^(0.073·d/20) into c·tanh(u/c) (odd-symmetric) with
-c = 2.104·e^(−0.005925·d). The verification found 1.82 dB instead of 2.7 dB at 100 % for its "−3 dBFS" stimulus
-although a −3 dBFS 1 kHz sine at the plug-in input gave exactly 2.7 dB; all three r1 build readings were ×0.66 of
-the sine values, i.e. the harness's stimulus reaches the saturator ≈ 1.8 dB lower. The ceiling is therefore fitted
-to the mean of both level references: 0.24/0.48/0.95/3.13 dB at −3 dBFS and 0.16/0.32/0.65/2.27 dB at −4.8 dBFS
-for 0/25/50/100 % — both within the spec's 0.2/0.4/0.8/2.7 ±0.5 dB. (Placement unchanged: saturator directly
+c = 1.880·e^(−0.006678·d). The spec's 0.2/0.4/0.8/2.7 dB (−3 dBFS) are swept-sine readings, which show ~0.65× the
+compression of a steady sine (verifier, same for reference and build). With a steady −3 dBFS 1 kHz sine the
+reference compresses 0.31/0.61/1.17/4.18 dB at 0/25/50/100 %; this ceiling gives 0.30/0.62/1.23/4.09 dB
+(tested ±0.3 dB, and 0.65× of it against the spec values ±0.5 dB). (Placement unchanged: saturator directly
 before the filter; with the filter wide open nothing else compresses now that the SVF is linear.)
 Crush (r2): sample-and-hold with hold length N = 1 + 64·(Crush/100)² samples at 48 kHz, implemented as a hold
 rate 48 000/N Hz on a phase accumulator at the engine rate, so the hold time N/48 000 s is the same at every host
@@ -147,7 +146,7 @@ Feedback, Dry/Wet, Digital/Analog, Pre/Fbk.
 - §4/§7/§8/§9: wet high-pass and +0.35 dB; output HF response at 44.1/48 kHz incl. 22 kHz and flat at 88.2/96/192 kHz; mix
   law; delay taps at displayed/synced times ±1 sample incl. right ratio and latency; feedback ratios ±0.01;
   delay mix table ±0.03; pre vs. feedback route; 100 % feedback sustain and guard; digital/analog time changes;
-  drive gain and compression ±0.5 dB at −3 and −4.8 dBFS; baseline saturation; crush hold length N ±1 sample at
+  drive gain; steady-sine compression ±0.3 dB vs the reference (and 0.65× vs the spec ±0.5 dB); baseline saturation; crush hold length N ±1 sample at
   48 kHz for Crush 25/50/75/100, hold rate at 44.1/48/96/192 kHz, level preserved; sample-rate
   independence; click-free parameter changes; robustness at extreme settings; bypass and latency.
 
@@ -156,7 +155,7 @@ Feedback, Dry/Wet, Digital/Analog, Pre/Fbk.
 1. **Band-pass gain** (r1 contradiction): resolved by r2 — BP = s/D, peak gain Q.
 2. **Q between Res 90 and 100**: r2 — linear 2.12 → 2.40, level-independent.
 3. **Saturation** (§11 curve unspecified): tanh drive saturator with drive-dependent ceiling, fitted to the
-   mean of the −3 dBFS and the verification harness's effective level (see §9 above).
+   reference's steady-sine compression (see §9 above).
 4. **Oversampling**: 4x below 60 kHz (37 samples), 2x below 120 kHz (31), none above (0) — CPU in exchange for
    prototype-accurate filter shapes. The §4 output response is a separately fitted biquad at 44.1/48 kHz (not a
    by-product of the resampler); 40–60 kHz rates use the nearest fit, < 40 kHz is flat. The outer resampler is
@@ -188,7 +187,7 @@ Feedback, Dry/Wet, Digital/Analog, Pre/Fbk.
 ## Status
 
 r2 changes on top of the verified r1 build: BP = s/D, linear Q 90→100 without level-dependent limiting, crush
-hold-length law, follower table law, drive ceiling refit, power-complementary outer resampler.
+hold-length law, follower table law, drive ceiling refit to the reference's steady-sine compression, power-complementary outer resampler.
 Windows x64 Release build (VST3, CLAP, Standalone) succeeds without warnings in this plug-in's code; all
 tests pass under ctest; `ci/package.py` packages `craft-motion-filter-<version>-<platform>.zip`. The editor was
 checked with `tools/Snapshot.cpp`. Not yet done: host smoke tests (DAW automation, tempo sync, sidechain

@@ -119,12 +119,12 @@ inline double delayMixDry (double mixPercent) noexcept { return std::max (0.0, i
 inline double delayMixWet (double mixPercent) noexcept { return std::max (0.0, interpolateTable (delayMixWetTable, mixPercent)); }
 
 // ---------------------------------------------------------------------------------------------
-// §9 drive: small-signal gain +0.073 dB per %, into c tanh(u / c). The ceiling c = 2.104 e^(-0.005925 d) is
-// fitted so the compression of a 1 kHz tone is 0.24 / 0.48 / 0.95 / 3.13 dB at 0 / 25 / 50 / 100 % for a
-// -3 dBFS input and 0.16 / 0.32 / 0.65 / 2.27 dB at -4.8 dBFS: both inside the spec's 0.2 / 0.4 / 0.8 / 2.7
-// +-0.5 dB (the verification harness's -3 dBFS stimulus reaches the saturator ~1.8 dB lower).
+// §9 drive: small-signal gain +0.073 dB per %, into c tanh(u / c). The spec's 0.2 / 0.4 / 0.8 / 2.7 dB at
+// -3 dBFS are swept-sine readings (~0.65x a steady sine); with a steady -3 dBFS 1 kHz sine the reference
+// compresses 0.31 / 0.61 / 1.17 / 4.18 dB at 0 / 25 / 50 / 100 % (verifier). The ceiling
+// c = 1.880 e^(-0.006678 d) gives 0.30 / 0.62 / 1.23 / 4.09 dB steady.
 inline double driveGain (double drivePercent) noexcept { return dbToGain (0.073 * drivePercent); }
-inline double driveCeiling (double drivePercent) noexcept { return 2.104 * std::exp (-0.005925 * drivePercent); }
+inline double driveCeiling (double drivePercent) noexcept { return 1.880 * std::exp (-0.006678 * drivePercent); }
 
 // Crush (spec r2 §9): hold length N = 1 + 64 (Crush/100)^2 samples at 48 kHz, i.e. a hold time of N / 48000 s
 // at any host rate (rate f_h = 48000 / N); 0 = off.

@@ -279,9 +279,10 @@ TEST_CASE ("Delay time changes: digital crossfade, analog glide", "[delay]")
 TEST_CASE ("Drive: +0.073 dB per % small-signal, compression at -3 dBFS", "[drive]")
 {
     const double fs = 96000.0;
-    struct P { double drive, gainDb, compDb; };
-    // compression targets at drive 0 / 25 / 50 / 100 (drive 0: baseline 0.2 dB, section 4)
-    for (auto p : { P { 0, 0.0, 0.2 }, P { 25, 1.9, 0.4 }, P { 50, 3.7, 0.8 }, P { 100, 7.2, 2.7 } })
+    struct P { double drive, gainDb, compDb, steadyDb; };
+    // spec (swept-sine) compression at drive 0 / 25 / 50 / 100 (drive 0: baseline 0.2 dB, section 4) and the
+    // reference's steady-sine compression (verifier, -3 dBFS 1 kHz)
+    for (auto p : { P { 0, 0.0, 0.2, 0.31 }, P { 25, 1.9, 0.4, 0.61 }, P { 50, 3.7, 0.8, 1.17 }, P { 100, 7.2, 2.7, 4.18 } })
     {
         Settings s = transparentSettings();
         s.drive = p.drive;
@@ -289,10 +290,9 @@ TEST_CASE ("Drive: +0.073 dB per % small-signal, compression at -3 dBFS", "[driv
         const double loud = db (engineGain (s, fs, 1000.0, fromDb (-3.0))) - law::wetGainDb;
         INFO ("drive " << p.drive << " small " << small << " compression " << small - loud);
         CHECK (small == Approx (p.gainDb).margin (0.5));
-        CHECK (small - loud == Approx (p.compDb).margin (0.5));
-        // also at -4.8 dBFS (the level the verification harness's -3 dBFS stimulus reaches the saturator with)
-        const double lower = db (engineGain (s, fs, 1000.0, fromDb (-4.8))) - law::wetGainDb;
-        CHECK (small - lower == Approx (p.compDb).margin (0.5));
+        CHECK (small - loud == Approx (p.steadyDb).margin (0.3));
+        // a swept sine reads ~0.65x the steady-sine compression (verifier): consistent with the spec values
+        CHECK (0.65 * (small - loud) == Approx (p.compDb).margin (0.5));
     }
 }
 
@@ -301,7 +301,7 @@ TEST_CASE ("Baseline saturation of the default wet path", "[drive]")
     Settings s; // LP 18 kHz, Res 0, drive 0
     const double small = db (engineGain (s, 48000.0, 1000.0, 0.0316));
     const double loud = db (engineGain (s, 48000.0, 1000.0, fromDb (-3.0)));
-    CHECK (small - loud == Approx (0.2).margin (0.15));
+    CHECK (small - loud == Approx (0.31).margin (0.15)); // steady sine; ~0.2 dB swept
     // odd-dominant harmonics: the saturator is odd-symmetric
     CHECK (saturate (0.5, 2.0, 1.5) == Approx (-saturate (-0.5, 2.0, 1.5)));
 }
