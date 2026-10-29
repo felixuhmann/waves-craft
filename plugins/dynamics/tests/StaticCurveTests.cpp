@@ -47,7 +47,7 @@ TEST_CASE ("Appendix A: static gain of a steady 1 kHz sine for all 14 ratio posi
                     continue;
                 const double x = spectables::x[row], expected = spectables::f[row][col];
                 const double peak = rowPeak (x);
-                const double got = steadyGainDb (compSettings (spectables::positions[col], rowThreshold (x)), fs, peak, 1000.0, 0.15);
+                const double got = steadyGainDb (compSettings (spectables::positions[col], rowThreshold (x)), fs, peak, 1000.0, (col <= 3 || col >= 12) ? 1.2 : 0.15);
                 const double unlimitedPeak = peak + curves::compressorCurveDb (spectables::positions[col], x);
                 INFO ("fs " << fs << " r " << spectables::positions[col] << " x " << x << " peak " << peak);
                 CHECK (got == Approx (expected).margin (tolerance (col, x, expected, unlimitedPeak)));

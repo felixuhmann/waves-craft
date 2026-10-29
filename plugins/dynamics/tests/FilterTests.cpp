@@ -67,7 +67,7 @@ TEST_CASE ("10.6 sidechain |H|^3 and passive 2P magnitudes (Freq 1 kHz, Q 0.6)",
     auto passive = [&] (const FilterDesign& d, double hz) {
         const double w = 2.0 * pi * hz / fs;
         const auto h = d.h.response (w);
-        return 20.0 * std::log10 (std::abs (2.0 * (d.ap.response (w) - h * h)));
+        return 20.0 * std::log10 (std::abs (2.0 * (d.ap.response (w) - d.activeSign * h * h)));
     };
     CHECK (passive (lp, 500.0) == Approx (-11.1).margin (0.1));
     CHECK (passive (lp, 1000.0) == Approx (0.0).margin (0.1));
@@ -85,12 +85,42 @@ TEST_CASE ("Split identity: A + P = AP (flat), |P| = 1 - |A|, A in phase with AP
                 const auto d = filterdesign::design (t, 1000.0, q, fs);
                 const double w = 2.0 * pi * hz / fs;
                 const auto h = d.h.response (w), ap = d.ap.response (w);
-                const auto a = h * h, p = ap - a;
+                const auto a = d.activeSign * h * h, p = ap - a;
                 CHECK (std::abs (ap) == Approx (1.0).margin (1.0e-9));
                 CHECK (std::abs (p) == Approx (1.0 - std::abs (a)).margin (1.0e-9));
                 if (std::abs (a) > 1.0e-6)
                     CHECK (std::abs (std::arg (a / ap)) < 1.0e-6);
             }
+}
+
+TEST_CASE ("r2 7: allpass D(-s)/D(s) for every type - AP(0) = +1, band-pass passive has the band-reject polarity", "[filter][split]")
+{
+    const double fs = 48000.0;
+    for (auto t : { FilterType::LowPass, FilterType::BandPass, FilterType::HighPass, FilterType::BandReject })
+    {
+        const auto d = filterdesign::design (t, 1000.0, 0.6, fs);
+        CHECK (d.ap.response (0.0).real() == Approx (1.0).margin (1.0e-9));
+    }
+    // passive monitor (2P) in-phase gain far below the band centre: band-pass passes it in phase (+2)
+    for (auto t : { FilterType::BandPass, FilterType::BandReject })
+    {
+        Settings s;
+        s.filterType = t;
+        s.filterFreqHz = 4000.0;
+        s.monitor = Monitor::Passive;
+        auto e = makeEngine (s, fs);
+        const int n = int (0.3 * fs);
+        auto in = sine (n, fs, 40.0, -20.0);
+        auto out = runStereo (e, in, in);
+        double xy = 0.0, xx = 0.0;
+        for (int i = n / 2; i < n; ++i)
+            xy += in[size_t (i)] * out.l[size_t (i)], xx += in[size_t (i)] * in[size_t (i)];
+        INFO ("type " << int (t) << " in-phase gain " << xy / xx);
+        if (t == FilterType::BandPass)
+            CHECK (xy / xx > 1.9);
+        else
+            CHECK (std::abs (xy / xx) < 0.05); // band-reject: 40 Hz is in its active band, passive ~ 0
+    }
 }
 
 TEST_CASE ("Engine: sidechain and passive monitors, split with no gain change is flat", "[filter][monitor]")
@@ -121,6 +151,12 @@ TEST_CASE ("Engine: sidechain and passive monitors, split with no gain change is
     s.compEq = EqMode::Wideband;
     s.monitor = Monitor::Sidechain;
     CHECK (gainAt (s, 2000.0) == Approx (0.0).margin (1.0e-9));
+    // r2 3.7: only the gate filtered -> the monitor stays wideband (it follows the compressor's EQ mode)
+    s.gateEq = EqMode::Sidechain;
+    s.gateOpenDb = -60.0;
+    CHECK (gainAt (s, 2000.0) == Approx (0.0).margin (1.0e-9));
+    s.gateEq = EqMode::Wideband;
+    s.gateOpenDb = minusInfinityDb;
 
     // Split with no gain change: 0.00 dB at every frequency (allpass)
     s.monitor = Monitor::Audio;

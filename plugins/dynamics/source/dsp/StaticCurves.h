@@ -83,17 +83,25 @@ inline double outputLimitDb (double y) noexcept
     return limitOutDb[i] + t * (limitOutDb[i + 1] - limitOutDb[i]);
 }
 
-// Compressor/expander gain in dB for detector level e (dB) and threshold T, LowRef, without makeup.
+// Output limit on the module's final output (spec r2 5 / 10.3 / 10.9): a positive gain G (dB, after PeakRef and
+// Makeup) is reduced so that the estimated output peak e - 1.277 + G follows the limit law; never below 0 dB.
+inline double limitFinalGainDb (double gainDb, double e) noexcept
+{
+    if (! (gainDb > 0.0))
+        return gainDb;
+    const double y = e - sinePeakToDetectorDb + gainDb;
+    if (y <= 0.0)
+        return gainDb;
+    return gainDb - std::min (gainDb, y - outputLimitDb (y));
+}
+
+// Static compressor/expander gain in dB for detector level e: curve + PeakRef offset + Makeup, then the output limit.
+inline double staticGainDb (double r, double e, double thresholdDb, bool peakRef, double makeupDb) noexcept;
+
+// Compressor/expander curve gain in dB for detector level e and threshold T (LowRef, unlimited, no makeup).
 inline double compressorGainDb (double r, double e, double thresholdDb) noexcept
 {
-    if (isNeutral (r))
-        return 0.0;
-    const double f = compressorCurveDb (r, e - thresholdDb);
-    if (! isExpansion (r) || f <= 0.0)
-        return f;
-    const double peakIn = e - sinePeakToDetectorDb;
-    const double y = peakIn + f;
-    return f - (y - outputLimitDb (y));
+    return compressorCurveDb (r, e - thresholdDb);
 }
 
 // PeakRef offset O(T, R) (spec 5, 10.4, review decision D1). Cancellation ratios: the -5.00:1 offsets are the
@@ -125,6 +133,14 @@ inline double peakRefOffsetDb (double r, double thresholdDb) noexcept
     }
     const double t = (r - 0.9) / 0.1;
     return std::min (peakRefCapDb, rule (0.9) + t * (table - rule (0.9)));
+}
+
+inline double staticGainDb (double r, double e, double thresholdDb, bool peakRef, double makeupDb) noexcept
+{
+    double g = compressorCurveDb (r, e - thresholdDb) + makeupDb;
+    if (peakRef)
+        g += peakRefOffsetDb (r, thresholdDb);
+    return limitFinalGainDb (g, e);
 }
 
 // Appendix B: expander unit gain h(x), x = e - GateOpen. Below the table: 1:2 expansion (slope 1); above: last value.

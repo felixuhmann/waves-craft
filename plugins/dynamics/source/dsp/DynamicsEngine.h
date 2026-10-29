@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <vector>
 
 #include "Filters.h"
 #include "Parameters.h"
@@ -76,10 +77,17 @@ class DynamicsEngine
 {
 public:
     static constexpr int lookaheadSamples = 340;       // spec 3.5 / D6: fixed at every sample rate
-    static constexpr double preSmootherMs = 0.15;      // spec 4
-    static constexpr double pdrFastReleaseMs = 20.0;   // spec 4
+    // spec r2 4.3 constants (normative)
+    static constexpr double rectTauMs = 0.127;         // RECT_TAU
+    static constexpr double kCalDb = 3.32;             // K_CAL
+    static constexpr double detRel = 0.900;            // DET_REL
+    static constexpr double pdrFastReleaseMs = 41.5;   // PDR_FAST_REL
+    static constexpr double slowRel = 2.907;           // SLOW_REL
+    static constexpr double slowWeight = 0.093;        // SLOW_W
+    static constexpr double expDetRel = 0.166;         // EXP_DET_REL
+    static constexpr double expGainAtt = 0.384;        // EXP_GAIN_ATT
+    static constexpr double expGainRel = 0.842;        // EXP_GAIN_REL
     static constexpr double gateDetectorMaxAttackMs = 2.0;
-    static constexpr double compGainSmoothingMs = 1.0; // implementation choice (IMPLEMENTATION_NOTES.md)
     static constexpr double paramSmoothingMs = 4.0;    // one-pole time constant, settles well within 20 ms
     static constexpr double crossfadeMs = 10.0;        // switched settings (spec 8: <= 20 ms)
 
@@ -99,8 +107,8 @@ public:
         smLogFreq.setEpsilon (1.0e-6);
         smQ.setEpsilon (1.0e-7);
         fade.setRampTime (crossfadeMs * 0.001, fs);
-        preCoeff = std::exp (-1.0 / (preSmootherMs * 0.001 * fs));
-        gainSmoothCoeff = std::exp (-1.0 / (compGainSmoothingMs * 0.001 * fs));
+        rectCoeff = std::exp (-1.0 / (rectTauMs * 0.001 * fs));
+        calFs = -1.0; // recompute the expander calibration at the new rate
         updateBlockConstants();
         reset();
     }
@@ -242,10 +250,7 @@ public:
     // Static compressor gain (dB, incl. PeakRef offset and makeup) for a detector level - used by the GUI graph.
     static double staticCompressorGainDb (const Settings& s, double detectorDb) noexcept
     {
-        double g = curves::compressorGainDb (s.ratioPos, detectorDb, s.compThresholdDb) + s.makeupDb;
-        if (s.peakRef)
-            g += curves::peakRefOffsetDb (s.ratioPos, s.compThresholdDb);
-        return g;
+        return curves::staticGainDb (s.ratioPos, detectorDb, s.compThresholdDb, s.peakRef, s.makeupDb);
     }
 
     // Static gate/expander gain (linear, signed) for a detector level - used by the GUI graph.
@@ -290,9 +295,9 @@ private:
         FilterDesign design;
         FilterChannel filt[2];
 
-        double compP[2] = { 0.0, 0.0 }, gateP[2] = { 0.0, 0.0 };
-        double compE = -120.0, compESlow = -120.0, compGainDb = 0.0;
-        double gateE = -120.0, gateG = 1.0, gateGain = 1.0;
+        double compM[2] = { 0.0, 0.0 }, gateM[2] = { 0.0, 0.0 }; // rectifier states
+        double compE = -120.0, compESlow = -120.0, compGainDb = 0.0, slowMemory = 0.0;
+        double gateE = -120.0, gateG = 1.0, gateGain = 1.0, expV = 0.0;
         bool gateIsOpen = true;
         long holdLeft = 0;
 
@@ -316,17 +321,17 @@ private:
             else if (nch > 1 && cfg.key == KeyMode::RightToLeft)
                 c0 = 1;
 
-            const double a = e.preCoeff;
+            const double a = e.rectCoeff;
             // compressor detector (spec 4)
             if (e.info.comp)
             {
-                double p = 0.0;
+                double m = 0.0;
                 for (int c = c0; c <= c1; ++c)
                 {
-                    compP[c] = a * compP[c] + (1.0 - a) * dComp[c] * dComp[c];
-                    p = std::max (p, compP[c]);
+                    compM[c] = a * compM[c] + (1.0 - a) * std::abs (dComp[c]);
+                    m = std::max (m, compM[c]);
                 }
-                const double l = levelDb (p);
+                const double l = levelDb (m);
                 if (e.pdrOn)
                 {
                     double k = l > compE ? e.cCompAtt : e.cPdrFastRel;
@@ -341,28 +346,46 @@ private:
                     compESlow = compE;
                 }
                 const double ee = std::max (compE, compESlow);
-                double g = curves::compressorGainDb (fr.ratio, ee, fr.threshold) + fr.makeup;
+                // spec r2 5: target reduction t, slow memory s, R = (1 - W) t + W s
+                const double t = -curves::compressorCurveDb (fr.ratio, ee - fr.threshold);
+                if (t > slowMemory)
+                    slowMemory = t;
+                else
+                    slowMemory = e.cSlow * slowMemory + (1.0 - e.cSlow) * t;
+                double g = -((1.0 - slowWeight) * t + slowWeight * slowMemory) + fr.makeup;
                 if (fr.peakRefAmount > 0.0)
                     g += fr.peakRefAmount * curves::peakRefOffsetDb (fr.ratio, fr.threshold);
-                compGainDb = g + e.gainSmoothCoeff * (compGainDb - g);
+                compGainDb = curves::limitFinalGainDb (g, ee); // output limit on the final output (r2 10.9)
             }
 
             // gate / expander detector and gain (spec 4, 6)
             if (e.info.gate)
             {
-                double p = 0.0;
+                double m = 0.0;
                 for (int c = c0; c <= c1; ++c)
                 {
-                    gateP[c] = a * gateP[c] + (1.0 - a) * dGate[c] * dGate[c];
-                    p = std::max (p, gateP[c]);
+                    gateM[c] = a * gateM[c] + (1.0 - a) * std::abs (dGate[c]);
+                    m = std::max (m, gateM[c]);
                 }
-                const double l = levelDb (p);
+                const double l = levelDb (m);
                 const bool enabled = e.gateOpenDb != minusInfinityDb;
                 if (cfg.expander)
                 {
-                    const double k = l > gateE ? e.cGateAtt : e.cGateRel;
+                    const double k = l > gateE ? e.cGateAtt : e.cExpDetRel;
                     gateE = k * gateE + (1.0 - k) * l;
-                    gateG = enabled ? dbToGain (curves::expanderGainDb (gateE - e.gateOpenDb)) : 1.0;
+                    if (enabled)
+                    {
+                        // spec r2 6: dB-domain smoothing of the expander gain
+                        const double u = curves::expanderGainDb (gateE + e.expCalibrationDb - e.gateOpenDb);
+                        const double kv = u > expV ? e.cExpGainAtt : e.cExpGainRel;
+                        expV = kv * expV + (1.0 - kv) * u;
+                        gateG = dbToGain (expV);
+                    }
+                    else
+                    {
+                        expV = 0.0;
+                        gateG = 1.0;
+                    }
                     gateIsOpen = ! enabled || gateE > e.gateOpenDb + curves::gateThresholdOffsetDb;
                     holdLeft = 0;
                 }
@@ -450,7 +473,8 @@ private:
             }
         }
 
-        static double levelDb (double p) noexcept { return 10.0 * std::log10 (2.0 * p + 1.0e-30); }
+        // spec r2 4.3: level of the rectified average, calibrated by K_CAL
+        static double levelDb (double m) noexcept { return 20.0 * std::log10 (m + 1.0e-15) + kCalDb; }
     };
 
     Discrete discreteFromSettings() const noexcept
@@ -466,7 +490,7 @@ private:
         d.type = s.filterType;
         d.monitor = info.filter ? s.monitor : Monitor::Audio;
         d.key = info.filter ? s.key : KeyMode::Stereo;
-        d.monitorFiltered = d.compEq != EqMode::Wideband || d.gateEq != EqMode::Wideband;
+        d.monitorFiltered = d.compEq != EqMode::Wideband; // r2 3.7: the compressor's EQ mode only
         return d;
     }
 
@@ -497,11 +521,63 @@ private:
 
     double coeffMs (double ms) const noexcept { return std::exp (-1.0 / (std::max (ms, 1.0e-4) * 0.001 * fs)); }
 
+public:
+    // Mean steady-state level-smoother reading (dB re peak) of a 0 dBFS 1 kHz sine through the rectifier and a
+    // level smoother with the given attack/release: the periodic fixed point e(T) = e(0) is found by bisection.
+    double steadySineReadingDb (double attMs, double relMs) const noexcept
+    {
+        const int len = std::min (4096, int (std::lround (fs / 100.0))); // ten periods of 1 kHz
+        const double pi2 = 2.0 * 3.14159265358979323846 * 1000.0 / fs;
+        std::array<double, 4096> level {};
+        double m = 0.0;
+        for (int i = 0; i < 4 * len; ++i) // rectifier to steady state, keep the last ten periods
+        {
+            m = rectCoeff * m + (1.0 - rectCoeff) * std::abs (std::sin (pi2 * double (i)));
+            if (i >= 3 * len)
+                level[size_t (i - 3 * len)] = Core::levelDb (m);
+        }
+        const double ca = coeffMs (attMs), cr = coeffMs (relMs);
+        auto run = [&] (double e0, double* mean) {
+            double e = e0, sum = 0.0;
+            for (int i = 0; i < len; ++i)
+            {
+                const double l = level[size_t (i)];
+                const double c = l > e ? ca : cr;
+                e = c * e + (1.0 - c) * l;
+                sum += e;
+            }
+            if (mean != nullptr)
+                *mean = sum / double (len);
+            return e;
+        };
+        double lo = -40.0, hi = 20.0;
+        for (int k = 0; k < 60; ++k)
+        {
+            const double mid = 0.5 * (lo + hi);
+            (run (mid, nullptr) > mid ? lo : hi) = mid;
+        }
+        double mean = 0.0;
+        run (0.5 * (lo + hi), &mean);
+        return mean;
+    }
+
+private:
     void updateBlockConstants() noexcept
     {
         const auto& s = settings;
         cCompAtt = coeffMs (s.compAttackMs);
-        cCompRel = coeffMs (s.compReleaseMs);
+        cCompRel = coeffMs (detRel * s.compReleaseMs);
+        cSlow = coeffMs (slowRel * s.compReleaseMs);
+        cExpDetRel = coeffMs (expDetRel * s.gateReleaseMs);
+        if (s.gateAttackMs != calAtt || s.gateReleaseMs != calRel || fs != calFs)
+        {
+            // keep Appendix B's static coordinates with the fast expander release (IMPLEMENTATION_NOTES.md)
+            calAtt = s.gateAttackMs, calRel = s.gateReleaseMs, calFs = fs;
+            expCalibrationDb = steadySineReadingDb (s.gateAttackMs, s.gateReleaseMs)
+                             - steadySineReadingDb (s.gateAttackMs, expDetRel * s.gateReleaseMs);
+        }
+        cExpGainAtt = coeffMs (expGainAtt * s.gateAttackMs);
+        cExpGainRel = coeffMs (expGainRel * s.gateReleaseMs);
         pdrOn = s.pdrMs > 0.0;
         cPdrFastRel = coeffMs (pdrFastReleaseMs);
         cPdrSlowAtt = coeffMs (0.5 * std::max (s.pdrMs, 1.0e-3));
@@ -522,7 +598,8 @@ private:
     double designFreq = 0.0, designQ = 0.0;
     int designCountdown = 0;
 
-    double preCoeff = 0.0, gainSmoothCoeff = 0.0;
+    double rectCoeff = 0.0, cSlow = 0.0, cExpDetRel = 0.0, cExpGainAtt = 0.0, cExpGainRel = 0.0;
+    double expCalibrationDb = 0.0, calAtt = -1.0, calRel = -1.0, calFs = -1.0;
     double cCompAtt = 0.0, cCompRel = 0.0, cPdrFastRel = 0.0, cPdrSlowAtt = 0.0;
     double cGateAtt = 0.0, cGateRel = 0.0, cGateDetAtt = 0.0;
     bool pdrOn = false;

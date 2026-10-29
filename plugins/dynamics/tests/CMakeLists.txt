@@ -4,7 +4,8 @@ add_executable (dynamics_tests
     GateTests.cpp
     FilterTests.cpp
     RoutingTests.cpp
-    ParameterTests.cpp)
+    ParameterTests.cpp
+    R2TableTests.cpp)
 target_link_libraries (dynamics_tests PRIVATE dynamics_dsp Catch2::Catch2WithMain)
 target_compile_features (dynamics_tests PRIVATE cxx_std_17)
 if (MSVC)

@@ -74,7 +74,7 @@ inline double ratioDb (const std::vector<double>& out, const std::vector<double>
 }
 
 // Steady-state gain (dB) of a 1 kHz sine of the given peak level through a fresh engine (both channels equal).
-inline double steadyGainDb (const Settings& s, double fs, double peakDb, double freq = 1000.0, double settleS = 0.25)
+inline double steadyGainDb (const Settings& s, double fs, double peakDb, double freq = 1000.0, double settleS = 1.2)
 {
     auto e = makeEngine (s, fs);
     const int n = int (settleS * fs) + int (0.05 * fs);

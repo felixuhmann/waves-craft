@@ -42,7 +42,8 @@ namespace ratio
     // Displayed ratio for position r (negative values are the cancellation ratios).
     inline double fromPosition (double r) noexcept
     {
-        r = clamp01 (r);
+        // host values arrive as float: snap to the 1e-6 grid so that r = 0.8 is exactly 50:1 (spec r2 2)
+        r = clamp01 (std::round (r * 1.0e6) / 1.0e6);
         if (r <= 0.8)
         {
             for (int i = 0; i < numCompPoints - 1; ++i)

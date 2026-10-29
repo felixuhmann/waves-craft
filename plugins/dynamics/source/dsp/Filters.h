@@ -4,7 +4,8 @@
 // the Freq control. From it:
 //   sidechain (detection) filter  = H^3            (three cascaded sections, |H|^3)
 //   active band                   A = H^2           (two cascaded sections)
-//   allpass                       AP = +-D(-s)/D(s) (sign chosen so that AP is in phase with A)
+//   allpass                       AP = D(-s)/D(s)   (every type; AP(0) = +1, spec r2 7)
+//   (for band-pass H^2 has a negative real numerator, so A = -H^2 keeps A in phase with AP)
 //   passive band                  P = AP - A        (|P| = 1 - |A|, A + P = AP exactly)
 #pragma once
 
@@ -52,7 +53,8 @@ struct Biquad
 struct FilterDesign
 {
     BiquadCoeffs h;  // H(z)
-    BiquadCoeffs ap; // allpass in phase with H^2
+    BiquadCoeffs ap; // allpass D(-s)/D(s)
+    double activeSign = 1.0; // A = activeSign * H^2 (in phase with AP)
 };
 
 namespace filterdesign
@@ -114,9 +116,9 @@ namespace filterdesign
         const double k = w / std::tan (w / (2.0 * sampleRate));
         FilterDesign d;
         d.h = bilinear (a.n2, a.n1, a.n0, a.d2, a.d1, a.d0, k);
-        // AP = D(-s)/D(s) (LP, HP, BR) or -D(-s)/D(s) (BP): in phase with H^2 (spec 7)
-        const double sgn = type == FilterType::BandPass ? -1.0 : 1.0;
-        d.ap = bilinear (sgn * a.d2, -sgn * a.d1, sgn * a.d0, a.d2, a.d1, a.d0, k);
+        // AP = D(-s)/D(s) for all four types (spec r2 7)
+        d.ap = bilinear (a.d2, -a.d1, a.d0, a.d2, a.d1, a.d0, k);
+        d.activeSign = type == FilterType::BandPass ? -1.0 : 1.0;
         return d;
     }
 } // namespace filterdesign
@@ -136,7 +138,7 @@ struct FilterChannel
     double bands (const FilterDesign& d, double x, double& allpassOut) noexcept
     {
         allpassOut = ap.process (d.ap, x);
-        return act[1].process (d.h, act[0].process (d.h, x));
+        return d.activeSign * act[1].process (d.h, act[0].process (d.h, x));
     }
     void reset() noexcept
     {

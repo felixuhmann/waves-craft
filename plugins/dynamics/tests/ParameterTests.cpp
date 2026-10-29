@@ -35,6 +35,8 @@ TEST_CASE ("Display strings", "[params]")
     CHECK (formatDisplay (Quantity::GateThreshold, -40.0) == "-40.0 dB");
     CHECK (formatDisplay (Quantity::Ratio, 0.5) == "4.58:1");
     CHECK (formatDisplay (Quantity::Ratio, 1.0) == "-5.00:1");
+    CHECK (formatDisplay (Quantity::Ratio, double (0.8f)) == "50.00:1"); // r2 2: r = 0.8 itself is 50:1
+    CHECK (formatDisplay (Quantity::Ratio, 0.8) == "50.00:1");
     CHECK (formatDisplay (Quantity::Time, 2.0) == "2.00 ms");
     CHECK (formatDisplay (Quantity::Time, 50.0) == "50.0 ms");
     CHECK (formatDisplay (Quantity::Time, 2500.0) == "2.50 s");
