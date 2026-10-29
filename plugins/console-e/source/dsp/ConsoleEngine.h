@@ -57,6 +57,7 @@ public:
     explicit ConsoleEngine (int numChannels = 2) : channels (numChannels == 1 ? 1 : 2) {}
 
     int getNumChannels() const noexcept { return channels; }
+    void setNumChannels (int numChannels) noexcept { channels = numChannels == 1 ? 1 : 2; } // call before prepare()
     static constexpr int getLatencySamples() noexcept { return 0; }
 
     void prepare (double sampleRate) noexcept
@@ -132,7 +133,7 @@ public:
                 if (active.polarity)
                     v = -v;
                 v = saturate (v);
-                inPeak = std::max (inPeak, std::abs (v));
+                inPeak[c] = std::max (inPeak[c], std::abs (v));
                 if (active.split && ! active.eqBypass)
                     v = eq.processFilters (c, v);
                 x[c] = v;
@@ -194,7 +195,7 @@ public:
             }
             for (int c = 0; c < channels; ++c)
             {
-                outPeak = std::max (outPeak, std::abs (y[c]));
+                outPeak[c] = std::max (outPeak[c], std::abs (y[c]));
                 io[c][n] = Sample (y[c]);
             }
         }
@@ -203,13 +204,20 @@ public:
     // Meter values since the previous call (linear peaks; dB for the dynamics).
     struct Meters
     {
-        double inputPeak = 0, outputPeak = 0;
+        double inputPeak[maxChannels] {}, outputPeak[maxChannels] {};
         double compReductionDb = 0; // <= 0 (deepest)
         double expanderGainDb = 0;  // <= 0 (deepest)
     };
     Meters takeMeters() noexcept
     {
-        Meters m { inPeak, outPeak, compMin, expMin };
+        Meters m;
+        for (int c = 0; c < maxChannels; ++c)
+        {
+            m.inputPeak[c] = inPeak[c];
+            m.outputPeak[c] = outPeak[c];
+        }
+        m.compReductionDb = compMin;
+        m.expanderGainDb = expMin;
         resetMeters();
         return m;
     }
@@ -385,11 +393,12 @@ private:
 
     void resetMeters() noexcept
     {
-        inPeak = outPeak = 0.0;
+        for (int c = 0; c < maxChannels; ++c)
+            inPeak[c] = outPeak[c] = 0.0;
         compMin = expMin = 0.0;
     }
 
-    const int channels;
+    int channels;
     double fs = 48000.0;
     Settings target, active, pending;
     Equaliser eq;
@@ -407,7 +416,7 @@ private:
     double spare = 0;
     bool haveSpare = false;
 
-    double inPeak = 0, outPeak = 0, compMin = 0, expMin = 0;
+    double inPeak[maxChannels] {}, outPeak[maxChannels] {}, compMin = 0, expMin = 0;
 };
 
 } // namespace craft::consolee::dsp
