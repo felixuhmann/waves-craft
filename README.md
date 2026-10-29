@@ -80,6 +80,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | [`peak-limiter`](plugins/peak-limiter) | Craft Peak Limiter (stereo / mono, look-ahead 64/128/256 samples) | [r1](spec/peak-limiter/r1/SPEC.md) | [notes](plugins/peak-limiter/IMPLEMENTATION_NOTES.md) |
 | [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
 | [`mastering-limiter`](plugins/mastering-limiter) | Craft Mastering Limiter | [r1](spec/mastering-limiter/r1/SPEC.md) | [notes](plugins/mastering-limiter/IMPLEMENTATION_NOTES.md) |
+| [`punch-compressor`](plugins/punch-compressor) | Craft Punch Compressor | [r1](spec/punch-compressor/r1/SPEC.md) | [notes](plugins/punch-compressor/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
