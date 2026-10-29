@@ -47,12 +47,17 @@ TEST_CASE ("Correction table: Ratio-4 rows reproduce every tabulated cell", "[st
 
 TEST_CASE ("Correction table: low-ratio rows at T -24 and the R >= 2 rule", "[static]")
 {
-    for (int r = 0; r < 3; ++r)
+    for (int r = 0; r < 2; ++r)
         for (int c = 0; c < 11; ++c)
             CHECK (curve::delta (-24.0, dCols[c], curve::ratioToU (ratioRows[r])) == Approx (table24[r][c]).margin (1.0e-9));
-    // R = 50 row: within +-0.05 dB of the R = 4 row (the spec's ratio independence for R >= 2)
+    // just below R = 2: the R = 2 row; R >= 2 uses the R = 4 row (normative rule), which matches the measured
+    // R = 2 and R = 50 rows within +-0.05 dB (the spec's ratio independence for R >= 2)
     for (int c = 0; c < 11; ++c)
+    {
+        CHECK (curve::delta (-24.0, dCols[c], 0.5 - 1.0e-12) == Approx (table24[2][c]).margin (1.0e-9));
+        CHECK (curve::delta (-24.0, dCols[c], curve::ratioToU (2.0)) == Approx (table24[2][c]).margin (0.05));
         CHECK (curve::delta (-24.0, dCols[c], curve::ratioToU (50.0)) == Approx (table24[3][c]).margin (0.05));
+    }
 }
 
 TEST_CASE ("Combination rule, clamps and knee", "[static]")

@@ -6,7 +6,7 @@
 //    release = one-pole on log gain with a short time constant tf(Release) - it lets the gain recover
 //    between the peaks of fast material (section 6: equal-RMS noise vs sine, low-frequency ripple).
 //  * slow stage g2: charges down towards g1 (one-pole on log gain, time constant tc(Release)) and releases with
-//    the measured release law: a one-pole on z = g^gamma towards (K g1)^gamma, clamped at g1, time constant
+//    the measured release law: a one-pole on z = g^gamma towards (K t)^gamma, clamped at the target t, time constant
 //    a * Release. gamma(Release) and a(Release) are fitted to the section 7.4 release table (K = 2), linear in
 //    log10(Release) between the fitted anchors.
 //
@@ -90,12 +90,12 @@ public:
         // slow stage
         if (g1 < g2)
             g2 = g1 * std::exp (cc * std::log (g2 / g1));
-        else if (g2 < g1)
+        else if (g2 < t)
         {
-            const double zt = kGam * std::pow (g1, gam);
+            const double zt = kGam * std::pow (t, gam);
             const double z = zt + cs * (std::pow (g2, gam) - zt);
             const double g = std::pow (z, 1.0 / gam);
-            g2 = g < g1 ? g : g1;
+            g2 = g < t ? g : t;
         }
         return g1 < g2 ? g1 : g2;
     }

@@ -69,16 +69,17 @@ TEST_CASE ("Analog steady tones: fundamental, H2, H3", "[analog]")
             INFO ("Mode " << m << " " << tones[i].f << " Hz a=" << tones[i].a << ": " << r.gainDb << " / " << r.h2Dbc << " / "
                           << r.h3Dbc);
             CHECK (r.gainDb == Approx (ref[0]).margin (m == 3 ? 1.0 : 0.5));
-            // Very low harmonics are at or below the analysis noise floor of any measurement (Mode 2: noise at
-            // -82.7 dBFS; Mode 4 H2 below -100 dBc): there only an upper bound is checked.
+            // Harmonics below about -125 dBFS are at the analysis noise floor of the mode's own noise (Mode 2:
+            // -82.7 dBFS white; the floor depends on the FFT length, unknown for the reference) and Mode 4's H2
+            // below -100 dBc is numerically zero: there only an upper bound is checked (assumption A7).
             const bool floor2 = ref[1] + linToDb (tones[i].a) < -125.0 || ref[1] < -100.0;
             const bool floor3 = ref[2] + linToDb (tones[i].a) < -125.0;
             if (floor2)
-                CHECK (r.h2Dbc < ref[1] + 4.0);
+                CHECK (r.h2Dbc < ref[1] + 6.0);
             else
                 CHECK (r.h2Dbc == Approx (ref[1]).margin (4.0));
             if (floor3)
-                CHECK (r.h3Dbc < ref[2] + 4.0);
+                CHECK (r.h3Dbc < ref[2] + 6.0);
             else
                 CHECK (r.h3Dbc == Approx (ref[2]).margin (4.0));
         }

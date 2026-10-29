@@ -131,7 +131,8 @@ inline ToneResult measureTone (double fs, const Settings& s, double f, double am
     const size_t periods = size_t (std::round (analysisSeconds * f));
     const size_t win = size_t (std::round (double (periods) * fs / f));
     const size_t n = size_t (settleSeconds * fs) + win;
-    const auto x = sine (fs, f, amp, n);
+    // the signal continues past the analysis window, so the look-ahead never sees its end
+    const auto x = sine (fs, f, amp, n + size_t (0.05 * fs));
     const auto y = runAligned (useStereo ? stereo (x) : mono (x), fs, s).l;
     const size_t a = n - win;
     const double h1 = toneAmplitude (y, a, n, f, fs);

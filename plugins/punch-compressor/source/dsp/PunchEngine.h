@@ -25,7 +25,7 @@ class PunchEngine
 {
 public:
     static constexpr int maxChannels = 2;
-    static constexpr double parameterSmoothingSeconds = 0.004; // one-pole tau: 99.3 % after 20 ms (decision D5)
+    static constexpr double parameterSmoothingSeconds = 0.0035; // one-pole tau: 99.7 % after 20 ms (decision D5)
     static constexpr double fadeSeconds = 0.010;               // analog mode change / bypass crossfade
     static constexpr double maxPunchMs = 30.0;
 
@@ -62,6 +62,10 @@ public:
     {
         for (auto* s : { &thresholdSm, &ratioUSm, &makeupSm, &mixSm, &outputSm })
             s->snap();
+        lastMakeupDb = makeupSm.getCurrent();
+        mkLin = lastMakeupDb == 0.0 ? 1.0 : std::pow (10.0, lastMakeupDb / 20.0);
+        lastOutputDb = outputSm.getCurrent();
+        outLin = lastOutputDb == 0.0 ? 1.0 : std::pow (10.0, lastOutputDb / 20.0);
         detector.reset (0.0);
         punchDelay.reset (-400.0);
         for (auto& d : audioDelay)
@@ -95,9 +99,20 @@ public:
         {
             const double T = thresholdSm.next();
             const double u = ratioUSm.next();
-            const double mkLin = makeupSm.next (1.0e-12);
+            // makeup and Output are smoothed in dB (a 12 dB step is within 0.04 dB after 20 ms)
+            const double mkDb = makeupSm.next();
+            if (mkDb != lastMakeupDb)
+            {
+                lastMakeupDb = mkDb;
+                mkLin = mkDb == 0.0 ? 1.0 : std::pow (10.0, mkDb / 20.0);
+            }
             const double mix = mixSm.next();
-            const double outLin = outputSm.next (1.0e-12);
+            const double outDb = outputSm.next();
+            if (outDb != lastOutputDb)
+            {
+                lastOutputDb = outDb;
+                outLin = outDb == 0.0 ? 1.0 : std::pow (10.0, outDb / 20.0);
+            }
 
             // 1. detector: forward sample-peak hold over H+1 samples (linked)
             double in[maxChannels] = { 0.0, 0.0 };
@@ -190,9 +205,9 @@ private:
         makeupDb = curve::makeupDb (settings.thresholdDb, u, effectiveReleaseMs);
         thresholdSm.setTarget (settings.thresholdDb);
         ratioUSm.setTarget (u);
-        makeupSm.setTarget (makeupDb == 0.0 ? 1.0 : std::pow (10.0, makeupDb / 20.0));
+        makeupSm.setTarget (makeupDb);
         mixSm.setTarget (std::clamp (settings.mixPct, 0.0, 100.0) / 100.0);
-        outputSm.setTarget (settings.outputDb == 0.0 ? 1.0 : std::pow (10.0, settings.outputDb / 20.0));
+        outputSm.setTarget (settings.outputDb);
         if (settings.attackMs != lastAttack || effectiveReleaseMs != lastRelease || snapAll)
         {
             smoother.setTimes (settings.attackMs, effectiveReleaseMs);
@@ -239,6 +254,7 @@ private:
     bool bypassed = false;
     double wet = 1.0;
 
+    double lastMakeupDb = 0.0, mkLin = 1.0, lastOutputDb = 0.0, outLin = 1.0;
     double inPeak = 0.0, outPeak = 0.0, minGain = 1.0;
 };
 
