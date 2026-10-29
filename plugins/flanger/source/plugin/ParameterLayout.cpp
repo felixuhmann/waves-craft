@@ -22,7 +22,7 @@ using Q = dsp::Quantity;
 
 template <typename P>
 std::unique_ptr<juce::AudioParameterFloat> makeFloat (const char* id, const juce::String& name, const juce::String& label,
-                                                      Q quantity, std::function<juce::String (float)> suffix = {})
+                                                      Q quantity, std::shared_ptr<std::atomic<bool>> sync = {})
 {
     // The normalised value r is what the host sees; the spec 2 mapping and the internal quantisation are
     // applied by convertFrom0to1, so every value reported back is a step value.
@@ -34,19 +34,13 @@ std::unique_ptr<juce::AudioParameterFloat> makeFloat (const char* id, const juce
 
     auto attributes = juce::AudioParameterFloatAttributes()
                           .withLabel (label)
-                          .withStringFromValueFunction ([quantity, suffix] (float v, int) {
-                              juce::String s (dsp::formatNumber (quantity, double (v)));
-                              return suffix ? s + suffix (v) : s;
+                          // spec 2 display string including the unit ("2.2 ms", "50 %", "0.20 Hz", "0.0 dB")
+                          .withStringFromValueFunction ([quantity, sync] (float v, int) {
+                              return juce::String (dsp::formatDisplay (quantity, double (v), sync != nullptr && sync->load()));
                           })
+                          // tolerant parsing: units, spaces and a "k" multiplier are accepted but not required
                           .withValueFromStringFunction ([] (const juce::String& text) {
-                              auto t = text.trim().toLowerCase().retainCharacters ("0123456789.-+k");
-                              double mult = 1.0;
-                              if (t.endsWithChar ('k'))
-                              {
-                                  mult = 1000.0;
-                                  t = t.dropLastCharacters (1);
-                              }
-                              return float (dsp::param::snap<P> (t.getDoubleValue() * mult));
+                              return float (dsp::param::snap<P> (dsp::parseNumber (text.toStdString())));
                           });
 
     return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name, range, float (P::defaultValue),
@@ -68,14 +62,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (dsp::
     namespace pm = dsp::param;
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    layout.add (makeFloat<pm::Delay> (ids::delay, "Delay", "ms", Q::Delay));
-    layout.add (makeFloat<pm::Depth> (ids::depth, "Depth", "%", Q::Percent));
-    layout.add (makeFloat<pm::Rate> (ids::rate, "Rate", "", Q::Rate, [sync] (float) {
-        return juce::String (sync != nullptr && sync->load() ? " x/Beat" : " Hz");
-    }));
-    layout.add (makeFloat<pm::Mix> (ids::mix, "Mix", "%", Q::Percent));
-    layout.add (makeFloat<pm::Feedback> (ids::feedback, "Feedback", "%", Q::Percent));
-    layout.add (makeFloat<pm::Gain> (ids::gain, "Output Gain", "dB", Q::Gain));
+    // Units are part of the value text (spec 2), so these labels stay empty to avoid "2.2 ms ms" in hosts.
+    layout.add (makeFloat<pm::Delay> (ids::delay, "Delay", "", Q::Delay));
+    layout.add (makeFloat<pm::Depth> (ids::depth, "Depth", "", Q::Percent));
+    layout.add (makeFloat<pm::Rate> (ids::rate, "Rate", "", Q::Rate, sync));
+    layout.add (makeFloat<pm::Mix> (ids::mix, "Mix", "", Q::Percent));
+    layout.add (makeFloat<pm::Feedback> (ids::feedback, "Feedback", "", Q::Percent));
+    layout.add (makeFloat<pm::Gain> (ids::gain, "Output Gain", "", Q::Gain));
     if (variant != dsp::Variant::Mono)
         layout.add (makeFloat<pm::Stereo> (ids::stereo, "Stereo", "deg", Q::Stereo));
     layout.add (makeFloat<pm::FilterFreq> (ids::filterFreq, "Filter Freq", "Hz", Q::FilterFreq));

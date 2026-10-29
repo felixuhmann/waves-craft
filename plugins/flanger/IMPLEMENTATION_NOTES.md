@@ -71,7 +71,13 @@ play head, and passes everything to the engine.
   - Depth in whole percent.
   - `c = (Depth·D)/100` in integer arithmetic, so `0.29·100` cannot truncate to 28.
 - Filter Type and Waveform are choice parameters. All other toggles are bool parameters, plus the host bypass.
-- Display formats come from `Format.h`: "2.2 ms", "50 %", "0.20 Hz" / "12.5 Hz", "0.0 dB", "90°", "1.0k" / "12k".
+- Display strings come from `dsp::formatDisplay` in `Format.h` and include the unit, for both the host-visible
+  parameter text and the GUI value boxes: "2.2 ms", "50 %", "0.20 Hz" / "12.5 Hz", "0.0 dB", "90", "1.0k" / "12k".
+  The GUI adds a degree sign to Stereo ("90°").
+- Because the unit is part of the text, the host labels of these parameters are empty, which avoids "2.2 ms ms".
+- Typed input is parsed by `dsp::parseNumber`. Units and spaces are optional, and "k" multiplies by 1000
+  ("2.2", "2.2 ms", "-3dB", "1.5k", "12 kHz").
+- A fix after verification: the parameter text for Delay, Depth, Mix, Feedback and Output Gain previously had no unit.
 - When Tempo Sync is on, the Rate text changes to "1.00 x/Beat". The host string and the GUI follow it through a
   shared flag.
 
@@ -165,8 +171,8 @@ parameter, because Stereo has no effect there.
 
 ## Tests
 
-The tests are in `tests/`. They use Catch2 and are registered with CTest under the `flanger/` prefix: 35 test cases and
-101 061 assertions, all passing on Windows (MSVC, `/W4`, no warnings) and Linux (GCC 13).
+The tests are in `tests/`. They use Catch2 and are registered with CTest under the `flanger/` prefix: 36 test cases and
+101 392 assertions, all passing on Windows (MSVC, `/W4`, no warnings) and Linux (GCC 13).
 
 - **§10 impulse-response vectors, every row:**
   - Mix/Feedback/Delay taps.
@@ -202,7 +208,8 @@ The tests are in `tests/`. They use Catch2 and are registered with CTest under t
   - Mappings, ranges, defaults and monotonicity.
   - Rate on its 0.005 grid with values below 0.01 → 0.
   - Filter-frequency quantisation.
-  - Display formats.
+  - Display formats, and the full display strings with units for every reachable value.
+  - Tolerant parsing of typed input (with or without units, "k" suffix) and round trips from display to value.
 - **Link:** the coupling and its clamping.
 - **Smoothing:**
   - After arbitrary changes the response settles to exactly the fresh static response (≤ 1e-12).
@@ -264,12 +271,12 @@ The tests are in `tests/`. They use Catch2 and are registered with CTest under t
 ## Status
 
 - **Windows x64 Release (MSVC 14.44, Ninja):** all three products build as VST3, CLAP and Standalone.
-- **CTest at the repository root:** 59/59 pass (35 flanger and 24 stereo-imager).
+- **CTest at the repository root:** 60/60 pass (36 flanger and 24 stereo-imager).
 - **Linux:** the DSP tests were built and run with GCC 13 (`-DCRAFT_BUILD_PLUGINS=OFF`). The Linux plugin build is
   left to CI.
 - **Packaging:** `ci/package.py` finds the three products without changes (`craft-flanger-*`,
   `craft-flanger-mono-*`, `craft-flanger-mono-stereo-*`).
 - **GUI:** checked from editor snapshots (`-DCRAFT_BUILD_SNAPSHOT=ON`, `flanger_snapshot <dir>`).
-- **Not yet done:**
-  - No in-host listening or automation test.
-  - No independent verification report (`docs/verification/flanger-r1.md`).
+- **Not yet done:** no in-host listening or automation test.
+- **Verification:** an independent report is in `docs/verification/flanger-r1.md`. It found one
+  non-conformance, unit-less display strings, which is now fixed.

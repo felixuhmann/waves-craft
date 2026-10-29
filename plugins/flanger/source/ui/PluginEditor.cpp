@@ -38,7 +38,7 @@ FlangerEditor::FlangerEditor (FlangerProcessor& p) : AudioProcessorEditor (p), p
         st, ids::gain,
         [this] {
             auto* prm = proc.getState().getParameter (ids::gain);
-            return juce::String (dsp::formatNumber (dsp::Quantity::Gain, prm->convertFrom0to1 (prm->getValue()))) + " dB";
+            return juce::String (dsp::formatDisplay (dsp::Quantity::Gain, prm->convertFrom0to1 (prm->getValue())));
         },
         std::vector<ScaleMark> { { 12.0, "+12" }, { 6.0, "+6" }, { 0.0, "0" }, { -6.0, "-6" }, { -12.0, "-12" } });
     addAndMakeVisible (*gainFader);
@@ -72,9 +72,10 @@ ValueBox& FlangerEditor::makeBox (const char* id, int quantity, const juce::Stri
     auto* prm = proc.getState().getParameter (id);
     const juce::String pid (id);
     auto box = std::make_unique<ValueBox> (*prm, [this, prm, pid, quantity] {
-        const auto text = juce::String (dsp::formatNumber (dsp::Quantity (quantity), prm->convertFrom0to1 (prm->getValue())));
-        const auto unit = unitFor (pid, proc.isTempoSync());
-        return unit.isEmpty() ? text : (pid == ids::stereo ? text + unit : text + " " + unit);
+        // the spec 2 display string (same text the host shows); Stereo additionally gets a degree sign
+        const auto text = juce::String (dsp::formatDisplay (dsp::Quantity (quantity), prm->convertFrom0to1 (prm->getValue()),
+                                                            proc.isTempoSync()));
+        return pid == ids::stereo ? text + unitFor (pid, false) : text;
     });
     box->setTooltip (tooltip + "\nDrag to change, click to type, double-click to reset");
     addAndMakeVisible (*box);

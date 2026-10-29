@@ -98,6 +98,53 @@ TEST_CASE ("2: display formats", "[params][format]")
     CHECK (formatNumber (Q::FilterFreq, 100) == "0.1k");
 }
 
+TEST_CASE ("2: parameter display strings include the units", "[params][format]")
+{
+    using craft::flanger::dsp::formatDisplay;
+    using Q = craft::flanger::dsp::Quantity;
+    CHECK (formatDisplay (Q::Delay, 2.2) == "2.2 ms");
+    CHECK (formatDisplay (Q::Delay, 50.0) == "50.0 ms");
+    CHECK (formatDisplay (Q::Percent, 50) == "50 %");   // Depth, Mix, Feedback
+    CHECK (formatDisplay (Q::Percent, 100) == "100 %");
+    CHECK (formatDisplay (Q::Rate, 0.2) == "0.20 Hz");
+    CHECK (formatDisplay (Q::Rate, 12.5) == "12.5 Hz");
+    CHECK (formatDisplay (Q::Rate, 1.0, true) == "1.00 x/Beat");
+    CHECK (formatDisplay (Q::Gain, 0.0) == "0.0 dB");
+    CHECK (formatDisplay (Q::Gain, -12.0) == "-12.0 dB");
+    CHECK (formatDisplay (Q::Gain, 4.5) == "4.5 dB");
+    CHECK (formatDisplay (Q::Stereo, 90) == "90");
+    CHECK (formatDisplay (Q::FilterFreq, 1000) == "1.0k");
+    CHECK (formatDisplay (Q::FilterFreq, 12000) == "12k");
+
+    // typed input is accepted with or without units
+    using craft::flanger::dsp::parseNumber;
+    CHECK (parseNumber ("2.2") == 2.2);
+    CHECK (parseNumber ("2.2 ms") == 2.2);
+    CHECK (parseNumber ("50 %") == 50.0);
+    CHECK (parseNumber ("50%") == 50.0);
+    CHECK (parseNumber ("-3.5 dB") == -3.5);
+    CHECK (parseNumber ("+6dB") == 6.0);
+    CHECK (parseNumber ("0.20 Hz") == 0.2);
+    CHECK (parseNumber ("1.00 x/Beat") == 1.0);
+    CHECK (parseNumber ("1.5k") == 1500.0);
+    CHECK (parseNumber ("12 kHz") == 12000.0);
+    CHECK (parseNumber ("800 Hz") == 800.0);
+    CHECK (parseNumber ("abc") == 0.0);
+    // the display string round-trips through the parser
+    CHECK (pm::snap<pm::Delay> (parseNumber (formatDisplay (Q::Delay, 7.3))) == 7.3);
+    CHECK (pm::snap<pm::Gain> (parseNumber (formatDisplay (Q::Gain, -4.5))) == -4.5);
+    CHECK (pm::snap<pm::FilterFreq> (parseNumber (formatDisplay (Q::FilterFreq, 12000))) == 12000.0);
+
+    // every reachable value carries its unit
+    for (int i = 0; i <= 100; ++i)
+    {
+        const double r = i / 100.0;
+        CHECK (formatDisplay (Q::Delay, pm::Delay::fromNorm (r)).find (" ms") != std::string::npos);
+        CHECK (formatDisplay (Q::Percent, pm::Mix::fromNorm (r)).find (" %") != std::string::npos);
+        CHECK (formatDisplay (Q::Gain, pm::Gain::fromNorm (r)).find (" dB") != std::string::npos);
+    }
+}
+
 TEST_CASE ("5.5: Link keeps Rate x Depth constant", "[link]")
 {
     craft::flanger::dsp::RateDepthLink link;
