@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Design aid (not part of the build): fits the Hi Freq sidechain weighting (spec 5) and writes
+source/dsp/WeightingTable.h.
+
+Target: the detector-level offset W_h(f) (dB) that turns the static curve T1 (1 kHz, Hi Freq 100) into the
+measured steady-state GR of T4 (PR 50, -10 dBFS sine) and T5 (PR 60, 1 kHz). For Hi Freq 100 the Compress and Limit
+rows of T4 are averaged (they differ by up to 1.3 dB at 10 kHz); 1 kHz at Hi Freq 100 is pinned to 0 dB (T1).
+Above 10 kHz (unmeasured) the 10 kHz value is continued with a low weight. Fitted jointly at 44.1 / 48 / 96 kHz.
+Structure: cascade of peaking biquads at shared centre frequencies / Qs, gains per Hi Freq node 0/25/50/75/100.
+
+Usage: fit_weighting.py <path to TABLES.md> <output header>
+"""
+import sys
+import numpy as np
+from scipy.optimize import least_squares
+
+
+def read_tables(path):
+    txt = open(path, encoding="utf-8").read()
+
+    def table(head):
+        seg = txt[txt.index(head):]
+        rows = []
+        started = False
+        for line in seg.split("\n")[1:]:
+            if line.startswith("|"):
+                started = True
+                if set(line) <= set("|-: "):
+                    continue
+                rows.append([c.strip() for c in line.strip("|").split("|")])
+            elif started:
+                break
+        return rows
+
+    return table("### T1C"), table("### T1L"), table("### T4"), table("### T5")
+
+
+t1c, t1l, t4, t5 = read_tables(sys.argv[1])
+LEV = np.array([float(v) for v in t1c[0][1:]])
+row = lambda t, pr: np.array([float(v) for v in next(r for r in t[1:] if r[0] == str(pr))[1:]])
+C50, L50, C60 = row(t1c, 50), row(t1l, 50), row(t1c, 60)
+
+
+def inv(curve, gr):  # level (dBFS) giving gr on the rising part of a curve
+    m = curve > 0.05
+    return float(np.interp(gr, curve[m], LEV[m]))
+
+
+F = np.array([float(v) for v in t4[0][1:]])
+W = {}
+for r in t4[1:]:
+    vals = [float(v) for v in r[1:]]
+    if "Limit" in r[0]:
+        wl = np.array([inv(L50, g) + 10 for g in vals])
+        continue
+    W[int(r[0])] = np.array([inv(C50, g) + 10 for g in vals])
+W[100] = 0.5 * (W[100] + wl)
+# T5 (1 kHz, PR 60): average the levels -20 ... 0 dBFS
+for r in t5[1:]:
+    h = int(r[0])
+    lv = [float(v) for v in t5[0][1:]]
+    offs = [inv(C60, float(g)) - l for g, l in zip(r[1:], lv) if float(g) > 1.0]
+    k = int(np.where(F == 1000)[0][0])
+    W[h][k] = 0.5 * (W[h][k] + np.mean(offs))
+W[100][int(np.where(F == 1000)[0][0])] = 0.0
+
+NODES = [0, 25, 50, 75, 100]
+FX = np.concatenate([F, [14000.0, 18000.0]])
+TGT = {h: np.concatenate([W[h], [W[h][-1], W[h][-1]]]) for h in NODES}
+WT = np.concatenate([np.ones(len(F)), [0.3, 0.3]])
+WT[np.where(F == 1000)[0][0]] = 5.0  # 1 kHz carries T1 / T5
+
+CENTRES0 = [50.0, 160.0, 600.0, 2000.0, 5500.0, 11000.0]
+NB = len(CENTRES0)
+FS = 48000.0
+
+
+def peak_db(f0, q, g, f, fs=FS):
+    A = 10 ** (g / 40)
+    w0 = 2 * np.pi * f0 / fs
+    al = np.sin(w0) / (2 * q)
+    z = np.exp(-1j * 2 * np.pi * f / fs)
+    b = (1 + al * A) + (-2 * np.cos(w0)) * z + (1 - al * A) * z * z
+    a = (1 + al / A) + (-2 * np.cos(w0)) * z + (1 - al / A) * z * z
+    return 20 * np.log10(np.abs(b / a))
+
+
+def unpack(p):
+    lf = p[:NB]
+    lq = p[NB:2 * NB]
+    gains = p[2 * NB:].reshape(len(NODES), NB)
+    return np.exp(lf), np.exp(lq), gains
+
+
+def resp(f0s, qs, g, f, fs=FS):
+    return sum(peak_db(f0s[b], qs[b], g[b], f, fs) for b in range(NB))
+
+
+def res(p):
+    f0s, qs, gains = unpack(p)
+    r = []
+    for fs in (44100.0, 48000.0, 96000.0):  # fitted at all rates: keeps the response sample-rate independent
+        for i, h in enumerate(NODES):
+            r.append((resp(f0s, qs, gains[i], FX, fs) - TGT[h]) * WT)
+    one = np.array([500.0, 1000.0, 2000.0])
+    for i in range(len(NODES)):  # sample-rate independence around 1 kHz (static curves, spec 3)
+        ref = resp(f0s, qs, gains[i], one, 48000.0)
+        for fs in (44100.0, 96000.0):
+            r.append((resp(f0s, qs, gains[i], one, fs) - ref) * 12.0)
+    r.append(0.02 * gains.ravel())  # mild regularisation
+    return np.concatenate(r)
+
+
+p0 = np.concatenate([np.log(CENTRES0), np.log(np.full(NB, 1.0)), np.zeros(len(NODES) * NB)])
+lo = np.concatenate([np.log(np.array(CENTRES0) / 2), np.log(np.full(NB, 0.3)), np.full(len(NODES) * NB, -24)])
+hi = np.concatenate([np.log(np.array(CENTRES0) * 2), np.log(np.full(NB, 4.0)), np.full(len(NODES) * NB, 24)])
+s = least_squares(res, p0, bounds=(lo, hi))
+f0s, qs, gains = unpack(s.x)
+for i, h in enumerate(NODES):
+    e = resp(f0s, qs, gains[i], FX) - TGT[h]
+    print(f"Hi Freq {h:3d}: err", np.round(e[:len(F)], 2), " >10k", np.round(resp(f0s, qs, gains[i], FX)[len(F):], 2))
+for fs in (44100.0, 96000.0):
+    d = resp(f0s, qs, gains[-1], np.array([1000.0]), fs) - resp(f0s, qs, gains[-1], np.array([1000.0]))
+    print(f"1 kHz Hi Freq 100 at {fs:.0f} vs 48k: {d[0]:+.4f} dB")
+
+with open(sys.argv[2], "w") as out:
+    out.write("// Craft Opto Leveler - Hi Freq weighting constants. GENERATED by tools/fit_weighting.py - edit there.\n")
+    out.write("#pragma once\n\n#include <array>\n\nnamespace craft::opto_leveler::dsp::weighting_table\n{\n\n")
+    out.write(f"inline constexpr int numBands = {NB};\n")
+    out.write("inline constexpr int numNodes = 5; // Hi Freq 0, 25, 50, 75, 100\n")
+    out.write("inline constexpr double outputGain = 1.0;\n")
+    out.write("inline constexpr std::array<double, numBands> centreHz { " + ", ".join(f"{v:.3f}" for v in f0s) + " };\n")
+    out.write("inline constexpr std::array<double, numBands> q { " + ", ".join(f"{v:.5f}" for v in qs) + " };\n")
+    out.write("inline constexpr std::array<std::array<double, numNodes>, numBands> gainDb { {\n")
+    for b in range(NB):
+        out.write("    { " + ", ".join(f"{gains[i][b]:.4f}" for i in range(len(NODES))) + " },\n")
+    out.write("} };\n\n} // namespace craft::opto_leveler::dsp::weighting_table\n")
+print("wrote", sys.argv[2])
