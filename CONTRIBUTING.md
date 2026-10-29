@@ -48,6 +48,22 @@ docs/verification/<slug>-r<N>.md   independent verification report
 Never use vendor or third-party trademarks in product names, parameter names, GUI text, file names or
 identifiers (no Waves, SSL, CLA, Abbey Road, …). Ship under our own `Craft …` names only.
 
+## Stress-testing a built plug-in
+
+`tools/hoststress` is a shared headless host (`-DCRAFT_BUILD_HOSTSTRESS=ON`, target `craft_hoststress`). It loads a
+built `.vst3` and, for the given time, cycles sample rates (44.1/48/96 kHz), stereo / mono-in layouts, float / double
+precision and random block sizes. It processes noise, impulses, silence, denormal-range and full-scale signals while
+automating every parameter from the audio thread. Meanwhile the message thread moves parameters, saves and restores
+the state, re-prepares the plug-in and (with `--editor`) opens and closes the editor. Every output sample is checked
+for NaN/Inf and for levels above +40 dBFS.
+
+```sh
+craft_hoststress "build/plugins/<slug>/<Target>_artefacts/Release/VST3/<Product>.vst3" --seconds 600 --editor
+```
+
+For memory errors, build a second tree with `-DCMAKE_CXX_FLAGS=/fsanitize=address` (MSVC, Debug config: debug CRT and
+checked iterators) or `-fsanitize=address,undefined` (GCC/Clang) and run the same command against that build.
+
 ## Checklist for a pull request
 
 - [ ] `plugins/<slug>/` with `CMakeLists.txt`, `source/`, `tests/`, `IMPLEMENTATION_NOTES.md`
@@ -55,4 +71,5 @@ identifiers (no Waves, SSL, CLA, Abbey Road, …). Ship under our own `Craft …
 - [ ] `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build && ctest --test-dir build`
       passes from the repository root (CI checks Windows and Linux)
 - [ ] Spec at `spec/<slug>/r<N>/SPEC.md` with its row in `spec/README.md`
+- [ ] `craft_hoststress` run against the release build without failures
 - [ ] README implementation-queue row ticked once released
