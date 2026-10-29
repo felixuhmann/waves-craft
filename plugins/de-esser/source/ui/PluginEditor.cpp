@@ -226,18 +226,18 @@ void DeEsserEditor::resized()
     // left column: Audio / Frequency + SideChain / Monitor
     auto left = body.removeFromLeft (leftW);
     body.removeFromLeft (margin);
-    audioBlock = left.removeFromTop (74);
+    audioBlock = left.removeFromTop (68);
     left.removeFromTop (8);
-    freqBlock = left.removeFromTop (136);
+    freqBlock = left.removeFromTop (128);
     left.removeFromTop (8);
     monitorBlock = left;
 
     audioMode.setBounds (audioBlock.reduced (12, 0).withTrimmedTop (28).withHeight (30));
     frequencyBox.setBounds (freqBlock.reduced (24, 0).withTrimmedTop (28).withHeight (26));
-    filterSelector.setBounds (freqBlock.reduced (12, 0).withTrimmedTop (84).withHeight (30));
+    filterSelector.setBounds (freqBlock.reduced (12, 0).withTrimmedTop (82).withHeight (30));
     auto mon = monitorBlock.reduced (12, 0).withTrimmedTop (28);
-    monitorSelector.setBounds (mon.removeFromTop (62));
-    monitorLed = mon.withTrimmedTop (12).removeFromTop (12).withWidth (12).translated (6, 0);
+    monitorSelector.setBounds (mon.removeFromTop (60));
+    monitorLed = mon.withTrimmedTop (8).removeFromTop (12).withWidth (12).translated (4, 0);
 
     // right: output meters
     rightBlock = body.removeFromRight (rightW);

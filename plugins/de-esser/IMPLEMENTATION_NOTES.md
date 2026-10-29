@@ -91,7 +91,7 @@ engine fed `L = R = x`.
 
 ## §12 User interface
 
-Original vector-drawn editor in the Craft Audio palette (same look-and-feel family as the stereo imager), 600 × 394:
+Original vector-drawn editor in the Craft Audio palette (same look-and-feel family as the stereo imager), 614 × 394:
 
 - Header with an original logo mark (a decaying "s" wave), product name and version.
 - Left column, three panels: **Audio** (one toggle naming the current mode, Split / Wideband);
