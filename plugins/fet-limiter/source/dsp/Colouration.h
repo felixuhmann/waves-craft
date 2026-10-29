@@ -23,7 +23,7 @@ struct SaturatorParams
 
 inline const SaturatorParams& saturatorParams (Revision rev)
 {
-    static const SaturatorParams a { 20.7560, 1.84465, 6.81623, 3.30533, 0.00656074, 3.25454e-4 };
+    static const SaturatorParams a { 18.7907, 1.88017, 6.85624, 3.32879, 0.00705731, 3.67463e-4 };
     static const SaturatorParams b { 37.9593, 8.0, 5.9498, 4.7062, 0.0024892, 6.3204e-5 };
     return rev == Revision::A ? a : b;
 }

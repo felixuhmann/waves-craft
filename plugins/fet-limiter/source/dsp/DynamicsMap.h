@@ -4,7 +4,7 @@
 //
 // The parameters of dsp/Dynamics.h were fitted (least squares, tools/fit_dynamics.py) to every configuration of
 // tables/timing.csv and tables/release_trajectories.csv:
-//   - attack group (tauAttack, beta, tauC) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
+//   - attack group (tauAttack, beta, tauC; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
 //   - release group (tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel) for revision A ratio 4 at Release 1 .. 7,
 //   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), and for revision B
 //     (ratio 4) at (1, 1), (3, 4), (7, 7).
@@ -27,36 +27,36 @@ namespace craft::fet_limiter::dsp
 
 namespace dynmap
 {
-    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset, accel
-    inline constexpr int numParams = 10;
+    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset, accel, depthExp
+    inline constexpr int numParams = 11;
     using Vec = std::array<double, numParams>;
-    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, false, false };
+    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, false, false, false };
 
     inline constexpr Vec attackA4[4] = { // Attack 1, 3, 5, 7 (attack group used)
-        Vec { 0.960521, 0.229017, 22.9849, 20.7498, 26.9719, 830.307, 8.79952, 1740, 4.44893 },
-        Vec { 0.511523, 0.195989, 17.1165, 20.7498, 26.9719, 830.307, 8.79952, 1740, 4.44893 },
-        Vec { 0.231501, 0.196445, 11.5919, 20.7498, 26.9719, 830.307, 8.79952, 1740, 4.44893 },
-        Vec { 0.118378, 0.182848, 5.05232, 20.7498, 26.9719, 830.307, 8.79952, 1740, 4.44893 },
+        Vec { 1.10727, 0.198387, 22.2691, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
+        Vec { 0.248676, 0.18414, 9.15944, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
+        Vec { 0.118393, 0.226996, 3.43429, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
     };
     inline constexpr double attackAnchors[4] = { 1.0, 3.0, 5.0, 7.0 };
     inline constexpr Vec releaseA4[7] = { // Release 1 .. 7 (release group used)
-        Vec { 0.511523, 0.195989, 17.1165, 243.261, 17.6445, 1336.15, 16.5533, 2249.7, 3.49404 },
-        Vec { 0.511523, 0.195989, 17.1165, 270.196, 17.1354, 1331.66, 15.9778, 2258.78, 3.50252 },
-        Vec { 0.511523, 0.195989, 17.1165, 0.30674, 15.2997, 740.976, 145.336, 3619.14, 7.20518 },
-        Vec { 0.511523, 0.195989, 17.1165, 20.7498, 26.9719, 830.307, 8.79952, 1740, 4.44893 },
-        Vec { 0.511523, 0.195989, 17.1165, 24.7073, 31.0483, 604.529, 3.00506, 1412.07, 3.90877 },
-        Vec { 0.511523, 0.195989, 17.1165, 10.2674, 44.1926, 154.933, 3.02589, 1062.04, 5.20132 },
-        Vec { 0.511523, 0.195989, 17.1165, 9.66099, 39.1449, 28.8504, 4.33888, 1020.25, 12.6782 },
+        Vec { 0.5631, 0.18946, 13.1147, 999.999, 8.31424, 296.966, 4.91409, 13269.6, 28.8976, 0.791554, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 270.196, 17.1354, 1331.71, 15.9778, 2258.85, 3.50252, 9.99999e-07, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 0.481745, 17.1584, 1005.93, 60.1417, 3253.22, 6.84149, 2.87946e-08, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 1000, 29.772, 575.513, 7.22374, 1448.95, 3.92316, 7.78866e-11, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 20.4119, 43.7014, 151.73, 3.00006, 1059.82, 5.11162, 1.30507e-13, 1.90524 },
+        Vec { 0.5631, 0.18946, 13.1147, 10.4038, 38.8509, 29.4858, 3.2727, 1023.55, 12.7425, 6.67354e-06, 1.90524 },
     };
-    inline constexpr Vec fit8A3R4 = { 0.352323, 0.151873, 15.457, 17.5002, 27.8089, 941.433, 3.30437, 1541.7, 4.19934 };
-    inline constexpr Vec fit8A7R7 = { 0.123209, 0.0117487, 9.33849, 7.71973, 39.0876, 35.203, 4.99993, 1012.18, 12.5299 };
-    inline constexpr Vec fit20A3R4 = { 0.152568, 0.112406, 6.20455, 11.8217, 30.597, 1078.58, 3.08242, 1173.7, 3.40515 };
-    inline constexpr Vec fit20A7R7 = { 0.0899052, -0.324655, 0.323011, 3.08906, 72.2476, 16.7434, 24.2602, 920.213, 11.0779 };
-    inline constexpr Vec fitAllA3R4 = { 0.231188, 0.0833923, 64.027, 48.1236, 15.233, 152.272, 14.1883, 505.134, 11.9723 };
-    inline constexpr Vec fitAllA7R7 = { 0.0927015, -0.0811312, 16.8063, 1.24021, 1.2585, 17.9657, 10.5175, 88.3098, 17.9532 };
-    inline constexpr Vec fitBA1R1 = { 1.02508, 0.324588, 45.7649, 996.905, 26.1675, 1007.26, 47.9187, 5047.89, 9.28501 };
-    inline constexpr Vec fitBA3R4 = { 0.617953, 0.242143, 29.8778, 24.6273, 32.8907, 510.892, 5.0489, 3921.08, 19.7739 };
-    inline constexpr Vec fitBA7R7 = { 0.0879025, 0.103117, 6.89351, 6.66975, 8.96044, 24.7073, 9.14937, 404.832, 13.3632 };
+    inline constexpr Vec fit8A3R4 = { 0.352013, 0.152156, 15.4312, 17.5034, 27.8116, 941.369, 3.30363, 1541.57, 4.19717, 8.19863e-07, 1.90524 };
+    inline constexpr Vec fit8A7R7 = { 0.113041, 0.0538876, 183.256, 5.34353, 38.7901, 30.5979, 9.382, 1196.57, 16.7526, 0.000516591, 1.90524 };
+    inline constexpr Vec fit20A3R4 = { 0.179841, 0.0927136, 5.53509, 7.27132, 29.0809, 1051.3, 3.25958, 1101.74, 2.43306, 6.24043e-08, 1.90524 };
+    inline constexpr Vec fit20A7R7 = { 0.0925503, -0.297838, 0.334758, 3.09755, 72.2631, 16.9473, 24.1009, 919.175, 11.0726, 9.91021e-07, 1.90524 };
+    inline constexpr Vec fitAllA3R4 = { 0.31466, 0.108916, 296.533, 1.72551, 34.1047, 103.768, 97.4928, 962.093, 21.4451, 2.09335, 1.90524 };
+    inline constexpr Vec fitAllA7R7 = { 0.143601, -0.157454, 4.81594, 0.3128, 1.44906, 21.1872, 8.5858, 85.2843, 18.3666, 0.0346889, 1.90524 };
+    inline constexpr Vec fitBA1R1 = { 1.24865, 0.304186, 48.6068, 626.282, 27.8887, 1240.26, 24.7948, 4512.26, 8.99477, 9.86708e-07, 1.90524 };
+    inline constexpr Vec fitBA3R4 = { 0.739249, 0.241681, 29.9945, 21.9014, 32.6284, 508.26, 3.66755, 4129.09, 21.2377, 0.0225696, 1.90524 };
+    inline constexpr Vec fitBA7R7 = { 0.351729, 0.0263139, 103.921, 3.51799, 6.76761, 4.43486, 4.33814, 818.648, 32.3424, 0.179915, 1.90524 };
 
     inline double lerp (double a, double b, double t) noexcept { return a + (b - a) * t; }
 
@@ -74,7 +74,7 @@ namespace dynmap
         const double tr = r - 1.0 - double (j);
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3;
+            const bool att = k < 3 || k == 10;
             const double x0 = att ? attackA4[i][size_t (k)] : releaseA4[j][size_t (k)];
             const double x1 = att ? attackA4[i + 1][size_t (k)] : releaseA4[j + 1][size_t (k)];
             const double t = att ? ta : tr;
@@ -107,7 +107,7 @@ namespace dynmap
         Vec m {};
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3;
+            const bool att = k < 3 || k == 10;
             const double s = att ? attack : release;
             auto key = [att] (const Anchor& an) { return att ? an.attack : an.release; };
             double value;
@@ -190,6 +190,7 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
     p.tau3Ms = v[7];
     p.releaseOffsetDb = std::max (0.0, v[8]);
     p.accel = std::max (0.0, v[9]);
+    p.depthExp = v[10];
     return p;
 }
 
