@@ -160,8 +160,21 @@ inline BandCoeffs designEqBand (Band band, bool bell, double freqR, double qR, d
         case Band::lmf: return designBand (BandKind::bell, lookup (tables::lmf, freqR, qR, gainDb), fs);
         case Band::hmf: return designBand (BandKind::bell, lookup (tables::hmf, freqR, qR, gainDb), fs);
         case Band::hf:
-            return bell ? designBand (BandKind::bell, lookup (tables::hfBell, freqR, 0, gainDb), fs)
-                        : designBand (BandKind::highShelf, lookup (tables::hfShelf, freqR, 0, gainDb), fs);
+        {
+            if (! bell)
+                return designBand (BandKind::highShelf, lookup (tables::hfShelf, freqR, 0, gainDb), fs);
+            // the 16 / 20 kHz columns of the HF bell rows carry the reference's 48 kHz realisation; above 48 kHz
+            // the parameters move toward the analogue prototype fitted to the columns up to 12.5 kHz
+            auto p = lookup (tables::hfBell, freqR, 0, gainDb);
+            const double w = std::clamp ((fs - 48000.0) / 48000.0, 0.0, 1.0);
+            if (w > 0.0)
+            {
+                const auto h = lookup (tables::hfBellHighRate, freqR, 0, gainDb);
+                for (size_t i = 0; i < 4; ++i)
+                    p[i] += w * (h[i] - p[i]);
+            }
+            return designBand (BandKind::bell, p, fs);
+        }
     }
     return {};
 }
@@ -204,22 +217,51 @@ inline BandCoeffs designHighPass (double r, double fs) noexcept
     return out;
 }
 
-// Low-pass: two-pole section (f, Q) and a first-order pole. r = 0 is Off.
+// Low-pass (spec r2 section 4, Appendix A.2): an analogue pole pair (f0, Q) mapped by impulse invariance and a
+// normalised second-order numerator 1 + c1 z^-1 + c2 z^-2 with the same coefficients at every sample rate, unity at
+// DC. At 48 kHz this reproduces A.2 within 0.005 dB; the near-Nyquist roll-off it adds scales with the sample rate
+// (steeper at 44.1/48 kHz, analogue-like at 96 kHz), as described for the reference. r = 0 is Off.
 inline BandCoeffs designLowPass (double r, double fs) noexcept
 {
     BandCoeffs out;
     if (r <= 0.0)
         return out;
-    const double f = detail::tableLog (tables::lpFreq, r);
-    const double q = detail::tableLin (tables::lpQ, r);
-    const double f2 = detail::tableLog (tables::lpPole, r);
-    const double w = 2 * pi * f, w2 = 2 * pi * f2;
-    AnalogSection s;
-    s.b2 = 0; s.b1 = 0; s.b0 = w * w;
-    s.a1 = w / q; s.a0 = w * w;
-    out.s[0] = designMatched (s, fs);
-    out.s[1] = designMatchedFirstOrder (0.0, w2, w2, fs);
-    out.count = 2;
+    const double f0 = detail::tableLog (tables::lpF0, std::max (r, 0.1));
+    double q = detail::tableLin (tables::lpQ, r);
+    // r < 0.4: the fitted pole pair sits at 0.8 ... 1 x Nyquist at 48 kHz and, with its numerator, only shapes the
+    // response near Nyquist. Where it would lie well inside the band (higher rates) the section moves to a plain
+    // analogue-matched two-pole whose Q matches A.2 at 12.5 ... 20 kHz (0.85 / 0.66 / 0.60 at r = 0.1 / 0.2 / 0.3).
+    double wModel = 1.0;
+    if (r < 0.4)
+    {
+        static constexpr double qAnalogue[] = { 0.851, 0.664, 0.60, 0.6872 };
+        const double x = std::clamp (r, 0.1, 0.4) * 10.0 - 1.0;
+        const int i = std::min (int (x), 2);
+        const double qa = qAnalogue[i] + (x - i) * (qAnalogue[i + 1] - qAnalogue[i]);
+        wModel = std::clamp ((96000.0 - fs) / 48000.0, 0.0, 1.0); // 48 kHz model up to 48 kHz, analogue from 96 kHz
+        q = qa + (q - qa) * wModel;
+    }
+    const double c1 = detail::tableLin (tables::lpC1, r);
+    const double c2 = detail::tableLin (tables::lpC2, r);
+    const double w = 2 * pi * std::min (f0, 0.998 * fs);
+    BiquadCoeffs c;
+    matchedPoles (w / q, w * w, 1.0 / fs, c.a1, c.a2);
+    const double k = (1.0 + c.a1 + c.a2) / (1.0 + c1 + c2);
+    c.b0 = k;
+    c.b1 = k * c1;
+    c.b2 = k * c2;
+    if (wModel < 1.0)
+    {
+        AnalogSection s;
+        s.b2 = 0; s.b1 = 0; s.b0 = w * w;
+        s.a1 = w / q; s.a0 = w * w;
+        const auto m = designMatched (s, fs); // same poles, magnitude-matched numerator
+        c.b0 = wModel * c.b0 + (1 - wModel) * m.b0;
+        c.b1 = wModel * c.b1 + (1 - wModel) * m.b1;
+        c.b2 = wModel * c.b2 + (1 - wModel) * m.b2;
+    }
+    out.s[0] = c;
+    out.count = 1;
     return out;
 }
 

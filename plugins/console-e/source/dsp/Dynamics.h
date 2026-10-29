@@ -39,27 +39,44 @@ inline constexpr double detectorTau = 0.004;
 inline constexpr double detectorFastTau = 0.0012;
 
 // Compressor attack: one-pole on the gain reduction (dB) plus a short smoothing stage.
-inline constexpr double detectorDelay = 0.0006; // response time of the gain computer (s)
-inline constexpr double attackSlowTau = 0.042;
-inline constexpr double attackFastTau = 0.0002;
-inline constexpr double attackFastTailTau = 0.0035; // second (release-weighted) component: slower tail
+inline constexpr double detectorDelay = 0.00085; // response time of the gain computer (s)
 inline constexpr double smoothSlowTau = 0.0005;
 inline constexpr double smoothFastTau = 0.0003;
 
-// Compressor release: two components, r(t) = w e^{-t/tau1} + (1 - w) e^{-t/tau2}, tabulated at the release
-// control values of the spec table (section 6) and interpolated log-linearly in the release time.
+// Compressor release: two components, r(t) = w e^{-t/tau1} + (1 - w) e^{-t/tau2}; the two states also have their
+// own attack time constants (att1, att2), so the attack lengthens with the release (spec r2 section 6.6).
+// Tabulated at the release values of the spec tables and interpolated log-linearly in the release time.
 struct ReleasePoint
 {
-    double releaseS, w, tau1, tau2;
+    double releaseS, w, tau1, tau2, att1, att2;
 };
-inline constexpr std::array<ReleasePoint, 4> releaseSlow { { { 0.1, 0.85, 0.065, 0.160 },
-                                                             { 0.4, 0.80, 0.095, 0.300 },
-                                                             { 1.0, 0.70, 0.200, 1.20 },
-                                                             { 4.0, 1.0, 1.60, 1.60 } } };
-inline constexpr std::array<ReleasePoint, 4> releaseFast { { { 0.1, 0.85, 0.022, 0.060 },
-                                                             { 0.4, 0.75, 0.035, 0.300 },
-                                                             { 1.0, 0.70, 0.170, 1.25 },
-                                                             { 4.0, 1.0, 1.60, 1.60 } } };
+inline constexpr std::array<ReleasePoint, 4> releaseSlow { { { 0.1, 0.85, 0.065, 0.160, 0.040, 0.040 },
+                                                             { 0.4, 0.80, 0.095, 0.300, 0.040, 0.040 },
+                                                             { 1.0, 0.70, 0.200, 1.20, 0.040, 0.040 },
+                                                             { 4.0, 1.0, 1.60, 1.60, 0.056, 0.056 } } };
+inline constexpr std::array<ReleasePoint, 4> releaseFast { { { 0.1, 0.85, 0.022, 0.060, 0.0014, 0.0028 },
+                                                             { 0.4, 0.75, 0.035, 0.300, 0.0010, 0.0032 },
+                                                             { 1.0, 0.70, 0.170, 1.25, 0.0012, 0.0040 },
+                                                             { 4.0, 1.0, 1.60, 1.60, 0.0034, 0.0034 } } };
+
+// Steady-state reduction vs attack mode and release (spec r2 section 6.5): gain change (dB, negative = more
+// reduction) relative to slow attack / 0.4 s as a function of the Appendix B reduction |GR| (dB). The |GR| axis
+// holds the reductions of the 6.5 table levels (ratio 4, threshold -10, -24 ... 0 dBFS); the values are the
+// table values corrected for the engine's own ballistic bias (tools/TimingProbe.cpp).
+inline constexpr std::array<double, 5> steadyGrAxis { 2.94, 6.00, 9.49, 13.32, 17.23 };
+struct SteadyPoint
+{
+    double releaseS;
+    std::array<double, 5> dG;
+};
+inline constexpr std::array<SteadyPoint, 4> steadySlow { { { 0.1, { 0.30, 0.42, 0.41, 0.50, 0.37 } },
+                                                           { 0.4, { 0.0, 0.0, 0.0, 0.0, 0.0 } },
+                                                           { 1.0, { -0.21, -0.34, -0.53, -0.47, -0.58 } },
+                                                           { 4.0, { -0.54, -0.86, -1.16, -1.29, -1.58 } } } };
+inline constexpr std::array<SteadyPoint, 4> steadyFast { { { 0.1, { -0.80, -1.09, -1.50, -1.56, -1.82 } },
+                                                           { 0.4, { -0.91, -1.33, -1.75, -1.86, -2.17 } },
+                                                           { 1.0, { -1.01, -1.47, -1.93, -2.14, -2.46 } },
+                                                           { 4.0, { -1.09, -1.62, -2.14, -2.39, -2.76 } } } };
 
 // Expander/gate: the level envelope falls at a constant rate (dB/s) set by the release control.
 struct EnvelopePoint
@@ -83,6 +100,18 @@ inline double interpLog (const std::array<Point, 4>& t, double releaseS, Get get
     const double x0 = std::log (t[size_t (i)].releaseS), x1 = std::log (t[size_t (i + 1)].releaseS);
     const double w = (x - x0) / (x1 - x0);
     return std::exp ((1 - w) * std::log (get (t[size_t (i)])) + w * std::log (get (t[size_t (i + 1)])));
+}
+// linear interpolation over log(release) (values may be zero or negative)
+template <typename Point, typename Get>
+inline double interpLinLog (const std::array<Point, 4>& t, double releaseS, Get get) noexcept
+{
+    const double x = std::log (std::clamp (releaseS, t[0].releaseS, t[3].releaseS));
+    int i = 0;
+    while (i < 2 && std::log (t[size_t (i + 1)].releaseS) < x)
+        ++i;
+    const double x0 = std::log (t[size_t (i)].releaseS), x1 = std::log (t[size_t (i + 1)].releaseS);
+    const double w = (x - x0) / (x1 - x0);
+    return (1 - w) * get (t[size_t (i)]) + w * get (t[size_t (i + 1)]);
 }
 } // namespace timing
 
@@ -160,7 +189,8 @@ public:
         double compDb = 0.0;
         if (settings.compInvRatio < 1.0)
         {
-            delayLine[size_t (delayPos)] = comp::staticGainDb (compLevel, settings.compThresholdDb, settings.compInvRatio) - makeup;
+            const double staticGr = comp::staticGainDb (compLevel, settings.compThresholdDb, settings.compInvRatio) - makeup;
+            delayLine[size_t (delayPos)] = std::min (0.0, staticGr + steadyShift (-staticGr));
             delayPos = (delayPos + 1) % delayLength;
             const double target = delayLine[size_t (delayPos)];
             s1 += (target - s1) * (target < s1 ? attackCoeff : rel1Coeff);
@@ -186,9 +216,9 @@ public:
             double target;
             const double floorDb = currentFloor();
             if (settings.gate)
-                target = env >= expander::kneeDbfs (settings.expThresholdDb) ? 0.0 : -floorDb;
+                target = env >= expander::gateSwitchDbfs (settings.expThresholdDb) ? 0.0 : -floorDb;
             else
-                target = expander::staticGainDb (env, settings.expThresholdDb, floorDb);
+                target = expander::staticGainDb (env, settings.expThresholdDb, settings.expRangeDb);
             const double k = target > expGain ? openCoeff : (settings.gate ? gateCoeff : followCoeff);
             expGain += (target - expGain) * k;
             expDb = expGain;
@@ -207,6 +237,21 @@ public:
     double getMakeupDb() const noexcept { return makeup; }
 
 private:
+    // section 6.5 shift for a static reduction of `gr` dB (>= 0)
+    double steadyShift (double gr) const noexcept
+    {
+        const auto& ax = timing::steadyGrAxis;
+        if (gr <= 0.0)
+            return 0.0;
+        if (gr <= ax[0])
+            return steadyDg[0] * gr / ax[0];
+        for (size_t k = 1; k < ax.size(); ++k)
+            if (gr <= ax[k])
+                return steadyDg[k - 1] + (steadyDg[k] - steadyDg[k - 1]) * (gr - ax[k - 1]) / (ax[k] - ax[k - 1]);
+        const size_t n = ax.size() - 1;
+        return steadyDg[n] + (steadyDg[n] - steadyDg[n - 1]) / (ax[n] - ax[n - 1]) * (gr - ax[n]);
+    }
+
     double currentFloor() const noexcept
     {
         return settings.gate ? expander::gateFloor (settings.expRangeDb) : expander::expanderFloor (settings.expRangeDb);
@@ -217,8 +262,12 @@ private:
         if (fs <= 0)
             return;
         using namespace timing;
-        attackCoeff = coeffForTau (settings.compFastAttack ? attackFastTau : attackSlowTau, fs);
-        attack2Coeff = coeffForTau (settings.compFastAttack ? attackFastTailTau : attackSlowTau, fs);
+        const auto& at = settings.compFastAttack ? releaseFast : releaseSlow;
+        attackCoeff = coeffForTau (interpLog (at, settings.compReleaseS, [] (const ReleasePoint& p) { return p.att1; }), fs);
+        attack2Coeff = coeffForTau (interpLog (at, settings.compReleaseS, [] (const ReleasePoint& p) { return p.att2; }), fs);
+        const auto& st = settings.compFastAttack ? steadyFast : steadySlow;
+        for (size_t k = 0; k < steadyDg.size(); ++k)
+            steadyDg[k] = interpLinLog (st, settings.compReleaseS, [k] (const SteadyPoint& p) { return p.dG[k]; });
         smoothCoeff = coeffForTau (settings.compFastAttack ? smoothFastTau : smoothSlowTau, fs);
         const auto& rt = settings.compFastAttack ? releaseFast : releaseSlow;
         relWeight = interpLog (rt, settings.compReleaseS, [] (const ReleasePoint& p) { return p.w; });
@@ -241,6 +290,7 @@ private:
 
     double attackCoeff = 0, attack2Coeff = 0, smoothCoeff = 0, rel1Coeff = 0, rel2Coeff = 0, relWeight = 1, makeup = 0;
     double s1 = 0, s2 = 0, smooth = 0, reduction = 0;
+    std::array<double, 5> steadyDg {};
     static constexpr int maxDelay = 512;
     std::array<double, maxDelay> delayLine {};
     int delayLength = 1, delayPos = 0;

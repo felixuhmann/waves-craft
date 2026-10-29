@@ -8,10 +8,13 @@ warnings.filterwarnings('ignore')
 from gen import classify, KIND, resp, identity, r_of, LFK, LMK, HMK, HFK, QK
 from data import rows, F
 
-P = {k: np.array(v) for k, v in json.load(open('rowfits.json')).items()}
+import os
+FITS = os.environ.get('ROWFITS', 'rowfits.json')
+OUT = os.environ.get('GRIDS', 'grids.json')
+P = {k: np.array(v) for k, v in json.load(open(FITS)).items()}
 BANDS = ['LFB', 'LFS', 'LMF', 'HMF', 'HFB', 'HFS']
 R = lambda x: round(float(x), 4)
-CORE_F = {'LFB': [0, r_of(60, LFK), .3, .5, 1], 'LFS': [0, r_of(60, LFK), .3, .5, 1],
+CORE_F = {'LFB': [0, r_of(60, LFK), r_of(100, LFK), r_of(200, LFK), 1], 'LFS': [0, r_of(60, LFK), r_of(100, LFK), r_of(200, LFK), 1],
           'LMF': [0, r_of(.5, LMK), .5, 1], 'HMF': [0, r_of(1.5, HMK), r_of(3.5, HMK), 1],
           'HFB': [0, r_of(3, HFK), .5, 1], 'HFS': [0, r_of(3, HFK), .5, 1]}
 CORE_F = {b: [R(x) for x in v] for b, v in CORE_F.items()}
@@ -191,4 +194,4 @@ if __name__ == '__main__':
     worst.sort(key=lambda t: -max(t[0], t[1]))
     for w in worst[:20]:
         print('%-22s fs=%6.0f  lo %.2f  hi %.2f' % (w[2], w[3], w[4], w[5]))
-    json.dump({b: {'f': GRID[b][0], 'q': GRID[b][1], 'g': GRID[b][2], 'v': GRID[b][3].tolist()} for b in BANDS}, open('grids.json', 'w'))
+    json.dump({b: {'f': GRID[b][0], 'q': GRID[b][1], 'g': GRID[b][2], 'v': GRID[b][3].tolist()} for b in BANDS}, open(OUT, 'w'))

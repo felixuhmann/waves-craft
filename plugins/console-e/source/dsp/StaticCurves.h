@@ -115,11 +115,61 @@ inline double makeupDb (double thresholdDb, double invRatio) noexcept
 // ---- expander / gate (section 7) -------------------------------------------------------------------
 namespace expander
 {
-// Threshold control T (dB) -> knee level in dBFS (1 kHz sine). Section 7.1: threshold -20 bends at -30.9 dBFS.
-inline constexpr double kneeOffset = -10.9;
-inline constexpr double slope = 1.2; // dB of gain per dB below the knee (section 7: ~1.23, 7.1 fit: 1.20)
+// Spec r2 section 7.1: expander gain (dB) at range 40 for thresholds -30, -20, -10, 0 and 1 kHz sine levels
+// -57 ... -21 dBFS (3 dB steps); 0 dB above the table. Interpolated linearly in level and threshold.
+inline constexpr std::array<double, 4> curveThresholds { -30.0, -20.0, -10.0, 0.0 };
+inline constexpr double curveLevel0 = -57.0, curveStep = 3.0;
+inline constexpr int curveN = 13;
+inline constexpr double curve40[4][curveN] = {
+    { -11.0, -7.6, -4.1, -0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { -20.3, -16.9, -13.4, -9.9, -6.3, -2.6, 0, 0, 0, 0, 0, 0, 0 },
+    { -30.2, -26.8, -23.3, -19.8, -16.1, -12.5, -8.7, -4.9, -1.1, 0, 0, 0, 0 },
+    { -40.5, -37.1, -33.6, -30.1, -26.5, -22.8, -19.0, -15.2, -11.4, -7.6, -4.0, -0.4, 0 },
+};
+// level shift of the curve per dB of threshold outside -30 ... 0 (slope of the knee between the rows)
+inline constexpr double kneeShiftPerDb = 0.8;
+// knees (level where the expansion starts) of the four rows, dBFS
+inline constexpr std::array<double, 4> curveKnees { -47.58, -39.89, -32.13, -23.67 };
+// smaller ranges start the expansion slightly later: gain offset (dB) by range (rows thr -20 / -10, ranges 5 ... 30)
+inline constexpr std::array<double, 7> offsetRange { 0, 5, 10, 15, 20, 30, 40 };
+inline constexpr std::array<double, 7> offsetDb { 0.8, 0.8, 0.5, 0.43, 0.27, 0.1, 0.0 };
+// the gate opens slightly above the expander knee (thr -20: between -39 and -36; thr -10: between -33 and -30 dBFS)
+inline constexpr double gateAboveKnee = 1.5;
 
-inline double kneeDbfs (double thresholdDb) noexcept { return thresholdDb + kneeOffset; }
+namespace detail
+{
+inline double rowGain (int row, double level) noexcept
+{
+    const double p = (level - curveLevel0) / curveStep;
+    if (p >= curveN - 1) return 0.0;
+    if (p <= 0.0) return curve40[row][0] + (curve40[row][1] - curve40[row][0]) * p; // extrapolate the slope
+    const int k = int (p);
+    return curve40[row][k] + (p - k) * (curve40[row][k + 1] - curve40[row][k]);
+}
+} // namespace detail
+
+// range-40 curve for any threshold (interpolated between rows, level-shifted outside -30 ... 0)
+inline double curveGain (double levelDb, double thresholdDb) noexcept
+{
+    if (thresholdDb > 0.0)
+        return detail::rowGain (3, levelDb - kneeShiftPerDb * thresholdDb);
+    if (thresholdDb < -30.0)
+        return detail::rowGain (0, levelDb - kneeShiftPerDb * (thresholdDb + 30.0));
+    const int i = std::min (int ((thresholdDb + 30.0) / 10.0), 2);
+    const double w = (thresholdDb - curveThresholds[size_t (i)]) / 10.0;
+    return (1 - w) * detail::rowGain (i, levelDb) + w * detail::rowGain (i + 1, levelDb);
+}
+
+inline double kneeDbfs (double thresholdDb) noexcept
+{
+    if (thresholdDb > 0.0) return curveKnees[3] + kneeShiftPerDb * thresholdDb;
+    if (thresholdDb < -30.0) return curveKnees[0] + kneeShiftPerDb * (thresholdDb + 30.0);
+    const int i = std::min (int ((thresholdDb + 30.0) / 10.0), 2);
+    const double w = (thresholdDb - curveThresholds[size_t (i)]) / 10.0;
+    return (1 - w) * curveKnees[size_t (i)] + w * curveKnees[size_t (i + 1)];
+}
+
+inline double gateSwitchDbfs (double thresholdDb) noexcept { return kneeDbfs (thresholdDb) + gateAboveKnee; }
 
 // Expander floor (dB of attenuation) for a range control value: measured 5 -> 0.8, 10 -> 7.7, 15 -> 14.5,
 // 20 -> 21.4, then +1.38 dB per dB (specification choice).
@@ -141,10 +191,19 @@ inline double gateFloor (double range) noexcept
 }
 
 // Static expander gain (dB, <= 0) for envelope level env (dBFS).
-inline double staticGainDb (double envDb, double thresholdDb, double floorDb) noexcept
+inline double staticGainDb (double envDb, double thresholdDb, double rangeDb) noexcept
 {
-    const double below = kneeDbfs (thresholdDb) - envDb;
-    return below <= 0.0 ? 0.0 : std::max (-floorDb, -slope * below);
+    double offset = offsetDb.back();
+    for (size_t i = 0; i + 1 < offsetRange.size(); ++i)
+        if (rangeDb <= offsetRange[i + 1])
+        {
+            offset = offsetDb[i] + (offsetDb[i + 1] - offsetDb[i]) * (rangeDb - offsetRange[i]) / (offsetRange[i + 1] - offsetRange[i]);
+            break;
+        }
+    const double g = curveGain (envDb, thresholdDb);
+    if (g >= 0.0)
+        return 0.0;
+    return std::max (-expanderFloor (rangeDb), std::min (0.0, g + offset));
 }
 } // namespace expander
 

@@ -1,8 +1,9 @@
 """Emit EqTables.h from grids.json (+ HP/LP corner tables)."""
 import json, sys
 G = json.load(open('grids.json'))
+G['HFBHI'] = json.load(open('grids_hi.json'))['HFB']
 out = sys.argv[1]
-NAMES = {'LFB': 'lfBell', 'LFS': 'lfShelf', 'LMF': 'lmf', 'HMF': 'hmf', 'HFB': 'hfBell', 'HFS': 'hfShelf'}
+NAMES = {'LFB': 'lfBell', 'LFS': 'lfShelf', 'LMF': 'lmf', 'HMF': 'hmf', 'HFB': 'hfBell', 'HFS': 'hfShelf', 'HFBHI': 'hfBellHighRate'}
 
 def arr(name, xs, fmt='%.6g', per=8):
     s = 'inline constexpr double %s[] = {\n' % name
@@ -40,13 +41,14 @@ for b, n in NAMES.items():
     body += arr(n + 'V', flat, '%.9g', 8)
     body += 'inline constexpr BandGrid %s { %sF, %d, %sQ, %d, %sG, %d, %sV };\n\n' % (n, n, len(d['f']), n, len(d['q']), n, len(d['g']), n)
 
-# HP: third-order Butterworth corner per r (0.1 steps); LP: two-pole (f, Q) plus first-order pole f2
+# HP: third-order Butterworth corner per r (0.1 steps); LP: lowpass.py model
+import lowpass
 hp = [16.9, 17.8, 28.2, 55.7, 102.5, 131.6, 174.0, 230.3, 322.3, 413.8]
-lp = [(26818, 1.061, 24674), (21978, 1.052, 19748), (16177, 0.970, 13830), (11237, 0.771, 10924), (8129, 0.678, 10284),
-      (6165, 0.648, 11038), (4864, 0.648, 11796), (4189, 0.656, 12127), (3842, 0.662, 12230), (3342, 0.674, 12271)]
+lp = lowpass.fit()
 body += '// High-pass corner (Hz) at r = 0.1, 0.2, ... 1.0 (log-linear in between; r = 0 is Off)\n'
 body += arr('hpCorner', hp, '%.1f', 10)
-body += '// Low-pass at r = 0.1 ... 1.0: pole-pair frequency (Hz), pole-pair Q, extra first-order pole (Hz)\n'
-body += arr('lpFreq', [x[0] for x in lp], '%.0f', 10) + arr('lpQ', [x[1] for x in lp], '%.3f', 10) + arr('lpPole', [x[2] for x in lp], '%.0f', 10)
+body += '// Low-pass at r = 0.1 ... 1.0: pole pair (f0 Hz, Q; impulse-invariant) and normalised numerator 1 + c1 z^-1 + c2 z^-2\n'
+body += arr('lpF0', [x[1] for x in lp], '%.2f', 10) + arr('lpQ', [x[2] for x in lp], '%.5f', 10)
+body += arr('lpC1', [x[3] for x in lp], '%.6f', 10) + arr('lpC2', [x[4] for x in lp], '%.6f', 10)
 open(out, 'w').write(hdr + body + '\n} // namespace craft::consolee::dsp::tables\n')
 print('wrote', out)

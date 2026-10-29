@@ -20,17 +20,22 @@ bool isHfBandAtHighSetting (const RowSetting& s)
     return (s.band == RowBand::hfBell || s.band == RowBand::hfShelf) && param::hfFreq (s.freqR) >= 8.0 - 1e-9;
 }
 
-// Section 12 tolerance at frequency f for sample rate fs. At rates other than 48 kHz the 48 kHz tables are
-// compared up to 12 kHz with +-0.5 dB (the reference itself agrees within 0.1 dB below 8 kHz) and with +-1.5 dB
-// above (IMPLEMENTATION_NOTES.md).
+// Spec r2 section 12 tolerance (absolute frequency bands at every sample rate).
 double tolerance (const RowSetting& s, double f, double fs)
 {
     if (fs != 48000.0 && isHfBandAtHighSetting (s))
         return 1.5;
-    const double edge = std::min (0.25 * fs, 12000.0);
-    if (f <= edge)
+    if (f <= 12000.0)
         return 0.5;
     return s.band == RowBand::lp ? 3.0 : 1.5;
+}
+
+// Analogue two-pole of the low-pass pole pair (the section 4 informative f/Q pairs; tables::lpF0 / lpQ), dB
+double analogueLowPassDb (double r, double f)
+{
+    const int i = std::clamp (int (std::lround (r * 10.0)) - 1, 0, 9);
+    const double x = f / tables::lpF0[i], q = tables::lpQ[i];
+    return -10.0 * std::log10 ((1 - x * x) * (1 - x * x) + x * x / (q * q));
 }
 
 struct Worst
@@ -55,8 +60,18 @@ Worst checkAllRows (double fs, int& checked)
         {
             if (freqs[i] >= 0.5 * fs)
                 continue;
-            const double err = eqResponseDb (coeffs, freqs[i], fs) - row.values[i];
-            const double excess = std::abs (err) - tolerance (set, freqs[i], fs);
+            const double db = eqResponseDb (coeffs, freqs[i], fs);
+            double err = db - row.values[i];
+            double excess = std::abs (err) - tolerance (set, freqs[i], fs);
+            // Low-pass at high rates (section 4: the target is the analogue-like 96 kHz behaviour; the 48 kHz rows
+            // include the reference's 48 kHz roll-off): above 4 kHz the response must lie between A.2 and the
+            // analogue two-pole of its pole pair (each +-0.5 dB).
+            if (set.band == RowBand::lp && fs > 50000.0 && freqs[i] > 4000.0)
+            {
+                const double ana = analogueLowPassDb (set.freqR, freqs[i]);
+                const double lo = std::min (row.values[i], ana) - 0.5, hi = std::max (row.values[i], ana) + 0.5;
+                excess = db < lo ? lo - db : db > hi ? db - hi : -0.5;
+            }
             if (excess > w.excess)
                 w = { excess, row.id, freqs[i], err };
         }
@@ -104,8 +119,8 @@ TEST_CASE ("High-pass: third-order Butterworth at the section 4 corners, Off is 
 
 TEST_CASE ("Low-pass: steeper with every position, Off is exact", "[eq][lp]")
 {
-    // section 4 lists pole frequencies of a 48 kHz two-pole fit; the normative magnitudes are Appendix A.2 (checked
-    // above). Here: monotonic behaviour between the tabulated positions and an exact Off.
+    // section 4 f/Q pairs are informative; the normative magnitudes are Appendix A.2 (checked above). Here:
+    // monotonic behaviour between the tabulated positions, the stated 20 kHz losses and an exact Off.
     double prev = 1.0;
     for (double r = 0.1; r <= 1.0001; r += 0.05)
     {
@@ -114,8 +129,18 @@ TEST_CASE ("Low-pass: steeper with every position, Off is exact", "[eq][lp]")
         prev = db;
     }
     CHECK (designLowPass (0.0, 48000.0).count == 0);
-    // r = 0.1: corner above 19 kHz, at most 2.7 dB loss at 20 kHz
-    CHECK (designLowPass (0.1, 48000.0).magnitudeDb (20000.0, 48000.0) > -2.7);
+    // section 4 (r2): loss at 20 kHz (48 kHz) r = 0.1 -> -0.6 dB, 0.2 -> -2.0 dB, 0.3 -> -7.7 dB
+    CHECK (std::abs (designLowPass (0.1, 48000.0).magnitudeDb (20000.0, 48000.0) + 0.6) < 0.3);
+    CHECK (std::abs (designLowPass (0.2, 48000.0).magnitudeDb (20000.0, 48000.0) + 2.0) < 0.3);
+    CHECK (std::abs (designLowPass (0.3, 48000.0).magnitudeDb (20000.0, 48000.0) + 7.7) < 0.3);
+    // never a boost of more than 0.5 dB anywhere below Nyquist, at any rate
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (double r = 0.05; r <= 1.0001; r += 0.05)
+        {
+            const auto c = designLowPass (r, fs);
+            for (double f = 20.0; f < 0.5 * fs; f *= 1.05)
+                CHECK (c.magnitudeDb (f, fs) < 0.5);
+        }
 }
 
 TEST_CASE ("Appendix A.17: derived bell peak gains", "[eq][appendix]")

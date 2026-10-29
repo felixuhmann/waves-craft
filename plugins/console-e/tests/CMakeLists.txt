@@ -7,7 +7,8 @@ target_link_libraries (console_e_tests PRIVATE console_e_dsp Catch2::Catch2WithM
 target_compile_features (console_e_tests PRIVATE cxx_std_17)
 # The normative tables are read straight from the approved spec.
 target_compile_definitions (console_e_tests PRIVATE
-    CONSOLE_E_APPENDIX="${CMAKE_CURRENT_SOURCE_DIR}/../../../spec/console-e/r1/APPENDIX.md")
+    CONSOLE_E_APPENDIX="${CMAKE_CURRENT_SOURCE_DIR}/../../../spec/console-e/r2/APPENDIX.md"
+    CONSOLE_E_SPEC="${CMAKE_CURRENT_SOURCE_DIR}/../../../spec/console-e/r2/SPEC.md")
 if (MSVC)
     target_compile_options (console_e_tests PRIVATE /W4 /bigobj)
 else()

@@ -187,28 +187,58 @@ TEST_CASE ("Compressor: one linked detector for both channels", "[dynamics][comp
     CHECK (gl < expectedGain (4.0, -20.0, -40.0) - 5.0); // the quiet channel gets the loud channel's reduction
 }
 
-TEST_CASE ("Compressor: attack times (section 6)", "[dynamics][compressor][timing]")
+TEST_CASE ("Compressor: attack times vs release (sections 6 and 6.6)", "[dynamics][compressor][timing]")
 {
     auto probe = [] (const ConsoleEngine& e) { return e.getDynamics().getCompressorReductionDb(); };
-    double before = 0;
     // ratio 4, threshold -10: +30 dB step from -36.5 to -6.5 dBFS (~13 dB reduction)
+    struct Row
     {
-        const auto tr = stepTrace (compSettings (4.0, -10.0), -36.5, -6.5, 1.0, 1.0, probe, before);
-        const auto t = crossings (tr, before, tr.back());
-        INFO ("slow attack " << t.t10 << " / " << t.t63 << " / " << t.t90 << " ms");
-        CHECK (std::abs (tr.back() - before) > 11.0);
-        CHECK (within (t.t10, 6));
-        CHECK (within (t.t63, 46));
-        CHECK (within (t.t90, 90));
-    }
+        double release, s10, s63, s90, f10, f63, f90;
+    };
+    const Row rows[] = { { 0.1, 6.5, 46, 89, 1.5, 3.0, 5.5 },
+                         { 0.4, 6.0, 45, 88, 1.5, 3.0, 6.0 },
+                         { 1.0, 6.5, 45.5, 94, 1.5, 3.0, 7.0 },
+                         { 4.0, 7.5, 60, 123.5, 1.5, 5.0, 11.0 } };
+    for (const auto& r : rows)
+        for (bool fast : { false, true })
+        {
+            double before = 0;
+            const auto tr = stepTrace (compSettings (4.0, -10.0, r.release, fast), -36.5, -6.5, 1.0, 1.0, probe, before);
+            const auto t = crossings (tr, before, tr.back());
+            INFO ((fast ? "fast" : "slow") << " attack, release " << r.release << ": " << t.t10 << " / " << t.t63 << " / " << t.t90 << " ms");
+            CHECK (std::abs (tr.back() - before) > 11.0);
+            CHECK (within (t.t10, fast ? r.f10 : r.s10));
+            CHECK (within (t.t63, fast ? r.f63 : r.s63));
+            CHECK (within (t.t90, fast ? r.f90 : r.s90));
+        }
+}
+
+TEST_CASE ("Compressor: steady-state reduction vs attack mode and release (section 6.5)", "[dynamics][compressor]")
+{
+    struct Row
     {
-        const auto tr = stepTrace (compSettings (4.0, -10.0, 0.4, true), -36.5, -6.5, 1.0, 0.5, probe, before);
-        const auto t = crossings (tr, before, tr.back());
-        INFO ("fast attack " << t.t10 << " / " << t.t63 << " / " << t.t90 << " ms");
-        CHECK (within (t.t10, 1));
-        CHECK (within (t.t63, 2));
-        CHECK (within (t.t90, 5));
+        bool fast;
+        double release, dG[5];
+    };
+    const Row rows[] = { { false, 0.1, { 0.30, 0.42, 0.41, 0.50, 0.37 } },   { false, 1.0, { -0.21, -0.34, -0.53, -0.47, -0.58 } },
+                         { false, 4.0, { -0.54, -0.86, -1.16, -1.29, -1.58 } }, { true, 0.1, { -0.89, -1.20, -1.61, -1.68, -1.95 } },
+                         { true, 0.4, { -1.03, -1.47, -1.89, -2.02, -2.34 } },  { true, 1.0, { -1.13, -1.62, -2.08, -2.31, -2.64 } },
+                         { true, 4.0, { -1.22, -1.77, -2.30, -2.57, -2.95 } } };
+    const double levels[5] = { -24, -18, -12, -6, 0 };
+    double base[5];
+    for (int i = 0; i < 5; ++i)
+    {
+        auto e = makeEngine (compSettings (4.0, -10.0));
+        base[i] = steadyGainDb (e, 1000.0, levels[i], 1.5);
     }
+    for (const auto& r : rows)
+        for (int i = 0; i < 5; ++i)
+        {
+            auto e = makeEngine (compSettings (4.0, -10.0, r.release, r.fast));
+            const double dG = steadyGainDb (e, 1000.0, levels[i], 1.5) - base[i];
+            INFO ((r.fast ? "fast " : "slow ") << r.release << " s at " << levels[i] << " dBFS: " << dG << " (table " << r.dG[i] << ")");
+            CHECK (std::abs (dG - r.dG[i]) <= 0.5);
+        }
 }
 
 TEST_CASE ("Compressor: release times (section 6)", "[dynamics][compressor][timing]")
@@ -257,46 +287,65 @@ TEST_CASE ("Compressor: time constants are defined in seconds (96 kHz)", "[dynam
     CHECK (within (t63, 46));
 }
 
-TEST_CASE ("Expander: static curve (section 7.1) and floors", "[dynamics][expander]")
+TEST_CASE ("Expander / gate: static table (section 7.1)", "[dynamics][expander][gate]")
+{
+    struct Row
+    {
+        bool gate;
+        double thr, range, gain[13];
+    };
+    const Row rows[] = {
+        { false, -30, 40, { -11.0, -7.6, -4.1, -0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
+        { false, -20, 40, { -20.3, -16.9, -13.4, -9.9, -6.3, -2.6, 0, 0, 0, 0, 0, 0, 0 } },
+        { false, -10, 40, { -30.2, -26.8, -23.3, -19.8, -16.1, -12.5, -8.7, -4.9, -1.1, 0, 0, 0, 0 } },
+        { false, 0, 40, { -40.5, -37.1, -33.6, -30.1, -26.5, -22.8, -19.0, -15.2, -11.4, -7.6, -4.0, -0.4, 0 } },
+        { false, -20, 10, { -7.5, -7.6, -7.7, -7.7, -5.8, -2.1, 0, 0, 0, 0, 0, 0, 0 } },
+        { false, -20, 20, { -20.1, -16.7, -13.2, -9.6, -6.0, -2.3, 0, 0, 0, 0, 0, 0, 0 } },
+        { false, -10, 5, { -0.7, -0.8, -0.8, -0.8, -0.8, -0.8, -0.8, -0.8, -0.3, 0, 0, 0, 0 } },
+        { false, -10, 15, { -14.3, -14.5, -14.5, -14.5, -14.5, -12.0, -8.3, -4.5, -0.7, 0, 0, 0, 0 } },
+        { false, -10, 30, { -30.1, -26.7, -23.2, -19.6, -16.0, -12.3, -8.6, -4.8, -1.0, 0, 0, 0, 0 } },
+        { true, -20, 40, { -52.2, -52.7, -52.7, -52.7, -52.7, -52.7, -52.7, 0, 0, 0, 0, 0, 0 } },
+        { true, -10, 40, { -52.2, -52.7, -52.7, -52.7, -52.7, -52.7, -52.7, -52.7, -52.7, 0, 0, 0, 0 } },
+        { true, -10, 20, { -25.0, -25.4, -25.4, -25.4, -25.4, -25.4, -25.4, -25.4, -25.4, 0, 0, 0, 0 } } };
+    double worst = 0;
+    std::string where;
+    for (const auto& r : rows)
+    {
+        Settings s;
+        s.gate = r.gate;
+        s.expThreshold = param::expThreshold.toNorm (r.thr);
+        s.expRange = param::expRange.toNorm (r.range);
+        for (int i = 0; i < 13; ++i)
+        {
+            const double level = -57.0 + 3.0 * i;
+            auto e = makeEngine (s);
+            const double g = steadyGainDb (e, 1000.0, level, 1.0);
+            const double err = std::abs (g - r.gain[i]);
+            if (err > worst)
+            {
+                worst = err;
+                where = std::string (r.gate ? "gate" : "exp") + " thr " + std::to_string (r.thr) + " range " + std::to_string (r.range)
+                      + " at " + std::to_string (level);
+            }
+        }
+    }
+    INFO ("worst " << worst << " dB: " << where);
+    CHECK (worst <= 0.5);
+}
+
+TEST_CASE ("Expander floors (section 7)", "[dynamics][expander]")
 {
     Settings s;
     s.expThreshold = param::expThreshold.toNorm (-20.0);
-    s.expRange = param::expRange.toNorm (40.0);
-    const double level[] = { -45, -42, -39, -36, -33, -30, -24 };
-    const double gain[] = { -16.9, -13.4, -9.9, -6.3, -2.6, 0.0, 0.0 };
-    for (int i = 0; i < 7; ++i)
-    {
-        auto e = makeEngine (s);
-        const double g = steadyGainDb (e, 1000.0, level[i], 1.0);
-        INFO (level[i] << " dBFS: " << g << " dB (target " << gain[i] << ")");
-        CHECK (std::abs (g - gain[i]) <= 0.5);
-    }
-    // floors far below the threshold
     const double range[] = { 5, 10, 15, 20 };
     const double floorDb[] = { 0.8, 7.7, 14.5, 21.4 };
     for (int i = 0; i < 4; ++i)
     {
         s.expRange = param::expRange.toNorm (range[i]);
         auto e = makeEngine (s);
-        const double g = steadyGainDb (e, 1000.0, -80.0, 1.0);
+        const double g = steadyGainDb (e, 1000.0, -90.0, 1.0);
         INFO ("range " << range[i] << ": " << g);
         CHECK (std::abs (g + floorDb[i]) <= 0.5);
-    }
-}
-
-TEST_CASE ("Gate: hard switching and floors (section 7)", "[dynamics][gate]")
-{
-    Settings s;
-    s.gate = true;
-    s.expThreshold = param::expThreshold.toNorm (-20.0);
-    for (auto [range, floorDb] : { std::pair { 20.0, 25.4 }, std::pair { 40.0, 52.7 }, std::pair { 10.0, 12.7 } })
-    {
-        s.expRange = param::expRange.toNorm (range);
-        auto e = makeEngine (s);
-        INFO ("range " << range);
-        CHECK (std::abs (steadyGainDb (e, 1000.0, -33.0, 1.0) + floorDb) <= 0.5); // just below the knee
-        auto e2 = makeEngine (s);
-        CHECK (std::abs (steadyGainDb (e2, 1000.0, -29.0, 1.0)) <= 0.1);           // just above
     }
 }
 
@@ -313,7 +362,8 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
                          { 0.4, true, 58, 166, 236, 86, 390, 830 },
                          { 1.0, false, 128, 364, 520, 188, 856, 1826 },
                          { 4.0, false, 470, 1344, 1922, 626, 2260, 3700 } };
-    const double knee = expander::kneeDbfs (-20.0);
+    // the signal falls from 6 dB above the switching level to 35 dB below the threshold's internal level (T - 18 dBFS)
+    const double low = -20.0 - 18.0 - 35.0;
     for (const auto& r : rows)
         for (bool gate : { false, true })
         {
@@ -324,8 +374,8 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
             s.expRelease = param::expRelease.toNorm (r.release);
             s.expFastAttack = r.fast;
             double before = 0;
-            // the signal falls from 6 dB above to 35 dB below the threshold
-            const auto tr = stepTrace (s, knee + 6.0, knee - 35.0, 1.0, 9.0, probe, before);
+            const double start = (gate ? expander::gateSwitchDbfs (-20.0) : expander::kneeDbfs (-20.0)) + 6.0;
+            const auto tr = stepTrace (s, start, low, 1.0, 9.0, probe, before);
             const auto t = crossings (tr, before, tr.back());
             INFO ((gate ? "gate" : "expander") << " release " << r.release << ": " << t.t10 << " / " << t.t63 << " / " << t.t90);
             CHECK (within (t.t10, gate ? r.g10 : r.e10));
@@ -342,7 +392,8 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
             s.expRange = param::expRange.toNorm (40.0);
             s.expFastAttack = fast;
             double before = 0;
-            const auto tr = stepTrace (s, knee - 35.0, knee + 6.0, 2.0, 0.5, probe, before);
+            const double high = (gate ? expander::gateSwitchDbfs (-20.0) : expander::kneeDbfs (-20.0)) + 6.0;
+            const auto tr = stepTrace (s, low, high, 2.0, 0.5, probe, before);
             const auto t = crossings (tr, before, tr.back());
             INFO ((gate ? "gate" : "expander") << (fast ? " fast" : " slow") << " opening t90 " << t.t90 << " ms");
             CHECK (t.t90 <= (fast ? 1.0 : 5.0));

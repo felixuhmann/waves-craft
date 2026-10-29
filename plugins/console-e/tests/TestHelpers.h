@@ -109,7 +109,7 @@ inline std::vector<std::string> splitId (const std::string& id)
     return t;
 }
 
-// Rows labelled Q 0.5 coincide exactly with the Q sweep at r = 0.9 (lmq_0.90 == gm_1k_q0.5_+12.0), see notes.
+// Q labels of the rows -> position (spec r2 section 2: Q 0.50 is r = 0.90).
 inline double qRowToNorm (double q)
 {
     if (q == 3.5) return 0.0;
@@ -124,21 +124,23 @@ inline RowSetting classifyRow (const std::string& id)
     const auto t = splitId (id);
     RowSetting s {};
     auto num = [] (const std::string& x) { return std::stod (x); };
+    // rows are keyed by the displayed value of the r2 taper: the position is the 0.01 step showing that value
+    auto pos = [] (double r) { return std::round (r * 100.0) / 100.0; };
     if (t[0] == "hpn") { s.band = RowBand::hp; s.freqR = num (t[1]); return s; }
     if (t[0] == "lpn") { s.band = RowBand::lp; s.freqR = num (t[1]); return s; }
-    if (t[0] == "lf") { s.band = t[1] == "shelf" ? RowBand::lfShelf : RowBand::lfBell; s.freqR = pm::lfFreq.toNorm (num (t[2])); s.gainDb = num (t[3]); return s; }
-    if (t[0] == "hf") { s.band = t[1] == "shelf" ? RowBand::hfShelf : RowBand::hfBell; s.freqR = pm::hfFreq.toNorm (num (t[2])); s.gainDb = num (t[3]); return s; }
+    if (t[0] == "lf") { s.band = t[1] == "shelf" ? RowBand::lfShelf : RowBand::lfBell; s.freqR = pos (pm::lfFreq.toNorm (num (t[2]))); s.gainDb = num (t[3]); return s; }
+    if (t[0] == "hf") { s.band = t[1] == "shelf" ? RowBand::hfShelf : RowBand::hfBell; s.freqR = pos (pm::hfFreq.toNorm (num (t[2]))); s.gainDb = num (t[3]); return s; }
     if (t[0] == "lff") { s.band = RowBand::lfBell; s.freqR = num (t[1]); s.gainDb = 12; return s; }
     if (t[0] == "hff") { s.band = RowBand::hfBell; s.freqR = num (t[1]); s.gainDb = 12; return s; }
     if (t[0] == "lmq") { s.band = RowBand::lmf; s.freqR = 0.5; s.qR = num (t[1]); s.gainDb = 12; return s; }
-    if (t[0] == "gl") { s.band = t[1] == "bell60" ? RowBand::lfBell : RowBand::lfShelf; s.freqR = pm::lfFreq.toNorm (60); s.gainDb = num (t[2]); return s; }
+    if (t[0] == "gl") { s.band = t[1] == "bell60" ? RowBand::lfBell : RowBand::lfShelf; s.freqR = pos (pm::lfFreq.toNorm (60)); s.gainDb = num (t[2]); return s; }
     if (t[0] == "gh") { s.band = t[1] == "bell8k" ? RowBand::hfBell : RowBand::hfShelf; s.freqR = 0.5; s.gainDb = num (t[2]); return s; }
     if (t[0] == "gm") { s.band = RowBand::lmf; s.freqR = 0.5; s.qR = qRowToNorm (num (t[2].substr (1))); s.gainDb = num (t[3]); return s; }
     if (t[0] == "lmf" || t[0] == "hmf")
     {
         s.band = t[0] == "lmf" ? RowBand::lmf : RowBand::hmf;
         if (t.size() == 2) { s.freqR = num (t[1]); s.qR = 0.5; s.gainDb = 12; return s; }
-        s.freqR = (t[0] == "lmf" ? pm::lmfFreq : pm::hmfFreq).toNorm (num (t[1]));
+        s.freqR = pos ((t[0] == "lmf" ? pm::lmfFreq : pm::hmfFreq).toNorm (num (t[1])));
         s.qR = qRowToNorm (num (t[2]));
         s.gainDb = num (t[3]);
         return s;

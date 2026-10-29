@@ -101,14 +101,12 @@ double parseValue (const juce::String& id, const juce::String& text, double curr
     if (id == ids::hp)
     {
         if (khz) v *= 1000.0;
-        if (v <= 20.0) return juce::jlimit (0.001, 0.2, (v - 17.0) / 15.0);
-        return pm::Taper { { 0.0, 20.0, 120.0, 300.0, 350.0 } }.toNorm (v);
+        return std::max (0.05, pm::hpTaper.toNorm (v));
     }
     if (id == ids::lp)
     {
         if (! khz && v > 100.0) v /= 1000.0;
-        if (v >= 12.0) return juce::jlimit (0.001, 0.2, (20.0 - v) / 40.0);
-        return pm::Taper { { 20.0, 12.0, 5.0, 3.5, 3.0 } }.toNorm (v);
+        return std::max (0.05, pm::lpTaper.toNorm (v));
     }
     if (id == ids::lfFreq && khz) v *= 1000.0;
     if ((id == ids::lmfFreq || id == ids::hmfFreq || id == ids::hfFreq) && ! khz && v > 100.0) v /= 1000.0;
