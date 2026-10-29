@@ -1,4 +1,4 @@
-// Spec r1 section 2: parameter mappings, defaults and display formats.
+// spec r2 section 2: parameter mappings, defaults and display formats.
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 

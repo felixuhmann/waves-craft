@@ -1,4 +1,4 @@
-// Craft Multiband - parameter-bound controls (spec r1 section 8).
+// Craft Multiband - parameter-bound controls (spec r2 section 8).
 #pragma once
 
 #include <array>

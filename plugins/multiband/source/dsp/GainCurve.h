@@ -1,4 +1,4 @@
-// Craft Multiband - static gain curve f(x; Knee, Range) (spec r1 section 4, review decision D6).
+// Craft Multiband - static gain curve f(x; Knee, Range) (spec r2 section 4, review decision D6).
 // Host-independent: no JUCE dependency.
 //
 // Band gain (dB) = Gain + Range * f(x), x = band level (sine-peak dBFS) - Threshold.

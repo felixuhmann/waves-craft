@@ -1,4 +1,6 @@
-// Spec r1 section 3: crossover model, band responses, exact allpass sum, zero latency.
+// spec r2 section 3: crossover model, band responses, exact allpass sum, zero latency.
+#include <random>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -59,7 +61,7 @@ TEST_CASE ("Band responses match the spec examples (48 kHz, 92/4000/11071 Hz)", 
     // unity); the exact model gives -76.43 / -41.65 dB, i.e. within -100 / -66 dB re unity of the listed values.
     auto lin = [] (double db) { return std::pow (10.0, db / 20.0); };
     CHECK (std::abs (lin (bandDb (s, 0, 1000, fs)) - lin (-76.7)) < lin (-51.0));
-    CHECK (bandDb (s, 0, 1000, fs) == Approx (-76.7).margin (0.5));
+    CHECK (bandDb (s, 0, 1000, fs) == Approx (-76.43).margin (0.01)); // r2: model value (reference -76.7)
     CHECK (bandDb (s, 1, 1000, fs) == Approx (-0.29).margin (0.01));
     CHECK (bandDb (s, 1, 4000, fs) == Approx (-6.02).margin (0.01));
     CHECK (bandDb (s, 2, 6000, fs) == Approx (-3.09).margin (0.01));
@@ -67,7 +69,7 @@ TEST_CASE ("Band responses match the spec examples (48 kHz, 92/4000/11071 Hz)", 
 
     const auto s01 = sections (92, 4000, 11071, 0.1, fs);
     CHECK (std::abs (lin (bandDb (s01, 0, 1000, fs)) - lin (-42.2)) < lin (-51.0));
-    CHECK (bandDb (s01, 0, 1000, fs) == Approx (-42.2).margin (0.6));
+    CHECK (bandDb (s01, 0, 1000, fs) == Approx (-41.65).margin (0.01)); // r2: model value (reference -42.2)
     const auto s075 = sections (92, 4000, 11071, 0.75, fs);
     CHECK (bandDb (s075, 0, 20, fs) == Approx (0.08).margin (0.01));
 }
@@ -191,4 +193,40 @@ TEST_CASE ("Crossover glides are stable and click-free, also when crossed", "[cr
     CHECK (maxAbs < 1.0);
     // a 300 Hz sine at 0.5 peak moves at most 0.5 * 2 pi 300 / 48000 = 0.02 per sample
     CHECK (maxStep < 0.05);
+}
+
+TEST_CASE ("Random crossover / Q jumps on a full-scale square cause no large transients", "[crossover][engine]")
+{
+    for (double fs : { 44100.0, 96000.0 })
+    {
+        MultibandEngine e;
+        Settings st = Settings::defaults();
+        for (auto& b : st.bands)
+            b.rangeDb = 0.0;
+        e.setSettings (st);
+        e.prepare (fs, 2);
+        std::mt19937 rng (5);
+        std::uniform_real_distribution<double> u (0.0, 1.0);
+        double maxAbs = 0.0;
+        int phase = 0;
+        for (int blk = 0; blk < 4000; ++blk)
+        {
+            if (blk % 3 == 0)
+            {
+                for (auto& f : st.crossoverHz)
+                    f = param::Crossover::fromNorm (u (rng) < 0.3 ? std::round (u (rng)) : u (rng));
+                st.q = param::CrossoverQ::fromNorm (u (rng));
+                e.setSettings (st);
+            }
+            std::vector<double> l (64), r (64);
+            for (int i = 0; i < 64; ++i)
+                l[size_t (i)] = r[size_t (i)] = ((phase++ / 37) % 2) ? 1.0 : -1.0;
+            double* io[2] = { l.data(), r.data() };
+            e.process (io, 64);
+            for (double v : l)
+                maxAbs = std::max (maxAbs, std::abs (v));
+        }
+        INFO ("fs " << fs);
+        CHECK (maxAbs < 8.0); // allpass (dispersed) +-1 square while gliding: overshoot only, no runaway
+    }
 }

@@ -1,4 +1,4 @@
-// Craft Multiband - host parameters (spec r1 section 2).
+// Craft Multiband - host parameters (spec r2 section 2).
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>

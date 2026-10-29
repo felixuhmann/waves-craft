@@ -1,4 +1,4 @@
-// Spec r1 section 4 / decision D6: static gain curve f(x; Knee, Range), threshold shift, static engine behaviour.
+// spec r2 section 4 / decision D6: static gain curve f(x; Knee, Range), threshold shift, static engine behaviour.
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 

@@ -1,4 +1,4 @@
-// Craft Multiband - frequency-domain display (spec r1 section 8): crossover markers / band handles, the
+// Craft Multiband - frequency-domain display (spec r2 section 8): crossover markers / band handles, the
 // Gain ... Gain+Range region of every band and the animated total gain curve.
 #pragma once
 

@@ -1,5 +1,8 @@
-// Spec r1 sections 1, 3 and 6: LTI at Range 0, solo / band bypass / output gain, host bypass bit-exact,
-// parameter smoothing.
+// Spec r2 sections 1, 3 and 6: LTI at Range 0, solo / band bypass / output gain, host bypass bit-exact,
+// parameter smoothing, robustness.
+#include <limits>
+#include <random>
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -184,4 +187,89 @@ TEST_CASE ("Parameter changes are smoothed: click-free, settled within 20 ms", "
         maxStep = std::max (maxStep, std::abs (y[i] - y[i - 1]));
     CHECK (maxStep < 0.01);                                    // a gradual glide (largest step << jump of 0.75)
     CHECK (y[2400 + size_t (0.020 * fs)] == Approx (target).epsilon (0.01)); // within 1 % after 20 ms
+}
+
+TEST_CASE ("Robustness: random parameter changes keep the output finite and never latch to silence (r2 section 6)", "[engine]")
+{
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+    {
+        std::mt19937 rng (77);
+        std::uniform_real_distribution<double> u (0.0, 1.0);
+        Settings s = Settings::defaults();
+        MultibandEngine e;
+        e.setSettings (s);
+        e.prepare (fs, 2);
+        const auto noise = test::whiteNoise (size_t (fs * 6), 13, 0.3);
+        double maxAbs = 0.0;
+        bool finite = true;
+        for (size_t i = 0; i + 256 <= noise.size(); i += 256)
+        {
+            if (i % 2048 == 0)
+            {
+                s.knee = (i / 2048) % 2 == 0 ? 0.30 : 0.71;
+                s.q = param::CrossoverQ::fromNorm (u (rng));
+                s.outputGainDb = param::OutputGain::fromNorm (u (rng));
+                s.autoRelease = u (rng) > 0.5;
+                s.opto = u (rng) > 0.5;
+                for (int k = 0; k < 3; ++k)
+                    s.crossoverHz[size_t (k)] = param::Crossover::fromNorm (u (rng));
+                for (auto& b : s.bands)
+                {
+                    b.gainDb = param::BandGain::fromNorm (u (rng));
+                    b.rangeDb = param::BandRange::fromNorm (u (rng));
+                    b.thresholdDb = param::BandThreshold::fromNorm (u (rng));
+                    b.attackMs = param::Attack::fromNorm (u (rng));
+                    b.releaseMs = param::Release::fromNorm (u (rng));
+                    b.solo = u (rng) > 0.9;
+                    b.bypass = u (rng) > 0.9;
+                }
+                e.setSettings (s);
+            }
+            std::vector<double> l (noise.begin() + long (i), noise.begin() + long (i + 256)), r = l;
+            double* io[2] = { l.data(), r.data() };
+            e.process (io, 256);
+            for (double v : l)
+            {
+                finite = finite && std::isfinite (v);
+                maxAbs = std::max (maxAbs, std::abs (v));
+            }
+        }
+        CHECK (finite);
+        // bounded by the largest possible total gain (+18 Gain, +18 Range, +18 Output = +54 dB, x 501)
+        CHECK (maxAbs < 0.3 * 6.0 * 501.0);
+
+        // after the changes, neutral settings must pass the signal again
+        e.setSettings (neutral());
+        std::vector<double> l (noise.begin(), noise.begin() + long (fs / 2)), r = l;
+        double* io[2] = { l.data(), r.data() };
+        e.process (io, int (l.size()));
+        double en = 0.0;
+        for (size_t i = l.size() / 2; i < l.size(); ++i)
+            en += l[i] * l[i];
+        CHECK (en > 0.5 * 0.09 * double (l.size() / 2));
+    }
+}
+
+TEST_CASE ("Robustness: a non-finite input sample does not poison the state", "[engine]")
+{
+    MultibandEngine e;
+    e.setSettings (Settings::defaults());
+    e.prepare (48000.0, 2);
+    const auto x = test::whiteNoise (4800, 3, 0.3);
+    auto y = x;
+    y[100] = std::numeric_limits<double>::quiet_NaN();
+    y[200] = std::numeric_limits<double>::infinity();
+    const auto out = test::runStereo (e, y, y);
+    bool finite = true;
+    for (double v : out.first)
+        finite = finite && std::isfinite (v);
+    CHECK (finite);
+    const auto again = test::runStereo (e, x, x);
+    double en = 0.0;
+    for (double v : again.first)
+    {
+        REQUIRE (std::isfinite (v));
+        en += v * v;
+    }
+    CHECK (en > 0.1 * 0.09 * 4800.0);
 }

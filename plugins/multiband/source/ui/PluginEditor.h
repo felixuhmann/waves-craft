@@ -1,4 +1,4 @@
-// Craft Multiband - editor (spec r1 section 8; all artwork drawn in code).
+// Craft Multiband - editor (spec r2 section 8; all artwork drawn in code).
 #pragma once
 
 #include <array>

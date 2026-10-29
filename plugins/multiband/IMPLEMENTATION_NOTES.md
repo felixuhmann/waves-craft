@@ -1,7 +1,8 @@
-# Implementation notes — Craft Multiband (spec r1)
+# Implementation notes — Craft Multiband (spec r2)
 
-Clean-room implementation (builder side) of [`spec/multiband/r1/SPEC.md`](../../spec/multiband/r1/SPEC.md)
-(SHA-256 `2733d3bb…74eb6bf`, approved 2026-10-29). Only the spec, `docs/process.md`, the repository's own code,
+Clean-room implementation (builder side) of [`spec/multiband/r2/SPEC.md`](../../spec/multiband/r2/SPEC.md)
+(SHA-256 `cc7d2a33…5efe16`, approved 2026-10-29; supersedes r1 — the r1 build 897ff20 was verified in
+[`docs/verification/multiband-r1.md`](../../docs/verification/multiband-r1.md)). Only the spec, `docs/process.md`, the repository's own code,
 public documentation / literature and this implementation were used. No original product, analyst workspace,
 vendor asset or vendor installation was accessed.
 
@@ -18,7 +19,7 @@ All paths are relative to `plugins/multiband/`.
 CMakeLists.txt       targets of this plugin (added automatically by the root CMakeLists.txt)
 source/dsp/          host-independent, header-only DSP core (no JUCE)
   Parameters.h         §2 mappings r -> value with quantisation, inverses, defaults, display formats, Settings
-  Crossover.h          §3 w0(Q), bilinear sections, exact complex band responses, FourBandSplitter (12 biquads)
+  Crossover.h          §3 w0(Q), bilinear sections, exact complex band responses, FourBandSplitter (9 TPT SVFs)
   GainCurve.h          §4 / D6 normative tables and f(x; Knee, Range) (node rule + monotone cubic)
   Envelope.h           instantaneous amplitude (IIR Hilbert pair) for the peak detector
   BandDynamics.h       §5 / §6 per-band gain computer (detector, attack, onset, charge/release, Electro/Opto, Auto)
@@ -35,12 +36,15 @@ tools/Snapshot.cpp   optional dev tool rendering the editor to PNG (-DCRAFT_BUIL
 1. Parameter smoothers (one-pole τ = 4 ms, lands exactly on target: 99 % after 18.4 ms ≤ 20 ms, D2) for Output
    Gain, Knee, every band's Gain / Range / Threshold, crossover frequencies (in log2 Hz) and Q. While a crossover
    or Q glides, the section coefficients are recomputed every 4 samples.
-2. Per channel: `FourBandSplitter` → B1…B4 (§3, double precision, transposed direct form II).
+2. Per channel: `FourBandSplitter` → B1…B4 (§3, double precision, trapezoidal state-variable sections).
 3. Per band: analytic-signal envelope of each channel's band signal, linked by `max` over the channels (§6),
    → `BandDynamics` → normalised gain change ν → linear dynamic gain `g = 1 + ν (10^(Range/20) − 1)`.
 4. Band gain `10^(Gain/20) · g`, cross-faded (10 ms) to unity when the band is bypassed; multiplied by the solo
    weight (10 ms ramp) and the Output Gain; output = Σ bands.
 5. Host bypass: 10 ms crossfade to the dry input, then the buffer is left untouched (bit-exact).
+6. Robustness (r2 §6): settings are sanitised (finite, clamped); every dynamics state is clamped and reset if it
+   becomes non-finite; a non-finite output sample is replaced by 0 and the filter / detector states are restarted
+   at the end of that block, so nothing can latch.
 
 ## How each spec section is implemented
 
@@ -56,11 +60,14 @@ Release). Knee displays "Soft" at 0 and "Hard" at 0.75. Release mode and Behavio
 
 **§3 Crossover (exact).** `crossoverW0(Q)` solves `u² + (2 − 1/Q²) u − 1 = 0` (u = w0²), i.e. each second-order
 section is −3.01 dB at f_k. Each section is the bilinear transform of the analog prototype with `K = tan(π f_k/fs)`
-(pre-warped at f_k): `LP_k` = two cascaded `w0²/D` biquads, `AP_k` one biquad, `HP_k = AP_k − LP_k` computed as a
-difference of the two outputs, so every split is exactly complementary. Bands:
-`B1 = AP3(AP2(LP1 x))`, `B2 = AP3(LP2(HP1 x))`, `B3 = LP3(HP2(HP1 x))`, `B4 = HP3(HP2(HP1 x))` — 12 biquads per
+(pre-warped at f_k). It is realised as a trapezoidal (topology-preserving) state-variable filter with
+`g = w0 · tan(π f_k/fs)`, `k = 1/Q`, which is exactly that bilinear transform but stays well-behaved while the
+coefficients glide (r1 used direct-form biquads, which could produce large transients under fast crossover / Q
+automation in the stress host). One SVF gives `w0²/D` and `AP_k` of the same input; a second SVF turns the former
+into `LP_k`; `HP_k = AP_k − LP_k`, so every split is exactly complementary. Bands:
+`B1 = AP3(AP2(LP1 x))`, `B2 = AP3(LP2(HP1 x))`, `B3 = LP3(HP2(HP1 x))`, `B4 = HP3(HP2(HP1 x))` — 9 SVFs per
 channel; `Σ B = AP1 AP2 AP3` (tested in the frequency domain to 1e-12 and sample-by-sample against an explicit
-allpass cascade to 1e-12). D5: the same model at every rate. Crossover frequencies are clamped to ≤ 0.49 fs.
+allpass cascade of direct-form biquads to 1e-12). D5: the same model at every rate. Crossover frequencies are clamped to ≤ 0.49 fs.
 D4 (crossed crossovers): no reordering; each split stays complementary, so the output stays an allpass sum, stable
 and click-free (tested with a glide into 5000/300/80 Hz).
 
@@ -82,52 +89,55 @@ exactly; Range 0 ⇒ fixed gain; the curve does not depend on Release mode or Be
 channels receive one gain set by the louder channel. All time constants are in ms and converted with the actual
 sample rate (`1 − exp(−Δt/τ)`), the crossover uses the §3 model at every rate.
 
-## Dynamics law (spec §5 / §6, open questions 1–3)
+## Dynamics law (spec r2 §5 / §6, open questions 1–3)
 
 The spec gives envelope tables (normative) and only a suggested structure. Reading the tables in the **linear gain
 domain** was the key observation: expressed as the normalised change `ν = (g − 1)/(10^(Range/20) − 1)`, the attack
 and release fractions of Range −24, −12 and +12 coincide (e.g. 0.88 at 10 ms for all three Attack-5 rows; the
-release rows agree to ±0.03 in ln-distance), while they differ substantially in dB. So the whole time behaviour is
-one Range-independent law on ν:
+Rel-50 release rows agree in the log of the remaining linear distance, 0.81 / 0.82 / 0.87 at 100 ms), while they
+differ substantially in dB. So the whole time behaviour is one Range-independent law on ν. r2 §5.3 showed that the
+r1 law did not generalise (release after 100–300 ms overloads held 3–6 dB too much); the r2 law below is built
+around the duration dependence that §5.3 makes normative (fast + slow component, as r2 §5 suggests):
 
 - **Detector**: analytic-signal magnitude (instantaneous amplitude) of the band signal — a steady sine reads its
   peak with no rectifier ripple — linked over channels, then a peak follower on the squared envelope (instant rise,
-  exponential fall `peakReleaseMs`). Level `L = 10 log10(p)` dBFS (sine peak).
+  exponential fall `peakReleaseMs` / `peakReleaseOptoMs`). Level `L = 10 log10(p)` dBFS (sine peak).
 - **Target**: `ν_t = (G^f − 1)/(G − 1)`, `G = 10^(Range/20)`, `f = curve(L − Threshold)`.
-- **Fast state a**: one-pole toward ν_t, τ = Attack when rising, `fastReleaseMs` when falling.
-- **Onset** (the spec's "short initial fast component"): `onsetDepth · max(0, LP₁(ν_t) − LP₂(LP₁(ν_t)))` with
-  τ₁ = `onsetMs`, τ₂ = `onsetDecayMs` — a band-passed copy of the rising target that adds a little gain change in the
-  first 1–2 ms and is gone after ≈ 5 ms, whatever the Attack (tables: ≈ −1 dB at 1 ms even for Attack 200 ms).
-- **Charged state s** (program dependence): while `a > s` it charges toward a with τ = `chargeMs`; while `a < s` it
-  releases toward a with `τ = hold + Release_eff / k(s)`:
-  Electro `k = e0 + e1 (1 − s)^e2` (slow while the change is large, faster near the target),
-  Opto `k = o0 + o1 s^o2` (fast while the change is large, slower near the target); `hold = holdMs` / `holdOptoMs`.
-  After a 30 ms burst s has only charged partly, so the release is fast; after a sustained overload s is fully
-  charged and the Release law dominates — this is what makes the burst table differ from the sustained table even in
-  Manual mode.
-- **Memory m** (Auto): charges toward 1 while s charges (τ = `memoryMs`) and decays at `memoryDecay ×` the release
-  time constant during release. Auto: `Release_eff = Release · (autoMin + (1 − autoMin) m)`; Manual:
-  `Release_eff = Release`. After a sustained overload m ≈ 1 ⇒ Auto = Manual; after a short burst m is small ⇒ faster.
+- **Fast component a**: rises toward ν_t with τ = `attackScale` · Attack; falls toward ν_t with
+  `τ = τF · shape`, `τF = fastMinMs + fastSpanMs · Release/(Release + fastHalfMs)`, × `optoFastScale` in Opto and,
+  in Auto, × `1 − (1 − autoFast) · Release/(Release + autoHalfMs)` (Auto shortens the fast part, hardly at all for
+  short Release: Manual vs Auto ≤ 0.1 dB at Release 20 ms as §5.2 requires).
+  Electro `shape = 1 + electroSlowGain · a^electroSlowPow` (slow from a large change, fast near unity);
+  Opto `shape = 1 + optoSlowGain · (1 − a)^optoSlowPow` (photocell-like: fast from a large change, slow near unity —
+  this gives the long small tail after a 5 ms Opto overload).
+- **Onset** (the spec's "short initial fast component"): `onsetDepth · max(0, LP₁(ν_t) − LP₂(LP₁(ν_t)))` —
+  gone after ≈ 5 ms whatever the Attack.
+- **Slow (charged) component s**: while `a > s` it charges toward a with τ = `chargeMs` (≈ 130 ms; Opto
+  `chargeOptoMs` ≈ 110 ms — the 100–200 ms the spec suggests); while `a < s` it releases toward a with
+  `τ = hold + Release / k(s)`: Electro `k = e0 + e1 (1 − s)^e2`, Opto `k = o0 + o1 s^o2`.
+  **This makes the release depend on how long the overload lasted in every mode and Behavior**: a 5 ms overload
+  charges s hardly at all (fast release), 100 / 300 ms charge it partly, a sustained overload fully (the Release /
+  Behavior law of the §5 release table).
 - **Output**: `ν = min(max(a, s) + onset, max(a, s, ν_t))`.
 
-The 17 constants (`DynamicsLaw` in `source/dsp/BandDynamics.h`) were fitted offline (Nelder–Mead with restarts,
-minimax-like cost Σ(err/tol)⁸, scratch tool not shipped) to all §5 tables (attack 90 values, sustained release
-112 values for Manual and again for Auto, burst 70 values) and the §6 noise vector (6 levels × 2 settings), by
-simulating exactly this engine at 48 kHz.
+The r1 "overload memory" and its Auto rule (forget after 20 × Release, minimum 5 %) were not confirmed by the
+verification and are gone; Auto now only shortens the fast component, so after a sustained overload Auto equals
+Manual up to the first few tens of ms (≤ 0.6 dB, Opto at +20 ms; within the table tolerances).
 
-Fitted values: `peakReleaseMs` 1.55, `fastReleaseMs` 1.97, `chargeMs` 46.8, `holdMs` 59.9, `holdOptoMs` 35.6,
-Electro `e0, e1, e2` = 0.481, 2.637, 1.400, Opto `o0, o1, o2` = 1.100, 203.8, 7.564, `memoryMs` 365,
-onset 0.883 / 0.928 ms, depth 0.486. Two constants were set by hand after the fit because the tables do not
-constrain them and the optimiser drove them to degenerate extremes: `memoryDecay` = 20 (the memory must eventually
-forget a past overload) and `autoMin` = 0.05 (Auto never shortens the Release below 5 %); the fit quality was
-unchanged (worst point 0.995 of its tolerance).
+Fitting: the constants (`DynamicsLaw` in `source/dsp/BandDynamics.h`) were fitted offline (Nelder–Mead with
+restarts and parameter subsets, cost Σ(err/tol)⁸ + small quadratic term; scratch tool not shipped) to **all** r2
+§5 / §6 data simulated through exactly this engine at 48 kHz: attack 90 values, sustained release 112 values
+(Manual and again Auto), §5.2 burst 70 values (with the r2 pre-history: 1 s overload, 2.5 s at −50 dBFS), §5.3
+250 values (one continuous stimulus per setting, tolerance start = the table's start column), the §6 noise vector
+(6 levels × 2 timings) plus a penalty on the difference between the two noise timings, and the Release-20 ms
+Manual-vs-Auto ≤ 0.1 dB condition. The last round used a tolerance scaled by 0.95 for margin.
 
-Result at 48 kHz: every table value is within its tolerance; the worst point uses 99.5 % of it. Points above 80 %:
-Attack 1 ms at 1 ms (−5.7 vs −7.5, tol 1.84), Range +12 at 1 ms (+4.4 vs +3.5), Rel 5 Electro at 20 ms (−7.8 vs
-−7.0), the burst rows at 20 ms (Manual Electro ≈ −3.3 vs −1.2 … −4.0, Opto ≈ −3.5 vs −4.6 … −4.9 — the model's
-burst release is less Release-dependent than the table), the noise vector at −12.1 dB (−11.0 vs −10.4) and at
-−32.5 dB with Attack 5 (−5.25 vs −5.9). The shape of the early burst release (first 20 ms) is the weakest part of
-the law; everything is within tolerance but with little margin there.
+Result at 48 kHz: every point within tolerance, worst 0.92 of it (Attack 1 ms at 1 ms: −5.9 vs −7.5, tol 1.84).
+Other points above 75 %: Rel 500 Opto at 100 ms, the Electro 30 ms burst at Release 500/1000 at +20 ms (−2.9 / −3.2
+vs −4.0 / −4.5), §5.3 Release 2000 Manual after 5 ms (+20 ms) and after 100 ms (+20 ms), Hard / Release 300 / Auto
+after 1 s @ −20 dBFS (+20 ms), and the noise vector at −32.5 dB with Attack 5 (−5.28 vs −5.9). Noise: the two
+timings differ by ≤ 0.12 dB (r1: up to 0.69 dB of the vector's 0.75 dB used; now ≤ 0.62 dB). The same tables pass
+at 44.1 and 96 kHz (tested with the full tolerance).
 
 ## GUI (spec §8)
 
@@ -152,53 +162,52 @@ accents, no bitmaps or bundled fonts); own logo mark (four coloured bars).
 
 ## Tests (`tests/`, Catch2)
 
-33 test cases / 188 045 assertions; all pass with MSVC 2022 (Release, via CTest) and GCC 13 (Linux, Release).
+37 test cases / 193 754 assertions; all pass with MSVC 2022 (Release, via CTest) and GCC 13 (Linux, Release).
+All dynamics tables are checked at 44.1, 48 and 96 kHz with the full spec tolerance.
 
-- **Crossover** (§3): w0(Q) gives −3.01 dB per section; spec examples (|B1| 92 Hz −6.02, |B2| 1 kHz −0.29 / 4 kHz
-  −6.02, |B3| 6 kHz −3.09, |B4| 15 kHz −1.51, Q 0.75 |B1| 20 Hz +0.08 dB) to 0.01 dB, deep stop-band examples
-  within the spec's model agreement (see assumption 3); digital bands equal the spec's analog formula with the
-  pre-warped substitution (1e-9, 3 rates × 4 Q × 2 crossover sets); Σ bands = AP1 AP2 AP3, |Σ| = 1 (1e-12) in
-  frequency and time domain; the response starts at sample 0 (zero latency); the full engine at neutral settings
-  equals the allpass cascade (1e-12); crossover / Q glides incl. crossed settings are stable and click-free.
-- **Static curve** (§4, D6): all Knee rows, Range rows and Hard-knee rows reproduced exactly at the nodes; spot
-  checks (±0.02); Knee interpolation linear; D6 blend; monotonic, 0 / 1 limits, f(+6.4) = 0.5 ± 0.03 for 8 Knees × 11
-  Ranges; through the engine: −10.17 dB at −10 dBFS for fast and slow time constants, Gain + Range · f within
-  ±0.3 / ±0.4 dB for 3 Knees × 4 Ranges × 7 levels; Threshold shift exact (0.02 dB); Range 0 = fixed gain;
-  rising vs falling ≤ 0.024 dB.
-- **Dynamics** (§5): all attack, sustained-release (Manual and Auto), and burst (Manual and Auto) table values
-  within tolerance; Auto ≈ Manual after sustained overload; Auto faster than Manual after a burst; Release 20 ms
-  Manual vs Auto ≤ 0.1 dB; Electro/Opto shape.
-- **Detector / stereo / rates** (§6): noise vector (6 levels × Attack 0.5/Release 5 and Attack 5/Release 50) within
-  ±0.75 dB; stereo link (L −10 / R −40 and swapped → both −10.17 dB; Range +12 → +10.43 dB, both channels equal);
-  mono = stereo with identical channels; 44.1 / 96 kHz envelopes within 0.05 dB of 48 kHz (0.3 dB at 1–2 ms) and
-  the tables hold there (with 5 % tolerance headroom for one-sample timing at 1 ms).
-- **Engine**: LTI at Range 0; solo / band bypass / output gain exact; click-free solo, bypass and parameter changes
-  (settled within 1 % after 20 ms); host bypass bit-exact after the crossfade.
+- **Crossover** (§3): w0(Q) gives −3.01 dB per section; spec examples (incl. the r2 model values −76.43 / −41.65 dB)
+  to 0.01 dB; digital bands equal the spec's analog formula with the pre-warped substitution (1e-9, 3 rates × 4 Q ×
+  2 crossover sets); Σ bands = AP1 AP2 AP3, |Σ| = 1 (1e-12) in frequency and time domain; the response starts at
+  sample 0 (zero latency); the engine at neutral settings equals the allpass cascade (1e-12); glides incl. crossed
+  settings are stable and click-free; random crossover / Q jumps on a full-scale square stay bounded.
+- **Static curve** (§4, D6): all table rows reproduced at the nodes; spot checks; Knee interpolation; D6 blend;
+  monotonic, limits, f(+6.4) = 0.5 ± 0.03; through the engine −10.17 dB at −10 dBFS, Gain + Range · f within
+  ±0.3 / ±0.4 dB for 3 Knees × 4 Ranges × 7 levels; Threshold shift exact; Range 0 = fixed gain; no hysteresis.
+- **Dynamics** (§5): attack, sustained release (Manual and Auto), §5.2 burst (Manual and Auto) and the §5.3
+  250-point table at 3 rates; Auto ≈ Manual after sustained overload; Auto faster after a burst; Release 20 ms
+  Manual vs Auto ≤ 0.1 dB; Electro / Opto shape.
+- **Detector / stereo / rates** (§6): noise vector at both timings within ±0.75 dB and the two timings within
+  0.3 dB of each other; stereo link; mono = stereo; 44.1 / 96 kHz envelopes within 0.05 dB of 48 kHz (0.3 dB at
+  1–2 ms).
+- **Engine / robustness** (§1, §6): LTI at Range 0; solo / band bypass / output gain exact; click-free switching and
+  smoothing (≤ 20 ms); host bypass bit-exact; random parameter changes every 2048 samples (Knee alternating
+  0.30 / 0.71, all other parameters random, 3 rates) keep the output finite and the processor passes signal again
+  afterwards; NaN / Inf input samples do not poison the state.
 - **Parameters** (§2): mappings, defaults, round trips, display formats.
 
 ## Questions / assumptions
 
-1. **Dynamics law** (open questions 2–3): own law fitted to the tables (above). The burst table does not state the
-   Attack; Attack 5 ms (as for the release tables) is assumed. The noise vector is evaluated as an energy-weighted
-   band gain with Manual / Electro.
+1. **Dynamics law** (open questions 2–3): own law fitted to the r2 tables (above). The noise vector is evaluated as an
+   energy-weighted band gain with Manual / Electro. §5.3 "start" values are used as the tolerance start (as r2
+   defines); they are not checked points (the 250 points are the five times after each overload).
 2. **Peak-detector law** (open question 1): analytic-signal magnitude + peak follower. The 2 × 4-section Hilbert
    pair is accurate (≤ ±0.05 dB envelope ripple) from ≈ 20 Hz at 44.1/48 kHz; at 88.2/96 kHz the lower edge
    doubles (≈ ±1.3 dB ripple at 20 Hz, ±0.5 dB at 30 Hz). Only the detector sees this; the audio path is the exact
    §3 model.
-3. **Spec examples in the deep stop band**: the exact §3 model gives |B1| at 1 kHz = −76.43 dB (Q 0.6) and −41.65 dB
-   (Q 0.1) where the spec lists −76.7 / −42.2 dB; the differences are −107 / −66 dB re unity, inside the spec's own
-   stated model agreement (≤ −51 dB). All other examples match to 0.01 dB. The structure is implemented exactly as
-   written.
+3. **Spec examples in the deep stop band**: resolved in r2 (the model values −76.43 / −41.65 dB are now stated).
 4. **Hard-knee Range rows** exist only for Range −24 / −12 / +18; other Ranges at Knee > 0.5 interpolate those rows
    linearly in Range (D6 does not say how to interpolate between them).
 5. **Mono** (open question 4): same processing on one channel through the mono bus layout (tested equal to stereo
    with identical channels).
 6. **Crossed crossovers** (D4): processed as set (no sorting); stable, the sum stays the allpass.
-7. **Smoothing** (D2): one-pole 4 ms (≤ 20 ms to 99 %); solo, band bypass and host bypass use 10 ms linear
+7. **Stress host and +40 dBFS**: `tools/hoststress` (main) reports output above +40 dBFS as a failure. With the
+   spec's maximum settings (band Gain +18, Range +18 = upward gain, Output +18: +54 dB) full-scale test signals
+   legitimately exceed +40 dBFS, so those reports are expected; non-finite output never occurs (see Status).
+8. **Smoothing** (D2): one-pole 4 ms (≤ 20 ms to 99 %); solo, band bypass and host bypass use 10 ms linear
    crossfades. Attack / Release / Knee changes act immediately on the gain computer (Knee is also smoothed).
-8. **Band 4 handle** in the display has no crossover of its own (see GUI); master offsets are editor gestures that
+9. **Band 4 handle** in the display has no crossover of its own (see GUI); master offsets are editor gestures that
    write the band parameters, not separate host parameters.
-9. **Meter scales**: band meters 0 … −80 dBFS (the Threshold range); output meters 0 … −60 dBFS.
+10. **Meter scales**: band meters 0 … −80 dBFS (the Threshold range); output meters 0 … −60 dBFS.
 
 ## Public references and provenance
 
@@ -211,6 +220,8 @@ accents, no bitmaps or bundled fonts); own logo mark (four coloured bars).
   "Digital Dynamic Range Compressor Design — A Tutorial and Analysis", JAES 60(6), 2012.
 - IIR Hilbert transformer (phase-difference network, 2 × 4 allpass sections, public coefficients): O. Niemitalo,
   "Hilbert transform" / "Polyphase IIR half-band filters" notes (yehar.com, public domain).
+- Trapezoidal (topology-preserving transform) state-variable filter: A. Simper, "Linear Trapezoidal Integrated
+  State Variable Filter" (Cytomic technical paper, 2013); V. Zavalishin, *The Art of VA Filter Design*, 2012.
 - Monotone cubic interpolation: F. N. Fritsch, R. E. Carlson, "Monotone Piecewise Cubic Interpolation", SIAM J.
   Numer. Anal. 17(2), 1980.
 - Nelder–Mead simplex: J. A. Nelder, R. Mead, The Computer Journal 7(4), 1965.
@@ -234,12 +245,14 @@ Artefacts: `build/plugins/multiband/CraftMultiband_artefacts/Release/{VST3,CLAP,
 
 ## Status
 
-- Windows x64 Release build (VST3, CLAP, Standalone) with MSVC 2022, no compiler warnings in this plugin's sources;
-  33/33 tests pass (MSVC and GCC 13). Installed locally: VST3 to `%LOCALAPPDATA%\Programs\Common\VST3` and
-  `C:\Program Files\Common Files\VST3`, CLAP to `%LOCALAPPDATA%\Programs\Common\CLAP`. Editor rendered with the
-  snapshot tool (default and edited states) and checked visually. `ci/package.py` finds VST3 + CLAP + Standalone
-  and writes `craft-multiband-0.1.0-windows-x64.zip`.
+- r2 implemented on `feat/multiband`. Windows x64 Release build (VST3, CLAP, Standalone) with MSVC 2022, no compiler
+  warnings in this plugin's sources; 37/37 tests pass (MSVC and GCC 13). Installed locally: VST3 to
+  `%LOCALAPPDATA%\Programs\Common\VST3` and `C:\Program Files\Common Files\VST3`, CLAP to
+  `%LOCALAPPDATA%\Programs\Common\CLAP`. `ci/package.py` packages it as `craft-multiband-<version>-<platform>.zip`.
+- `craft_hoststress` (tools/hoststress from main, built locally only) 2 × 4–5 min with `--editor` (≈ 300–570 M
+  samples, ≈ 500 k parameter moves, 1 000+ state restores, 180+ re-prepares, 55–77 editor opens per run): no
+  non-finite output, no crash or hang. All reported "failures" are levels above +40 dBFS (assumption 7); after
+  switching to SVF sections the largest output was +62 dBFS for full-scale noise / square / DC input at extreme gain
+  settings (the r1 direct-form crossover reached +78 dBFS under the same automation).
 - Linux: DSP tests verified natively (GCC 13); the full plug-in build is left to CI.
-- Not yet done: host-level validation (pluginval / DAW session) and the independent verification against the
-  reference (process step 5). The animated total-gain curve ignores Solo (it shows the processing, not the
-  monitoring).
+- Not yet done: independent verification of r2. The animated total-gain curve ignores Solo.

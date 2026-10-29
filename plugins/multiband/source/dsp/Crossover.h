@@ -1,4 +1,4 @@
-// Craft Multiband - allpass-complementary 4-band crossover (spec r1 section 3).
+// Craft Multiband - allpass-complementary 4-band crossover (spec r2 section 3).
 // Host-independent: no JUCE dependency.
 //
 // Each crossover k uses one second-order denominator D_k(s) = s^2 + s w0/Q + w0^2 (analog prototype normalised to
@@ -76,6 +76,7 @@ struct CrossoverSection
 {
     BiquadCoeffs lp; // w0^2 / D (applied twice -> LP_k)
     BiquadCoeffs ap; // (s^2 - s w0/Q + w0^2) / D
+    double g = 0.1, k = 1.0; // the same section as a trapezoidal state-variable filter: g = w0 tan(pi f_k/fs), k = 1/Q
 
     static CrossoverSection design (double freqHz, double q, double fs) noexcept
     {
@@ -87,6 +88,8 @@ struct CrossoverSection
         CrossoverSection s;
         s.lp = BiquadCoeffs::fromAnalog (0.0, 0.0, d2, d1, d2, K);
         s.ap = BiquadCoeffs::fromAnalog (1.0, -d1, d2, d1, d2, K);
+        s.g = w0 * K;
+        s.k = 1.0 / q;
         return s;
     }
 
@@ -105,33 +108,68 @@ inline std::array<std::complex<double>, numBands> bandResponses (const std::arra
     return { lp1 * ap2 * ap3, hp1 * lp2 * ap3, hp1 * hp2 * lp3, hp1 * hp2 * hp3 };
 }
 
+// Trapezoidal-integrator state-variable filter (topology-preserving bilinear transform; A. Simper, "Linear
+// trapezoidal integrated SVF", Cytomic technical paper, 2013). With g = w0 tan(pi f_k/fs) and k = 1/Q it realises
+// exactly the bilinear-transformed (pre-warped at f_k) w0^2/D and (s^2 - s w0/Q + w0^2)/D of a crossover section,
+// like the direct-form coefficients above, but its states stay well-behaved while the coefficients glide (crossover
+// / Q automation), so a coefficient change cannot produce a large transient.
+struct Svf
+{
+    double a1 = 1.0, a2 = 0.0, a3 = 0.0, k = 1.0;
+    double ic1 = 0.0, ic2 = 0.0;
+
+    void set (double g, double kk) noexcept
+    {
+        k = kk;
+        a1 = 1.0 / (1.0 + g * (g + k));
+        a2 = g * a1;
+        a3 = g * a2;
+    }
+    void reset() noexcept { ic1 = ic2 = 0.0; }
+
+    // lowpass w0^2/D and allpass (D - 2 k s w0)/D of the same input
+    void process (double v0, double& lp, double& ap) noexcept
+    {
+        const double v3 = v0 - ic2;
+        const double v1 = a1 * ic1 + a2 * v3;
+        const double v2 = ic2 + a2 * ic1 + a3 * v3;
+        ic1 = 2.0 * v1 - ic1;
+        ic2 = 2.0 * v2 - ic2;
+        lp = v2;
+        ap = v0 - 2.0 * k * v1;
+    }
+    double lowpass (double v0) noexcept { double lp, ap; process (v0, lp, ap); return lp; }
+    double allpass (double v0) noexcept { double lp, ap; process (v0, lp, ap); return ap; }
+};
+
 // One split: x -> (LP_k x, HP_k x). Three biquads: two lowpass sections in series and one allpass.
 class Split
 {
 public:
     void setCoeffs (const CrossoverSection& s) noexcept
     {
-        lpA.c = s.lp;
-        lpB.c = s.lp;
-        ap.c = s.ap;
+        first.set (s.g, s.k);
+        second.set (s.g, s.k);
     }
     void reset() noexcept
     {
-        lpA.reset();
-        lpB.reset();
-        ap.reset();
+        first.reset();
+        second.reset();
     }
+    // The first section gives w0^2/D x and AP_k x; the second turns the former into LP_k x.
     void process (double x, double& low, double& high) noexcept
     {
-        low = lpB.process (lpA.process (x));
-        high = ap.process (x) - low;
+        double lp1, ap;
+        first.process (x, lp1, ap);
+        low = second.lowpass (lp1);
+        high = ap - low;
     }
 
 private:
-    Biquad lpA, lpB, ap;
+    Svf first, second;
 };
 
-// Four-band splitter for one channel (12 biquads):
+// Four-band splitter for one channel (9 SVF sections; each split shares one section for its lowpass and allpass):
 //   split1(x) -> L1, H1;  split2(H1) -> HP1 LP2, HP1 HP2;  split3(HP1 HP2) -> B3, B4;
 //   B2 = AP3(HP1 LP2);  B1 = AP3(AP2(L1)).
 class FourBandSplitter
@@ -141,9 +179,9 @@ public:
     {
         for (int k = 0; k < numCrossovers; ++k)
             split[size_t (k)].setCoeffs (s[size_t (k)]);
-        ap2OnB1.c = s[1].ap;
-        ap3OnB1.c = s[2].ap;
-        ap3OnB2.c = s[2].ap;
+        ap2OnB1.set (s[1].g, s[1].k);
+        ap3OnB1.set (s[2].g, s[2].k);
+        ap3OnB2.set (s[2].g, s[2].k);
     }
 
     void reset() noexcept
@@ -161,15 +199,15 @@ public:
         split[0].process (x, l1, h1);
         split[1].process (h1, l2, h2);
         split[2].process (h2, l3, h3);
-        bands[0] = ap3OnB1.process (ap2OnB1.process (l1));
-        bands[1] = ap3OnB2.process (l2);
+        bands[0] = ap3OnB1.allpass (ap2OnB1.allpass (l1));
+        bands[1] = ap3OnB2.allpass (l2);
         bands[2] = l3;
         bands[3] = h3;
     }
 
 private:
     std::array<Split, numCrossovers> split;
-    Biquad ap2OnB1, ap3OnB1, ap3OnB2;
+    Svf ap2OnB1, ap3OnB1, ap3OnB2;
 };
 
 } // namespace craft::multiband

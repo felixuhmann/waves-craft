@@ -1,5 +1,5 @@
 // Craft Multiband - complete processor core: 4-band allpass-complementary crossover, linked per-band dynamics,
-// solo / band bypass, output gain, parameter smoothing and host bypass (spec r1). Host-independent, no JUCE.
+// solo / band bypass, output gain, parameter smoothing and host bypass (spec r2). Host-independent, no JUCE.
 #pragma once
 
 #include <algorithm>
@@ -97,8 +97,9 @@ public:
             st.dyn.setLaw (law);
     }
 
-    void setSettings (const Settings& s) noexcept
+    void setSettings (const Settings& in) noexcept
     {
+        const Settings s = sanitise (in);
         settings = s;
         outGain.setTarget (s.outputGainDb);
         knee.setTarget (std::clamp (s.knee, 0.0, 0.75));
@@ -246,9 +247,23 @@ public:
                 const double x = double (io[c][i]);
                 if (wet < 1.0)
                     y = wet * y + (1.0 - wet) * x;
+                if (! std::isfinite (y))
+                {
+                    y = 0.0;
+                    corrupted = true;
+                }
                 outPeak[size_t (c)] = std::max (outPeak[size_t (c)], std::abs (y));
                 io[c][i] = Sample (y);
             }
+        }
+
+        // Robustness (spec r2 section 6): a non-finite value (e.g. a non-finite input sample) must not poison the
+        // filter or detector states - start them afresh so the processor stays responsive.
+        if (corrupted)
+        {
+            corrupted = false;
+            reset();
+            snapToSettings();
         }
     }
 
@@ -273,6 +288,26 @@ private:
         double envPeak = 0.0, gainDb = 0.0;
         double lastRange = 1.0e9, grMinus1 = 0.0;
     };
+
+    // Replace non-finite or out-of-range settings by safe values.
+    static Settings sanitise (Settings s) noexcept
+    {
+        auto fix = [] (double v, double lo, double hi, double def) { return std::isfinite (v) ? std::clamp (v, lo, hi) : def; };
+        s.outputGainDb = fix (s.outputGainDb, -18.0, 18.0, 0.0);
+        s.knee = fix (s.knee, 0.0, 0.75, 0.5);
+        s.q = fix (s.q, 0.1, 0.75, 0.6);
+        for (int k = 0; k < numCrossovers; ++k)
+            s.crossoverHz[size_t (k)] = fix (s.crossoverHz[size_t (k)], 16.0, 21357.0, param::defaultCrossover[size_t (k)]);
+        for (auto& b : s.bands)
+        {
+            b.gainDb = fix (b.gainDb, -18.0, 18.0, 0.0);
+            b.rangeDb = fix (b.rangeDb, -24.0, 18.0, 0.0);
+            b.thresholdDb = fix (b.thresholdDb, -80.0, 0.0, -30.0);
+            b.attackMs = fix (b.attackMs, 0.5, 500.0, 10.0);
+            b.releaseMs = fix (b.releaseMs, 5.0, 5000.0, 50.0);
+        }
+        return s;
+    }
 
     static double gainFromNuFast (BandState& st, double nu, double rangeDb) noexcept
     {
@@ -302,7 +337,7 @@ private:
     std::array<BandState, numBands> band;
     Ramp bypassMix;
     int coeffCountdown = 0;
-    bool idle = false;
+    bool idle = false, corrupted = false;
     std::array<double, maxChannels> inPeak {}, outPeak {};
 };
 
