@@ -230,7 +230,7 @@ TEST_CASE ("Smoothing and crossfades are click-free and settle within 20 ms", "[
     CHECK (ratioDb (x, in2, 4800 + 960, 4800 + 960 + 480) == Approx (10.0).margin (0.05));
 }
 
-TEST_CASE ("Output limit catches onsets from silence at extreme gains (no runaway)", "[limit]")
+TEST_CASE ("r3 5.1: the final output is hard-clipped at +-1.0 (also at onsets with extreme gains)", "[clip]")
 {
     for (double fs : { 44100.0, 48000.0, 96000.0 })
     {
@@ -252,8 +252,43 @@ TEST_CASE ("Output limit catches onsets from silence at extreme gains (no runawa
         double peak = 0.0;
         for (double v : out.l)
             peak = std::max (peak, std::abs (v));
-        INFO ("fs " << fs << " peak " << 20.0 * std::log10 (peak) << " dBFS");
-        // limited module output <= +2.83 dBFS, then the gate floor +12 dB and the output gain +18 dB
-        CHECK (20.0 * std::log10 (peak) <= 2.9 + 12.0 + 18.0);
+        CHECK (peak == 1.0); // driven into the clip, never beyond
     }
+    // a sine with +12 dB makeup: flat tops at exactly +-1.0
+    Settings m;
+    m.compBypass = false;
+    m.makeupDb = 12.0;
+    auto e = makeEngine (m, 48000.0);
+    auto in = sine (4800, 48000.0, 1000.0, -6.0);
+    auto out = runStereo (e, in, in);
+    int atClip = 0;
+    for (double v : out.l)
+    {
+        CHECK (std::abs (v) <= 1.0);
+        atClip += std::abs (v) == 1.0 ? 1 : 0;
+    }
+    CHECK (atClip > 1000);
+}
+
+TEST_CASE ("r3 3: defined state at stream start and after reset", "[reset]")
+{
+    const double fs = 48000.0;
+    Settings s;
+    s.ratioPos = 0.8;
+    s.compThresholdDb = -40.0;
+    s.gateOpenDb = -30.0;
+    s.gateReleaseMs = 1000.0;
+    const int n = 9600;
+    auto quiet = sine (n, fs, 1000.0, -40.0), loud = sine (n, fs, 1000.0, -6.0);
+
+    auto fresh = makeEngine (s, fs);
+    const auto ref = runStereo (fresh, quiet, quiet);
+    // the gate starts closed: the quiet signal (below GateOpen) is not passed at the start
+    CHECK (rms (ref.l, 0, 480) < 0.01 * rms (quiet, 0, 480));
+
+    // loud material, then reset: identical to a fresh engine (no state carried over)
+    auto e = makeEngine (s, fs);
+    runStereo (e, loud, loud);
+    e.reset();
+    CHECK (runStereo (e, quiet, quiet).l == ref.l);
 }

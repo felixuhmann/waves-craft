@@ -43,8 +43,8 @@ TEST_CASE ("Display strings", "[params]")
     CHECK (formatDisplay (Quantity::Pdr, 0.0) == "Off");
     CHECK (formatDisplay (Quantity::Floor, floorvalue::offValue) == "-inf");
     CHECK (formatDisplay (Quantity::Floor, -27.4) == "-27.4 dB");
-    CHECK (formatDisplay (Quantity::Floor, -200.0) == "-10 N");
-    CHECK (formatDisplay (Quantity::Floor, -110.0) == "-100 N");
+    CHECK (formatDisplay (Quantity::Floor, -200.0) == "-10.0 N");
+    CHECK (formatDisplay (Quantity::Floor, -110.0) == "-100.0 N");
     CHECK (formatDisplay (Quantity::Frequency, 7179.0) == "7179 Hz");
     CHECK (parseDisplay (Quantity::Floor, "-30 N") == Approx (-180.0));
     CHECK (parseDisplay (Quantity::Floor, "-inf") == floorvalue::offValue);

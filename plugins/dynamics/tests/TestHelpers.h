@@ -120,7 +120,7 @@ inline std::vector<double> noise (int n, unsigned seed, double amplitude)
     std::normal_distribution<double> d (0.0, amplitude);
     std::vector<double> v (static_cast<size_t> (n));
     for (auto& x : v)
-        x = d (rng);
+        x = std::max (-1.0, std::min (1.0, d (rng))); // within +-1.0 (the output clip, r3 5.1)
     return v;
 }
 

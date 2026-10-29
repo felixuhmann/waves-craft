@@ -312,7 +312,7 @@ inline std::string formatDisplay (Quantity q, double v)
         case Quantity::Pdr: return v <= 0.0 ? std::string ("Off") : (v < 10.0 ? formatFixed (v, 1) : formatFixed (v, 0)) + " ms";
         case Quantity::Floor:
             if (floorvalue::isOff (v)) return "-inf";
-            if (floorvalue::isNegative (v)) return "-" + formatFixed (floorvalue::negativeDb (v), 0) + " N";
+            if (floorvalue::isNegative (v)) return "-" + formatFixed (floorvalue::negativeDb (v), 1) + " N";
             return formatFixed (v, 1) + " dB";
         case Quantity::Frequency:
             if (v < 100.0) return formatFixed (v, 1) + " Hz";

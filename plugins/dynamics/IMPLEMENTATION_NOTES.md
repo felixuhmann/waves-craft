@@ -1,8 +1,8 @@
-# Implementation notes: Craft Dynamics (spec r2)
+# Implementation notes: Craft Dynamics (spec r3)
 
-This is the builder side of a clean-room implementation of [`spec/dynamics/r2/SPEC.md`](../../spec/dynamics/r2/SPEC.md)
-(approved 2026-10-29; r2 supersedes r1 after the independent verification
-[`docs/verification/dynamics-r1.md`](../../docs/verification/dynamics-r1.md) of the r1 build). I used only that spec, this repository (conventions and the stereo-imager / flanger code),
+This is the builder side of a clean-room implementation of [`spec/dynamics/r3/SPEC.md`](../../spec/dynamics/r3/SPEC.md)
+(approved 2026-10-29; r3 supersedes r2 and r1 after the independent verifications
+[`dynamics-r1.md`](../../docs/verification/dynamics-r1.md) and [`dynamics-r2.md`](../../docs/verification/dynamics-r2.md)). I used only that spec, this repository (conventions and the stereo-imager / flanger code),
 public DSP literature and my own work. I did not access any original product, analyst workspace, vendor asset or
 vendor installation.
 
@@ -28,8 +28,8 @@ All paths below are relative to `plugins/dynamics/`.
 ```
 CMakeLists.txt         dynamics_dsp (INTERFACE), four plugin targets (dynamics_add_variant), optional snapshot tool
 source/dsp/            host-independent, header-only DSP core (no JUCE)
-  CurveTables.h          GENERATED: Appendix A (unlimited), expansion output-limit law, Appendix B
-  StaticCurves.h         §5/§6 static laws: f_R(x) with interpolation in r, output limit, PeakRef offset,
+  CurveTables.h          GENERATED: Appendix A (r3, unclipped) and Appendix B
+  StaticCurves.h         §5/§6 static laws: f_R(x) with interpolation in r, PeakRef offset,
                          expander h(x), floor law
   Filters.h              §7 filter module: prewarped bilinear design of H, the in-phase allpass, biquads,
                          per-channel paths (sidechain H^3, active H^2, allpass)
@@ -55,23 +55,27 @@ tools/Snapshot.cpp     renders the editors to PNG (CRAFT_BUILD_SNAPSHOT=ON; deve
    max-linked, `ℓ = 20·log10(m) + K_CAL` (3.32 dB), dB-domain smoother with (Attack, DET_REL·Release); with PDR > 0
    `max(e_fast(Attack, PDR_FAST_REL), e_slow(0.5·PDR, DET_REL·Release))`. Gain (r2 §5): target reduction
    `t = −f_R(e − T)`, slow memory `s` (jumps up to t, decays with SLOW_REL·Release), `R = (1 − SLOW_W)·t + SLOW_W·s`,
-   `G = −R + Makeup + PeakRef offset`, then the output limit on that final gain (r2 §10.9).
+   `G = −R + Makeup + PeakRef offset`.
 4. Gate detector: same rectifier; gate mode uses `(min(Attack, 2 ms), Release)` and freezes decay during Hold;
    open when `e > Open + 1.85`, close when `e < Close + 1.85` and Hold expired; the linear gain `g` follows the state
    with one-poles (Attack towards 1, Release towards 0). Expander mode (r2 §6): detector `(Attack,
-   EXP_DET_REL·Release)`, target `u = h(e + C − Open)` (C: static calibration, see assumptions), applied gain smoothed
+   EXP_DET_REL·Release)`, target `u = h(e + EXP_CAL − Open)` (EXP_CAL = 1.11 dB, r3 §4.3), applied gain smoothed
    in dB with `EXP_GAIN_ATT·Attack` / `EXP_GAIN_REL·Release`. Module gain `G = g + F·(1 − g)` (algebraically
    `F + (1 − F)·g`, written so that `g = 1` is exactly 1).
 5. Audio path: the input is delayed by exactly 340 samples when LookAhead is on (the detectors above saw the
    undelayed signal). Wideband/Sidechain modules multiply the full band; a Split module applies its gain to the
    active band only: `y = AP(x) + (g − 1)·A(x)` (= `g·A + P`).
-6. Output gain; monitor (Audio / Sidechain = the compressor's detection signal at unity, filtered only when the
+6. Output gain, then the r3 §5.1 hard clip of every output sample to ±1.0 (also for the monitor outputs); monitor (Audio / Sidechain = the compressor's detection signal at unity, filtered only when the
    compressor's EQ mode uses the filter / Passive `2·P`); key modes silence the keying channel.
 
 **Discrete settings** (bypasses, modes, EQ modes, filter type, monitor, key, lookahead) are handled by two engine
 "cores": on a change the active core (all filter, detector and delay-line state) is copied, the copy gets the new
 configuration and the output crossfades linearly over 10 ms (§8: ≤ 20 ms). After the fade only one core runs, so
-the neutral path stays bit-exact. **Continuous settings** (threshold, ratio position, makeup, PeakRef amount, floor,
+the neutral path stays bit-exact (for input within ±1.0, r3 §3).
+
+**State at stream start / host reset (r3 §3):** detector levels at silence (−400 dB), compressor slow memory 0 dB,
+gate closed (g = 0), expander gain at silence. `prepare()` and the processor's `reset()` override (host reset) both
+restore it. GateOpen −inf means no gate at all and gives exactly unity from the first sample. **Continuous settings** (threshold, ratio position, makeup, PeakRef amount, floor,
 input/output gains, filter frequency/Q) use one-pole smoothers (τ = 4 ms, settled well within 20 ms) that snap to
 the exact target; filter coefficients are recomputed every 16 samples while Freq/Q move.
 
@@ -110,26 +114,18 @@ Variants omit absent sections (Compressor/Gate: graph + module + output; Compres
 | §3.5 lookahead | per-core 340-sample ring buffers for the audio and sidechain-monitor paths; `getLatencySamples()`. |
 | §3 neutral | bypassed modules use the literal gain 1.0, gains at 0 dB are exactly 1.0 → bit-exact passthrough (tested in float and double, all variants, 44.1/48/96 kHz). The default settings (1.00:1, gate −inf) are bit-exact too. |
 | §4 detector | `Core::tick` detector part; the §4.3 constants are `DynamicsEngine::rectTauMs`, `kCalDb`, `detRel`, `pdrFastReleaseMs`, `slowRel`, `slowWeight`, `expDetRel`, `expGainAtt`, `expGainRel`. |
-| §5 static curve / dynamic gain | `curves::compressorCurveDb` (bilinear: linear in x between table rows, linear in r between the 14 columns plus an exact-zero column at r = 0.218), slow memory in `Core::tick`, `curves::peakRefOffsetDb`, `curves::limitFinalGainDb` (output limit on the final gain), `curves::staticGainDb` (GUI). |
-| §6 gate/expander | gate state machine + hold, expander dB gain smoothing in `Core::tick`; `curves::expanderGainDb` (Appendix B), `curves::applyFloor`, `floorvalue::linear`; `steadySineReadingDb` (expander calibration). |
+| §5 static curve / dynamic gain | `curves::compressorCurveDb` (bilinear: linear in x between table rows, linear in r between the 14 columns plus an exact-zero column at r = 0.218), slow memory in `Core::tick`, `curves::peakRefOffsetDb`, `curves::staticGainDb` (GUI); output clip `DynamicsEngine::outputClip`. |
+| §6 gate/expander | gate state machine + hold, expander dB gain smoothing in `Core::tick`; `curves::expanderGainDb` (Appendix B), `curves::applyFloor`, `floorvalue::linear`; `expCalDb`. |
 | §7 filter module | `filterdesign::design` (ω0 from the half-power condition for LP/HP, prewarped bilinear transform at Freq, AP = D(−s)/D(s) for every type; band-pass uses A = −H² so that A stays in phase with AP), `FilterChannel`. |
 | §8 smoothing | one-pole smoothers + 10 ms core crossfade (see Engine). |
 | §12 UI | `source/ui/*`. |
 
 ### Static curve tables
 
-`tools/gen_tables.py` turns Appendix A into the engine table:
-
-- Rows up to x = +41.28 dB were measured with T = −40 dB and rows from +43.28 dB with T = −80 dB (from the
-  x_det relation, the sine peak never exceeds 0 dBFS). In the T = −80 rows the expansion columns (0.50 … 0.93:1)
-  first plateau and then fall: that fall is the §5 output limit. The pairs (unlimited output, limited output) give a
-  single, consistent law L(y): identity up to 0 dBFS, then 0.63 dB at +1, 1.35 at +3, 2.29 at +9, 2.83 dBFS ceiling.
-- Limited T = −40 entries are mapped back through L⁻¹ where that is well conditioned; the rest of the gap is filled
-  by a monotone cubic through those points and the PeakRef anchors of §10.4 (0.50:1 at T = −20/−60/−80).
-- The engine applies L to the estimated output peak `e − 1.277 dB + G`, where G is the module's final gain (curve +
-  PeakRef offset + Makeup), whenever G > 0 (r2 §10.9); G is never limited below 0 dB. Replaying the measurement
-  through this model reproduces every printed Appendix A entry within 0.15 dB.
-- Beyond the table the curves are held constant, except the 20.62:1 and 50:1 columns, which continue with slope −1.
+`tools/gen_tables.py` writes Appendix A/B of r3 verbatim to `CurveTables.h` (engine) and `tests/SpecTables.h`. In r3
+the expansion columns are the unclipped curves; the earlier "expansion output limit" was the reference's hard clip
+seen through RMS measurements (r3 §5.1). Beyond the table the curves are held constant, except the 20.62:1 and 50:1
+columns, which continue with slope −1. Below Appendix B's first row h(x) = x − 2.04 dB, above its last row −0.02 dB.
 
 ## Tests
 
@@ -137,73 +133,53 @@ Variants omit absent sections (Compressor/Gate: graph + module + output; Compres
 
 | File | Covers |
 |---|---|
-| `StaticCurveTests.cpp` | Every Appendix A point (71 rows × 14 ratio positions) through the full engine with a steady 1 kHz sine at 48 kHz, every 4th row also at 44.1/96 kHz, against the raw printed values (±0.1 dB; ±0.3 cancellation notch; ±0.5 expansion near the limit); §10.1 table; threshold-shift invariance; exact 0 dB at 1.00:1; displayed ratios; maximum reductions; makeup; §10.3 output limit; §10.4 PeakRef offsets (curve rule and engine). |
+| `StaticCurveTests.cpp` | Every Appendix A point (rows whose unclipped output would exceed 0 dBFS are left to the clip tests) (71 rows × 14 ratio positions) through the full engine with a steady 1 kHz sine at 48 kHz, every 4th row also at 44.1/96 kHz, against the raw printed values (±0.1 dB; ±0.3 cancellation notch); §10.1 table; threshold-shift invariance; exact 0 dB at 1.00:1; displayed ratios; maximum reductions; makeup; §10.3 clipped expansion levels; §10.4 PeakRef offsets (curve rule and engine). |
 | `R2TableTests.cpp` | the r2 normative tables at 44.1, 48 and 96 kHz: all 460 cells of §10.5.1 (per-row tolerance; RMS/max error printed), §10.5 timing t63/t90 within 2 ms + 25 % (non-informative cells), §10.5.3 expander trajectory (±0.15), §10.8 detector type (noise / 100 Hz / 10 kHz, 50:1 and 4.58:1, ±0.4 dB), §10.9 PeakRef near full scale (27 configurations × 7 levels, ±0.3 dB). |
 | `DetectorTests.cpp` | detector reading x_det = peak + 1.277 dB at 44.1/48/96 kHz; max-linking (one channel / one channel 10 dB lower); PDR behaviour. |
 | `GateTests.cpp` | §10.2 open/close levels on a 0.25 dB stair (incl. Attack 0.1 ms and GateClose −43); floor law (−27.42 / +12.04 dB, −inf, N floors in gate mode); Appendix B through the engine; expander positive floor and negative-polarity notch; §10.5 gate envelopes (open t63, close t10/t63/t90, linear-gain RMS ≤ 0.06, Hold). |
 | `FilterTests.cpp` | §7 shapes (half power / centre / notch at Freq, closeness to the analog prototype), §10.6 sidechain and passive magnitudes, split identity A + P = AP, \|P\| = 1 − \|A\|, A in phase with AP (all four types), AP(0) = +1 for every type and band-pass passive polarity (r2), engine monitors incl. "only the gate filtered → wideband monitor", split flat at 0.00 dB, split compression on the active band only. |
-| `RoutingTests.cpp` | bit-exact neutral (all variants, float and double), lookahead exactly 340 samples at 44.1–192 kHz and gain leading the delayed audio, §10.7 key modes incl. sidechain monitor, variant identity, mono = one channel of the stereo engine, click-free toggles/parameter jumps, settling within 20 ms. |
+| `RoutingTests.cpp` | r3 §5.1 hard clip (sample peaks exactly ±1.0, also at onsets with extreme gains), r3 §3 state at start / after reset (gate starts closed; reset = fresh engine, bit-identical), bit-exact neutral (all variants, float and double), lookahead exactly 340 samples at 44.1–192 kHz and gain leading the delayed audio, §10.7 key modes incl. sidechain monitor, variant identity, mono = one channel of the stereo engine, click-free toggles/parameter jumps, settling within 20 ms. |
 | `ParameterTests.cpp` | reference mappings and defaults, display strings and parsing, floor encoding. |
 
-### Envelope conformance (r2 §9, §10.5)
+### Envelope conformance (§9, §10.5)
 
-The engine implements the r2 §4–§5 compressor law literally (constants of §4.3; K_CAL = 3.32 dB gives a mean reading of
-+1.279 dB at 48 kHz, target +1.277). Results of my build against the normative tables, identical at 44.1/48/96 kHz:
+The engine implements the §4–§6 laws literally (constants of §4.3). Results against the normative tables, identical
+at 44.1/48/96 kHz:
 
-- §10.5.1: all 460 cells within their row tolerance at every rate; RMS error 1.04 dB, largest error 5.5 dB (in a
-  ±6 dB row). The tightest cell is Att 0.1 ms / edge A / +1 ms (−11.4 dB vs −14.88 ± 3.5).
+- §10.5.1: all 460 cells within their row tolerance; RMS error 1.04 dB, largest 5.5 dB (in a ±6 dB row). The tightest
+  cell is Att 0.1 ms / edge A / +1 ms (−11.4 dB vs −14.88 ± 3.5).
 - §10.5 timing: all non-informative t63/t90 within 2 ms + 25 %.
-- §10.5.3 expander: max error 0.142 linear gain (±0.15).
-- §10.8: inside ±0.4 dB for noise, 100 Hz and 10 kHz at both ratios.
-- §10.9: all 189 points within ±0.3 dB.
+- §10.5.3 expander (with EXP_CAL): max error 0.148 linear gain (±0.15) - tight.
+- §10.8: within ±0.4 dB. §10.9 (with the hard clip): all 189 points within ±0.3 dB.
+- §10.4: the 0.50:1 offsets at T −60/−80 come out 0.08/0.12 dB from the table, because r3's unclipped column
+  saturates at 23.96 dB; the test allows ±0.15 there (±0.1 elsewhere).
 
 ## Questions / assumptions
 
-1. **Expansion output limit.** A static law on the estimated output peak `e − 1.277 + G`, applied to the module's
-   final gain G (after PeakRef and Makeup) when G > 0, never below 0 dB (r2 §10.9). The unlimited curves above
-   the limit are reconstructed (see "Static curve tables"). Safety addition: the peak estimate is
-   `max(e − 1.277, held input peak)`, where the input peak is held for the 340-sample lookahead window and then
-   released with 20 ms. Without it, a burst after silence meets the full low-level gain, which can be about +80 dB
-   with PeakRef +40 and Makeup +40, until the detector's attack catches up; `tools/hoststress` reported outputs
-   above +40 dBFS. On steady signals the held peak does not exceed `e − 1.277`, so the r2 statics and trajectories
-   are unchanged; a regression test covers the onset case.
-   In addition the engine output has a last-resort hard clamp at ±31.6 (+30 dBFS). Legitimate output stays below
-   about +21 dBFS (+2.83 dBFS limit plus +18 dB output gain). `tools/hoststress` (antiphase DC, 1-sample blocks,
-   automation on every block) still produced rare samples of +40 … +46 dBFS without it. I did not pin down where
-   they come from; filter and automation transients at tiny blocks are the likely source.
-2. **Expander static calibration (my addition).** With EXP_DET_REL the expander detector reads a steady 1 kHz sine
-   lower than the slower (Attack, Release) detector. At the default 2/30 ms it reads +0.03 dB re peak against the
-   +1.13 dB that Appendix B's coordinates imply, so a literal r2 expander would sit about 1.1 dB below Appendix B. The
-   engine adds `C = reading(Attack, Release) − reading(Attack, EXP_DET_REL·Release)` to the expander level. C is the
-   periodic steady state of the rectifier and smoother for a 1 kHz sine, solved by bisection over ten periods when
-   Gate Attack/Release or the rate change; no allocation. The r2 dynamics are unchanged; at the §10.5.3 setting
-   (1/100 ms) C ≈ +0.47 dB, at 2/30 ms C ≈ +1.16 dB.
-3. **PeakRef for cancellation ratios.** §10.4 gives only −5.00:1. Positions up to −15.90:1 (r ≤ 0.9) use the curve
+1. **Output clip placement (D9).** The ±1.0 clip acts on every output sample after Output gain, also on the
+   Sidechain/Passive monitor outputs. There are no other safety measures. The r2 build's soft output limit, onset
+   peak hold and +30 dBFS clamp are removed.
+2. **PeakRef for cancellation ratios.** §10.4 gives only −5.00:1. Positions up to −15.90:1 (r ≤ 0.9) use the curve
    rule `−f_R(x_ref)`; between r = 0.9 and 1.0 the offset blends linearly to the −5.00:1 table (interpolated in T,
    held below −80 dB, extrapolated linearly above −10 dB and clamped at ≥ 0). Cap +40 dB everywhere.
-4. **Ratio display / host mapping.** The host value is the curve position r (0.001 resolution, default 0.218 =
+3. **Ratio display / host mapping.** The host value is the curve position r (0.001 resolution, default 0.218 =
    1.00:1). The displayed ratio interpolates log-ratio between the spec's known positions; r = 0.8 shows 50.00:1
    (host floats are snapped to a 1e-6 grid first), 0.8 < r ≤ 0.9 shows −50:1 … −15.90:1 and 0.9 … 1 shows
    −15.90:1 … −5.00:1. The curve between the 14 tabulated positions is linear in r, with an exact 0 dB column at
    0.218 (|r − 0.218| ≤ 0.0005 is exactly 0 dB).
-5. **Floor parameter encoding.** One host parameter covers "−10 N … −100 N", "−inf" and "−100 … +12 dB"
-   (r ∈ [0, 0.15] / (0.15, 0.2) / [0.2, 1]). Negative-polarity floors act as −inf in gate mode (§6).
-6. **GateClose −inf** means "no hysteresis" (close at GateOpen); a GateClose above GateOpen is clamped to GateOpen.
-   GateOpen −inf keeps the gate/expander fully open (exactly unity).
-7. **Expander table ends.** Below the Appendix B range the expander continues 1:2 (slope 1); above it the last
-   value (−0.02 dB) is held.
-8. **Sidechain monitor** shows the compressor's detection signal after the lookahead delay (aligned with the
+4. **Floor parameter encoding.** One host parameter covers "−10.0 N … −100.0 N" (0.1 dB steps), "−inf" and
+   "−100 … +12 dB" (r ∈ [0, 0.15] / (0.15, 0.2) / [0.2, 1]). Negative-polarity floors act as −inf in gate mode.
+5. **GateClose −inf** means "no hysteresis" (close at GateOpen); a GateClose above GateOpen is clamped to GateOpen.
+   GateOpen −inf keeps the gate/expander fully open (exactly unity, from the first sample after a reset).
+6. **Sidechain monitor** shows the compressor's detection signal after the lookahead delay (aligned with the
    reported latency). In L→R / R→L it shows the key (keying channel's detection signal) on the output channel.
-9. **Variant extras.** Output Gain and the host bypass exist in every product; LookAhead/Key/Monitor/input gains only
+7. **Variant extras.** Output Gain and the host bypass exist in every product; LookAhead/Key/Monitor/input gains only
    where the spec lists them. External sidechain inputs are not provided (D5).
-10. **Both modules in Split** (D4): the active band gets `g_c·g_g`, the passive band 1.
-11. **PDR = 0 → > 0** switches the detector structure without a crossfade; e_slow tracks e_fast while PDR is 0 so
-    the change is continuous.
-12. **§10.8 above 48 kHz.** The test's white noise is band-limited to 20 kHz at 96 kHz, so every rate gets the same
-    audio-band signal. Full-band noise up to 48 kHz reads differently through the 0.127 ms rectifier.
-13. **Not reproducible here:** the verifier's negative-floor notch point (0.75 dB at −60 dBFS) and the gate
-    envelope at Release 1000 ms (linear-gain RMS 0.104). The spec has no reference values for either. Both depend
-    on the detector, which r2 replaced (rectifier, expander dynamics), so they need re-verification.
+8. **Both modules in Split** (D4): the active band gets `g_c·g_g`, the passive band 1.
+9. **PDR = 0 → > 0** switches the detector structure without a crossfade; e_slow tracks e_fast while PDR is 0 so
+   the change is continuous.
+10. **§10.8 above 48 kHz.** The test's white noise is band-limited to 20 kHz at 96 kHz, so every rate gets the same
+    audio-band signal.
 
 ## Public references
 
@@ -222,7 +198,7 @@ Latest local results (CI builds and tests Windows and Linux):
 
 | Item | Result |
 |---|---|
-| Unit tests | 35 test cases / 3766 assertions, all passing (Windows MSVC Release and Linux GCC 13) |
+| Unit tests | 36 test cases / 8481 assertions, all passing (Windows MSVC Release and Linux GCC 13) |
 | Windows x64 Release (MSVC, VS 2022) | all four products build (VST3, CLAP, Standalone); installed locally for host testing |
 | Linux x64 | DSP tests built and passing locally (GCC 13); the plug-in targets are built by CI (no X11/ALSA dev packages locally) |
 

@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <vector>
 
 #include "Filters.h"
 #include "Parameters.h"
@@ -88,8 +87,9 @@ public:
     static constexpr double expGainAtt = 0.384;        // EXP_GAIN_ATT
     static constexpr double expGainRel = 0.842;        // EXP_GAIN_REL
     static constexpr double gateDetectorMaxAttackMs = 2.0;
-    static constexpr double peakHoldReleaseMs = 20.0;  // instantaneous-peak follower for the output limit
-    static constexpr double safetyClamp = 31.6227766;  // +30 dBFS hard safety limit on the engine output
+    static constexpr double expCalDb = 1.11;           // EXP_CAL (r3 4.3)
+    static constexpr double outputClip = 1.0;          // r3 5.1: hard clip of every output sample at 0 dBFS
+    static constexpr double silenceDb = -400.0;        // detector level of silence (r3 3: state at stream start)
     static constexpr double paramSmoothingMs = 4.0;    // one-pole time constant, settles well within 20 ms
     static constexpr double crossfadeMs = 10.0;        // switched settings (spec 8: <= 20 ms)
 
@@ -110,7 +110,6 @@ public:
         smQ.setEpsilon (1.0e-7);
         fade.setRampTime (crossfadeMs * 0.001, fs);
         rectCoeff = std::exp (-1.0 / (rectTauMs * 0.001 * fs));
-        calFs = -1.0; // recompute the expander calibration at the new rate
         updateBlockConstants();
         reset();
     }
@@ -222,10 +221,10 @@ public:
                     fading = false;
                 }
             }
-            // last-resort safety clamp (+30 dBFS): legitimate output stays below about +21 dBFS
-            left[i] = Sample (clampTo (y[0], -safetyClamp, safetyClamp));
+            // r3 5.1: hard clip of the final output (after Output gain) at +-1.0
+            left[i] = Sample (clampTo (y[0], -outputClip, outputClip));
             if (nch > 1)
-                right[i] = Sample (clampTo (y[1], -safetyClamp, safetyClamp));
+                right[i] = Sample (clampTo (y[1], -outputClip, outputClip));
         }
     }
 
@@ -299,11 +298,11 @@ private:
         FilterChannel filt[2];
 
         double compM[2] = { 0.0, 0.0 }, gateM[2] = { 0.0, 0.0 }; // rectifier states
-        double peakHold = 0.0; // held instantaneous input peak (output-limit safety, IMPLEMENTATION_NOTES.md)
-        int peakHoldLeft = 0;  // samples the peak is held (covers the lookahead delay)
-        double compE = -120.0, compESlow = -120.0, compGainDb = 0.0, slowMemory = 0.0;
-        double gateE = -120.0, gateG = 1.0, gateGain = 1.0, expV = 0.0;
-        bool gateIsOpen = true;
+        // r3 3: state at stream start / host reset - detectors silent, slow memory 0 dB, gate closed,
+        // expander gain at its value for silence
+        double compE = silenceDb, compESlow = silenceDb, compGainDb = 0.0, slowMemory = 0.0;
+        double gateE = silenceDb, gateG = 0.0, gateGain = 1.0, expV = silenceDb;
+        bool gateIsOpen = false;
         long holdLeft = 0;
 
         std::array<double, lookaheadSamples> delayX[2] {}, delaySc[2] {};
@@ -360,18 +359,7 @@ private:
                 double g = -((1.0 - slowWeight) * t + slowWeight * slowMemory) + fr.makeup;
                 if (fr.peakRefAmount > 0.0)
                     g += fr.peakRefAmount * curves::peakRefOffsetDb (fr.ratio, fr.threshold);
-                double xmax = 0.0;
-                for (int c = 0; c < nch; ++c)
-                    xmax = std::max (xmax, std::abs (x[c]));
-                if (xmax >= peakHold)
-                    peakHold = xmax, peakHoldLeft = lookaheadSamples;
-                else if (peakHoldLeft > 0)
-                    --peakHoldLeft;
-                else
-                    peakHold = std::max (xmax, peakHold * e.cPeakRel);
-                const double pk = peakHold;
-                // output limit on the final output (r2 10.9)
-                compGainDb = curves::limitFinalGainDb (g, ee, 20.0 * std::log10 (pk + 1.0e-20));
+                compGainDb = g; // the final output is hard-clipped after Output gain (r3 5.1)
             }
 
             // gate / expander detector and gain (spec 4, 6)
@@ -392,7 +380,7 @@ private:
                     if (enabled)
                     {
                         // spec r2 6: dB-domain smoothing of the expander gain
-                        const double u = curves::expanderGainDb (gateE + e.expCalibrationDb - e.gateOpenDb);
+                        const double u = curves::expanderGainDb (gateE + expCalDb - e.gateOpenDb);
                         const double kv = u > expV ? e.cExpGainAtt : e.cExpGainRel;
                         expV = kv * expV + (1.0 - kv) * u;
                         gateG = dbToGain (expV);
@@ -423,7 +411,9 @@ private:
                         gateIsOpen = false;
                     if (holdLeft > 0)
                         --holdLeft;
-                    if (gateIsOpen)
+                    if (! enabled)
+                        gateG = 1.0; // GateOpen -inf: no gate at all (exactly unity, also right after a reset)
+                    else if (gateIsOpen)
                     {
                         gateG = 1.0 + e.cGateAtt * (gateG - 1.0);
                         if (1.0 - gateG < 1.0e-12)
@@ -537,46 +527,6 @@ private:
 
     double coeffMs (double ms) const noexcept { return std::exp (-1.0 / (std::max (ms, 1.0e-4) * 0.001 * fs)); }
 
-public:
-    // Mean steady-state level-smoother reading (dB re peak) of a 0 dBFS 1 kHz sine through the rectifier and a
-    // level smoother with the given attack/release: the periodic fixed point e(T) = e(0) is found by bisection.
-    double steadySineReadingDb (double attMs, double relMs) const noexcept
-    {
-        const int len = std::min (4096, int (std::lround (fs / 100.0))); // ten periods of 1 kHz
-        const double pi2 = 2.0 * 3.14159265358979323846 * 1000.0 / fs;
-        std::array<double, 4096> level {};
-        double m = 0.0;
-        for (int i = 0; i < 4 * len; ++i) // rectifier to steady state, keep the last ten periods
-        {
-            m = rectCoeff * m + (1.0 - rectCoeff) * std::abs (std::sin (pi2 * double (i)));
-            if (i >= 3 * len)
-                level[size_t (i - 3 * len)] = Core::levelDb (m);
-        }
-        const double ca = coeffMs (attMs), cr = coeffMs (relMs);
-        auto run = [&] (double e0, double* mean) {
-            double e = e0, sum = 0.0;
-            for (int i = 0; i < len; ++i)
-            {
-                const double l = level[size_t (i)];
-                const double c = l > e ? ca : cr;
-                e = c * e + (1.0 - c) * l;
-                sum += e;
-            }
-            if (mean != nullptr)
-                *mean = sum / double (len);
-            return e;
-        };
-        double lo = -40.0, hi = 20.0;
-        for (int k = 0; k < 60; ++k)
-        {
-            const double mid = 0.5 * (lo + hi);
-            (run (mid, nullptr) > mid ? lo : hi) = mid;
-        }
-        double mean = 0.0;
-        run (0.5 * (lo + hi), &mean);
-        return mean;
-    }
-
 private:
     void updateBlockConstants() noexcept
     {
@@ -585,16 +535,8 @@ private:
         cCompRel = coeffMs (detRel * s.compReleaseMs);
         cSlow = coeffMs (slowRel * s.compReleaseMs);
         cExpDetRel = coeffMs (expDetRel * s.gateReleaseMs);
-        if (s.gateAttackMs != calAtt || s.gateReleaseMs != calRel || fs != calFs)
-        {
-            // keep Appendix B's static coordinates with the fast expander release (IMPLEMENTATION_NOTES.md)
-            calAtt = s.gateAttackMs, calRel = s.gateReleaseMs, calFs = fs;
-            expCalibrationDb = steadySineReadingDb (s.gateAttackMs, s.gateReleaseMs)
-                             - steadySineReadingDb (s.gateAttackMs, expDetRel * s.gateReleaseMs);
-        }
         cExpGainAtt = coeffMs (expGainAtt * s.gateAttackMs);
         cExpGainRel = coeffMs (expGainRel * s.gateReleaseMs);
-        cPeakRel = coeffMs (peakHoldReleaseMs);
         pdrOn = s.pdrMs > 0.0;
         cPdrFastRel = coeffMs (pdrFastReleaseMs);
         cPdrSlowAtt = coeffMs (0.5 * std::max (s.pdrMs, 1.0e-3));
@@ -616,7 +558,6 @@ private:
     int designCountdown = 0;
 
     double rectCoeff = 0.0, cSlow = 0.0, cExpDetRel = 0.0, cExpGainAtt = 0.0, cExpGainRel = 0.0;
-    double expCalibrationDb = 0.0, calAtt = -1.0, calRel = -1.0, calFs = -1.0, cPeakRel = 0.0;
     double cCompAtt = 0.0, cCompRel = 0.0, cPdrFastRel = 0.0, cPdrSlowAtt = 0.0;
     double cGateAtt = 0.0, cGateRel = 0.0, cGateDetAtt = 0.0;
     bool pdrOn = false;

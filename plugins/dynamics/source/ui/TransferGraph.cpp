@@ -161,7 +161,8 @@ void TransferGraph::paint (juce::Graphics& g)
     if (hasComp)
     {
         const bool on = ! settings.compBypass;
-        auto path = curve ([this] (double in) { return in + dsp::DynamicsEngine::staticCompressorGainDb (settings, in); });
+        // output clipped at 0 dBFS (r3 5.1)
+        auto path = curve ([this] (double in) { return std::min (0.0, in + dsp::DynamicsEngine::staticCompressorGainDb (settings, in)); });
         g.setColour (colours::accent.withAlpha (on ? 1.0f : 0.3f));
         g.strokePath (path, juce::PathStrokeType (on ? 2.2f : 1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
