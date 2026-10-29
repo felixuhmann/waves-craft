@@ -72,6 +72,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 
 | Slug | Products | Spec | Notes |
 |---|---|---|---|
+| [`h-delay`](plugins/h-delay) | Craft Hybrid Delay | [r1](spec/h-delay/r1/SPEC.md) | [notes](plugins/h-delay/IMPLEMENTATION_NOTES.md) |
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
@@ -87,7 +88,8 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-Plug-ins land in `build/plugins/<slug>/<Target>_artefacts/Release/`. `-DCRAFT_BUILD_PLUGINS=OFF` builds only the
+Plug-ins land in `build/plugins/<slug>/<Target>_artefacts/Release/` (e.g. `build/plugins/h-delay/CraftHybridDelay_artefacts/Release/`
+for **Craft Hybrid Delay**, the stereo / mono-to-stereo tape-style delay of [`plugins/h-delay`](plugins/h-delay)). `-DCRAFT_BUILD_PLUGINS=OFF` builds only the
 DSP unit tests (no JUCE download). Every push to `main` publishes a GitHub release with one zip per plugin and a
 combined `craft-audio-bundle-<version>-<platform>.zip` per platform (packaged by `ci/package.py`).
 
