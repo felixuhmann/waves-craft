@@ -27,7 +27,7 @@ double amplitudeRatio (double rateHz, double delayMs, double depthPct, double fs
     double mx = -1e30, mn = 1e30;
     for (size_t n = 0; n < total; ++n)
     {
-        const double y = sm.process (A * lfo.next());
+        const double y = sm.process (A * lfo.next(), D);
         if (n >= start)
         {
             mx = std::max (mx, y);
@@ -69,32 +69,27 @@ TEST_CASE ("Triangle LFO shape and rate", "[mod]")
     }
 }
 
-TEST_CASE ("Modulation smoothing reproduces the spec 8 tables within 15 %", "[mod]")
+TEST_CASE ("Modulation smoothing meets the r2 section 8 table within 15 %", "[mod]")
 {
     struct Point
     {
-        double rate, delayMs, depth, ratio;
+        double delayMs, depth, rate, ratio;
     };
     const Point pts[] = {
-        // rate dependence, D = 10 ms, Depth 10 %
-        { 0.5, 10, 10, 1.03 }, { 2, 10, 10, 1.02 }, { 5, 10, 10, 0.98 }, { 10, 10, 10, 0.70 }, { 20, 10, 10, 0.50 },
-        { 50, 10, 10, 0.03 },
-        // long delays, 0.5 Hz, Depth 10 %
-        { 0.5, 100, 10, 0.95 }, { 0.5, 200, 10, 0.69 }, { 0.5, 500, 10, 0.43 }, { 0.5, 1000, 10, 0.25 },
-        { 0.5, 3500, 10, 0.07 },
+        { 10, 10, 0.5, 1.02 }, { 10, 10, 2, 1.02 },  { 10, 10, 5, 0.90 },     { 10, 10, 10, 0.72 },
+        { 10, 10, 20, 0.50 },  { 10, 10, 50, 0.03 }, { 50, 50, 0.5, 0.99 },   { 100, 10, 0.5, 0.95 },
+        { 200, 10, 0.5, 0.73 }, { 500, 10, 0.5, 0.43 }, { 1000, 10, 0.5, 0.25 }, { 3500, 10, 0.5, 0.07 },
     };
     for (const auto& p : pts)
         for (double fs : { 44100.0, 48000.0, 96000.0 })
         {
             const double r = amplitudeRatio (p.rate, p.delayMs, p.depth, fs);
-            INFO ("rate " << p.rate << " Hz, D " << p.delayMs << " ms, fs " << fs << ": ratio " << r);
+            INFO ("D " << p.delayMs << " ms, depth " << p.depth << " %, rate " << p.rate << " Hz, fs " << fs << ": ratio " << r);
             CHECK (std::abs (r / p.ratio - 1.0) <= 0.15);
         }
-
-    // short delay, slow rate: A = Depth/100 * D/2 (e.g. D = 50 ms, Depth 50 -> +-12.4 ms)
-    const double r = amplitudeRatio (0.1, 50.0, 50.0);
-    CHECK (std::abs (r * 12.5 / 12.4 - 1.0) <= 0.15);
-    CHECK (r > 0.95);
+    // the verifier's large-excursion cases in ms: D 50 ms / Depth 50 % -> +-12.4 ms; D 1024 ms / 10 % -> +-12.8 ms
+    CHECK (std::abs (amplitudeRatio (0.5, 50.0, 50.0) * 12.5 / 12.4 - 1.0) <= 0.15);
+    CHECK (std::abs (amplitudeRatio (0.5, 1024.0, 10.0) * 51.2 / 12.8 - 1.0) <= 0.15);
 }
 
 TEST_CASE ("Modulation moves the echo; Depth 0 leaves it exact", "[mod]")
@@ -118,12 +113,12 @@ TEST_CASE ("Modulation moves the echo; Depth 0 leaves it exact", "[mod]")
             argmax = n;
     const double lagMs = double (argmax - 12000) / fs * 1000.0;
     CHECK (lagMs > 22.0);
-    CHECK (lagMs < 25.5);
+    CHECK (lagMs < 26.5);
 
     s.modDepthPct = 0.0;
     auto e0 = makeEngine (s, fs);
     auto y0 = impulse (e0, 2000, 0.1);
-    CHECK (y0.l[960] == 0.1 / 1.1);
+    CHECK_THAT (y0.l[960], Catch::Matchers::WithinAbs (0.1 / 1.1, 1e-15));
     CHECK (y0.l[959] == 0.0);
     CHECK (y0.l[961] == 0.0);
 }

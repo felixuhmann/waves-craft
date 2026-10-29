@@ -161,8 +161,8 @@ namespace param
         static double toNorm (double v) noexcept { return clamp01 (v / 100.0); }
     };
 
-    // Filters: f = 19 * 1058^r Hz. HiPass is Off below r = 0.05 (lowest frequency ~26.9 Hz),
-    // LoPass is Off above r = 0.95 (highest frequency ~14.2 kHz); see IMPLEMENTATION_NOTES.md.
+    // Filters (spec r2 section 2): f = 19 * 1058^r Hz over the whole range; HiPass is Off only at r = 0,
+    // LoPass is Off only at r = 1.
     // The host parameter value *is* r; 0 Hz encodes "Off".
     struct Filter
     {
@@ -172,13 +172,13 @@ namespace param
     };
     struct HiPass
     {
-        static constexpr double offBelow = 0.05, defaultNorm = 0.0;
-        static double fromNorm (double r) noexcept { return r < offBelow - 1.0e-9 ? 0.0 : Filter::freq (r); }
+        static constexpr double defaultNorm = 0.0, minOnNorm = 1.0e-4; // smallest r that is not Off (GUI/typing)
+        static double fromNorm (double r) noexcept { return r <= 0.0 ? 0.0 : Filter::freq (r); }
     };
     struct LoPass
     {
-        static constexpr double offAbove = 0.95, defaultNorm = 1.0;
-        static double fromNorm (double r) noexcept { return r > offAbove + 1.0e-9 ? 0.0 : Filter::freq (r); }
+        static constexpr double defaultNorm = 1.0, maxOnNorm = 1.0 - 1.0e-4; // largest r that is not Off
+        static double fromNorm (double r) noexcept { return r >= 1.0 ? 0.0 : Filter::freq (r); }
     };
 
     // ---------------------------------------------------------------------------------------------

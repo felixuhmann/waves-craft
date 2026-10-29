@@ -59,7 +59,7 @@ std::unique_ptr<juce::AudioParameterFloat> filter (const char* id, const juce::S
                               if (text.trim().equalsIgnoreCase ("off"))
                                   return offAtTop ? 1.0f : 0.0f;
                               const double r = param::Filter::toNorm (parseNumber (text));
-                              return float (offAtTop ? std::min (r, 0.95) : std::max (r, 0.05));
+                              return float (offAtTop ? std::min (r, param::LoPass::maxOnNorm) : std::max (r, param::HiPass::minOnNorm));
                           });
     return std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { id, 1 }, name,
                                                         juce::NormalisableRange<float> (0.0f, 1.0f), defaultNorm, attributes);

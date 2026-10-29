@@ -1,4 +1,4 @@
-// Craft Hybrid Delay - complete per-sample processor (spec r1 sections 3-9).
+// Craft Hybrid Delay - complete per-sample processor (spec r2 sections 3-9).
 // Host-independent, header-only, double precision internally.
 #pragma once
 
@@ -14,6 +14,7 @@
 #include "LoFi.h"
 #include "Modulation.h"
 #include "Parameters.h"
+#include "Saturation.h"
 #include "Smoothing.h"
 
 namespace craft::hdelay
@@ -71,6 +72,7 @@ public:
             c.line.prepare (maxDelay);
             c.lofi.prepare (fs);
             c.noise.prepare (fs, seed);
+            c.sat.prepare (fs);
             seed = seed * 747796405u + 2891336453u;
             c.mod.prepare (fs);
             c.glide.setTimeConstant (glideSeconds, fs);
@@ -132,6 +134,7 @@ public:
             c.analogCur.reset();
             c.analogPrev.reset();
             c.noise.reset();
+            c.sat.reset();
             c.mod.reset();
             c.glide.snap();
             c.hpf.reset();
@@ -202,7 +205,7 @@ public:
         {
             auto& k = ch[c];
             const double dg = k.glide.next();
-            const double m = k.mod.process (dg * dep * tri * 0.5);
+            const double m = k.mod.process (dg * dep * tri * 0.5, dg);
             const double d = std::clamp (dg + m, double (SincTable::halfTaps + 1), maxReadDelay());
             wetRaw[c] = k.line.read (d);
             fb[c] = k.line.read (d + 1.0);
@@ -235,13 +238,15 @@ public:
             }
         }
 
-        // ---- loop processing: Analog -> saturation -> LoFi -> LoPass -> HiPass
+        // ---- loop processing: (+ Analog noise) -> saturation -> LoFi -> LoPass -> HiPass
         for (size_t c = 0; c < 2; ++c)
         {
             auto& k = ch[c];
-            double u = aAnalog >= 1.0 ? k.analogCur.process (v[c])
-                                      : k.analogPrev.process (v[c]) * (1.0 - aAnalog) + k.analogCur.process (v[c]) * aAnalog;
-            double w = u / (1.0 + std::abs (u));
+            double u = v[c];
+            const double nl = k.noiseLevel.next();
+            if (nl != 0.0)
+                u += k.noise.next (nl);
+            double w = k.sat.process (u);
             if (aLofi > 0.0)
             {
                 const double lf = k.lofi.process (w);
@@ -265,10 +270,9 @@ public:
         for (size_t c = 0; c < 2; ++c)
         {
             auto& k = ch[c];
-            double wet = wetRaw[c];
-            const double nl = k.noiseLevel.next();
-            if (nl != 0.0)
-                wet += k.noise.next (nl);
+            // Analog colour / distortion on the wet signal (see IMPLEMENTATION_NOTES, r2 assumption 1)
+            double wet = aAnalog >= 1.0 ? k.analogCur.process (wetRaw[c])
+                                        : k.analogPrev.process (wetRaw[c]) * (1.0 - aAnalog) + k.analogCur.process (wetRaw[c]) * aAnalog;
             wet *= k.phaseGain.next();
             y[c] = G * (cm * x[c] + sm * wet);
             if (b != 0.0)
@@ -295,6 +299,7 @@ private:
         LoFiFilter lofi;
         Biquad hpf, lpf;
         AnalogNoise noise;
+        EnvelopeSaturator sat;
         ModulationSmoother mod;
         OnePole glide, noiseLevel;
         LinearRamp phaseGain;
@@ -311,7 +316,7 @@ private:
             k.glide.setTarget (delaySamples (resolvedDelayMs (s, c), sampleRate));
             const bool inv = (c == 1 && inputMode == InputMode::MonoToStereo) ? s.phaseL : (c == 0 ? s.phaseL : s.phaseR);
             k.phaseGain.setTarget (inv ? -1.0 : 1.0);
-            k.noiseLevel.setTarget (s.analog > 0 ? std::pow (10.0, analogModeSpecs()[size_t (std::clamp (s.analog, 0, 4))].noiseDbfs / 20.0) : 0.0);
+            k.noiseLevel.setTarget (s.analog > 0 ? std::pow (10.0, analogModeSpecs()[size_t (std::clamp (s.analog, 0, 4))].noiseInjectDbfs / 20.0) : 0.0);
         }
         feedback.setTarget (s.feedbackPct / 100.0);
         mix.setTarget (std::clamp (s.mixPct, 0.0, 100.0) / 100.0);

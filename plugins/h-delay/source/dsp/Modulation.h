@@ -1,14 +1,15 @@
-// Craft Hybrid Delay - delay-time modulation (spec r1 section 8).
+// Craft Hybrid Delay - delay-time modulation (spec r2 section 8).
 //
 // Triangle LFO -> nominal offset  D * (Depth/100) * tri / 2  (samples) -> smoothing:
-//   1. slope compression: the per-sample change of the offset is passed through a soft limiter
-//        dy = S tanh(dx / S),  S = 0.021 samples/sample (= 21 ms of delay change per second),
-//      plus a slow leak (tau 5 s) towards the nominal offset so the output cannot drift;
-//   2. a second-order low-pass (20 Hz, Q 1.2).
-// The spec leaves the exact law open (12.1); this model was fitted to the section 8 tables (all points
-// within +-15 %, see tests/ModulationTests.cpp). Both channels share one LFO phase (assumption 12.2).
+//   1. a one-pole low-pass whose time constant equals the current delay time (tau = 1.0 * D):
+//      long delays are smoothed strongly (their excursion saturates around 12-13 ms at 0.5 Hz),
+//      short delays with slow, large excursions pass at full amplitude;
+//   2. a second-order low-pass (18 Hz, Q 1.0) for the rate dependence at short delays.
+// The spec leaves the exact law open (12.1); constants fitted to the 12-row table of section 8
+// (tools/fit/mod_fit_r2.py; every row within +-15 %). Both channels share one LFO phase (12.2).
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 #include "Biquad.h"
@@ -42,26 +43,25 @@ private:
 class ModulationSmoother
 {
 public:
-    static constexpr double slopeLimit = 0.021;   // samples of delay change per sample (21 ms/s)
-    static constexpr double leakSeconds = 5.0;
-    static constexpr double lowPassHz = 20.0, lowPassQ = 1.2;
+    static constexpr double tauPerDelay = 1.0;               // one-pole tau = 1.0 x delay time
+    static constexpr double lowPassHz = 18.0, lowPassQ = 1.0;
 
     void prepare (double fs) noexcept
     {
-        leak = 1.0 / (leakSeconds * fs);
         lp.setCoeffs (BiquadCoeffs::lowPass (BiquadCoeffs::cornerStandard (lowPassHz, fs), lowPassQ));
         reset();
     }
 
     void reset() noexcept
     {
-        y = previous = 0.0;
+        y = 0.0;
         lp.reset();
         idle = true;
+        lastDelay = -1.0;
     }
 
-    // x: nominal offset in samples. Returns the smoothed offset.
-    double process (double x) noexcept
+    // x: nominal offset in samples, delaySamples: current (glided) delay. Returns the smoothed offset.
+    double process (double x, double delaySamples) noexcept
     {
         if (idle)
         {
@@ -69,9 +69,12 @@ public:
                 return 0.0;
             idle = false;
         }
-        const double dx = x - previous;
-        previous = x;
-        y += slopeLimit * std::tanh (dx / slopeLimit) + (x - y) * leak;
+        if (delaySamples != lastDelay)
+        {
+            lastDelay = delaySamples;
+            coeff = std::exp (-1.0 / std::max (1.0, tauPerDelay * delaySamples));
+        }
+        y = x + coeff * (y - x);
         const double out = lp.process (y);
         // settle exactly to zero once the modulation has been switched off and has decayed
         if (x == 0.0 && std::abs (y) < 1.0e-9 && std::abs (out) < 1.0e-9)
@@ -84,7 +87,7 @@ public:
 
 private:
     Biquad lp;
-    double y = 0.0, previous = 0.0, leak = 0.0;
+    double y = 0.0, coeff = 0.0, lastDelay = -1.0;
     bool idle = true;
 };
 

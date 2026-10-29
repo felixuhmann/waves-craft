@@ -99,7 +99,7 @@ TEST_CASE ("Filters Off are exactly transparent", "[filters]")
 {
     auto e = makeEngine (coreSettings (5.0, 0.0), 48000.0);
     auto y = impulse (e, 500, 0.01);
-    CHECK (y.l[240] == 0.01 / 1.01);
+    CHECK_THAT (y.l[240], Catch::Matchers::WithinAbs (0.01 / 1.01, 1e-15));
     CHECK (y.l[241] == 0.0);
 }
 

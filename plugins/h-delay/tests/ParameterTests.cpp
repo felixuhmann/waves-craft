@@ -129,8 +129,13 @@ TEST_CASE ("Linear and log parameter mappings", "[params]")
     CHECK_THAT (pm::ModRate::fromNorm (0.5), WithinRel (0.1 * std::sqrt (60000.0), 1e-12));
     CHECK_THAT (pm::ModRate::toNorm (pm::ModRate::fromNorm (0.37)), WithinAbs (0.37, 1e-12));
 
-    // filters: Off at the ends, 19 * 1058^r in between
+    // filters (r2): Off only at the extreme ends, 19 * 1058^r everywhere else
     CHECK (pm::HiPass::fromNorm (0.0) == 0.0);
+    CHECK_THAT (pm::HiPass::fromNorm (0.005), WithinRel (19.7, 0.01));
+    CHECK_THAT (pm::HiPass::fromNorm (0.049), WithinRel (19.0 * std::pow (1058.0, 0.049), 1e-12));
+    CHECK_THAT (pm::LoPass::fromNorm (0.995), WithinRel (19400.0, 0.01));
+    CHECK_THAT (pm::LoPass::fromNorm (0.951), WithinRel (19.0 * std::pow (1058.0, 0.951), 1e-12));
+    CHECK (pm::LoPass::fromNorm (0.9999) > 0.0);
     CHECK_THAT (pm::HiPass::fromNorm (0.05), WithinRel (26.9, 0.01));
     CHECK_THAT (pm::HiPass::fromNorm (1.0), WithinRel (20100.0, 0.01));
     CHECK (pm::LoPass::fromNorm (1.0) == 0.0);

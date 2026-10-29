@@ -237,19 +237,61 @@ TEST_CASE ("Mono to stereo: the mono input feeds both lines", "[core][mono]")
     CHECK_THAT (y.r[480], WithinAbs (-0.3 / 1.3, 1e-12));
 }
 
-TEST_CASE ("Sine fundamental through the saturation matches the Off row", "[core][sat]")
+TEST_CASE ("Saturation r2 4.2: compression vs frequency", "[core][sat]")
 {
-    // spec 9 Off row: fundamental gain re input -0.8 / -2.1 / -5.3 dB at 0.1 / 0.3 / 0.95 (tolerance 0.3 dB)
-    const double amps[] = { 0.1, 0.3, 0.95 };
-    const double want[] = { -0.8, -2.1, -5.3 };
-    for (int i = 0; i < 3; ++i)
+    const double freqs[] = { 20, 50, 100, 200, 500, 1000, 2000, 5000 };
+    const double at30[] = { -0.23, -0.24, -0.24, -0.25, -0.26, -0.27, -0.27, -0.27 };
+    const double at12[] = { -1.66, -1.71, -1.74, -1.82, -1.88, -1.91, -1.92, -1.92 };
+    for (int i = 0; i < 8; ++i)
     {
-        const auto h = toneHarmonics (0, amps[i], 100.0, 48000.0, 0.05);
-        CHECK (std::abs (db (h.h1 / amps[i]) - want[i]) <= 0.3);
+        for (int lvl = 0; lvl < 2; ++lvl)
+        {
+            const double a = lvl == 0 ? 0.0316 : 0.251;
+            const auto h = toneHarmonics (0, a, freqs[i], 48000.0, 0.3);
+            const double got = db (h.h1 / a), want = lvl == 0 ? at30[i] : at12[i];
+            INFO (freqs[i] << " Hz, a " << a << ": " << got << " dB (target " << want << ")");
+            CHECK (std::abs (got - want) <= 0.15);
+        }
     }
-    // -30 dBFS: essentially linear
-    const auto h = toneHarmonics (0, 0.0316, 1000.0, 48000.0, 0.05);
-    CHECK (std::abs (db (h.h1 / 0.0316)) < 0.3);
+}
+
+TEST_CASE ("Saturation r2 4.3: 100 Hz tone through Analog Off", "[core][sat]")
+{
+    const double amps[] = { 0.03, 0.1, 0.3, 0.95 };
+    const double fund[] = { -0.2, -0.8, -2.1, -5.3 };
+    const double h3[] = { -52.9, -42.6, -33.5, -24.7 };
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto h = toneHarmonics (0, amps[i], 100.0, 48000.0, 0.3);
+        INFO ("a " << amps[i] << ": fund " << db (h.h1 / amps[i]) << " H2 " << db (h.h2 / h.h1) << " H3 " << db (h.h3 / h.h1));
+        CHECK (std::abs (db (h.h1 / amps[i]) - fund[i]) <= 0.2);
+        CHECK (std::abs (db (h.h3 / h.h1) - h3[i]) <= (i == 3 ? 4.0 : 2.5));
+        CHECK (db (h.h2 / h.h1 + 1e-300) <= -150.0);
+    }
+}
+
+TEST_CASE ("Saturation r2 4.4: per-pass echo ratio at short delays", "[core][sat]")
+{
+    const double delays[] = { 1, 2, 3, 5, 10, 20 };
+    const double table[6][4] = { { 0.419, 0.437, 0.452, 0.467 }, { 0.436, 0.466, 0.491, 0.511 },
+                                 { 0.452, 0.490, 0.519, 0.540 }, { 0.479, 0.526, 0.555, 0.573 },
+                                 { 0.500, 0.546, 0.569, 0.582 }, { 0.500, 0.546, 0.569, 0.582 } };
+    for (double fs : { 44100.0, 48000.0 })
+        for (int d = 0; d < 6; ++d)
+        {
+            auto e = makeEngine (coreSettings (delays[d], 60.0), fs);
+            const int D = int (std::round (delays[d] * fs / 1000.0));
+            auto y = impulse (e, 6 * (D + 1) + 10, 0.5);
+            double peak[5];
+            for (int k = 0; k < 5; ++k)
+                peak[k] = std::abs (y.l[size_t (D + k * (D + 1))]);
+            for (int k = 0; k < 4; ++k)
+            {
+                const double ratio = peak[k + 1] / peak[k];
+                INFO (fs << " Hz, " << delays[d] << " ms, pass " << k + 1 << ": " << ratio << " (target " << table[d][k] << ")");
+                CHECK (std::abs (db (ratio / table[d][k])) <= 0.3);
+            }
+        }
 }
 
 TEST_CASE ("Delay-time change glides with tau ~0.2 s and is click-free", "[core][glide]")

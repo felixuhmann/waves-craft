@@ -490,8 +490,8 @@ void LinkRing::mouseDown (const juce::MouseEvent&)
 {
     startHp = hp->getValue();
     startLp = lp->getValue();
-    hpOn = startHp >= float (param::HiPass::offBelow);
-    lpOn = startLp <= float (param::LoPass::offAbove);
+    hpOn = startHp > 0.0f;
+    lpOn = startLp < 1.0f;
     dragging = true;
     if (hpOn) hp->beginChangeGesture();
     if (lpOn) lp->beginChangeGesture();
@@ -501,8 +501,8 @@ void LinkRing::mouseDrag (const juce::MouseEvent& e)
 {
     const float dr = -float (e.getDistanceFromDragStartY()) * (e.mods.isShiftDown() ? 0.0004f : 0.002f);
     // the frequency is 19 * 1058^r, so equal steps in r are equal frequency ratios
-    if (hpOn) hp->setValueNotifyingHost (juce::jlimit (float (param::HiPass::offBelow), 1.0f, startHp + dr));
-    if (lpOn) lp->setValueNotifyingHost (juce::jlimit (0.0f, float (param::LoPass::offAbove), startLp + dr));
+    if (hpOn) hp->setValueNotifyingHost (juce::jlimit (float (param::HiPass::minOnNorm), 1.0f, startHp + dr));
+    if (lpOn) lp->setValueNotifyingHost (juce::jlimit (0.0f, float (param::LoPass::maxOnNorm), startLp + dr));
     turn = dr;
     repaint();
 }
