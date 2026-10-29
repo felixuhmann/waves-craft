@@ -252,9 +252,6 @@ private:
         const double gc = compressor.process (wl, wr);
         const double gw = wetG.next();
         const double el = wl * gc * gw, er = wr * gc * gw;
-        // the colour effects tap the wet path after the wet gain but without the compressor's gain reduction
-        // (see IMPLEMENTATION_NOTES.md, assumption 5: required by the spec r2 doubler level at -20 dBFS)
-        const double tl = wl * gw, tr = wr * gw;
 
         // colour effects on the post-wet-gain signal
         double fxl = 0.0, fxr = 0.0;
@@ -275,10 +272,10 @@ private:
             double ol = 0.0, orr = 0.0;
             switch (k)
             {
-                case Verb: reverb.process (tl, tr, ol, orr); break;
-                case Dist: distortion.process (tl, tr, ol, orr); break;
-                case Dbl:  doubler.process (tl, tr, ol, orr); break;
-                default:   phaser.process (tl, tr, ol, orr); break;
+                case Verb: reverb.process (el, er, ol, orr); break;
+                case Dist: distortion.process (el, er, ol, orr); break;
+                case Dbl:  doubler.process (el, er, ol, orr); break;
+                default:   phaser.process (el, er, ol, orr); break;
             }
             const double g = on * lvl;
             fxl += g * ol;

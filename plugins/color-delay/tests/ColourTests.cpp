@@ -244,68 +244,100 @@ double distHarmonicDb (double rate, double send, double levelDb, int harmonic)
 const double rates[] = { 48000.0, 44100.0, 96000.0 };
 } // namespace
 
-TEST_CASE ("Distortion: small-signal response at Send 25 / 50 / 75 / 100 % (spec r2 7.2)", "[colour][distortion]")
+namespace
 {
+// End-to-end measurement as in spec r3 7.2: Delay 100 ms, Feedback 0, Dry/Wet 100 %, effect at Level 100 %, effect
+// output isolated by subtracting the same render with the effect off. Returns {left, right} gain (dB re input) of the
+// tone at `freq` (or of harmonic `harmonic` re the fundamental when harmonic > 1).
+std::pair<double, double> e2e (double rate, bool dist, double param, double freq, double levelDb, bool both = true,
+                               int harmonic = 1)
+{
+    Settings s;
+    s.hostSync = false;
+    s.delayMs = { 100.0, 100.0 };
+    s.feedbackPct = { 0.0, 0.0 };
+    s.dryWetPct = 100.0;
+    if (dist)
+    {
+        s.distOn = true;
+        s.distLevel = 100.0;
+        s.distSend = param;
+    }
+    else
+    {
+        s.doublerOn = true;
+        s.doublerLevel = 100.0;
+        s.doublerCents = param;
+    }
+    Settings off = s;
+    off.distOn = off.doublerOn = false;
+    const int n = (int) (rate * (dist ? 0.8 : 3.0));
+    const double amp = std::pow (10.0, levelDb / 20.0);
+    const auto x = sine (freq, amp, n, rate);
+    const std::vector<double> z ((size_t) n, 0.0);
+    const auto a = render (s, x, both ? x : z, rate), b = render (off, x, both ? x : z, rate);
+    std::vector<double> l ((size_t) n), r ((size_t) n);
+    for (size_t i = 0; i < l.size(); ++i) { l[i] = a.l[i] - b.l[i]; r[i] = a.r[i] - b.r[i]; }
+    const size_t from = (size_t) (rate * (dist ? 0.4 : 0.6));
+    const double fOut = dist ? freq : freq * std::pow (2.0, param / 1200.0);
+    if (harmonic > 1)
+        return { db (toneAmplitude (l, fOut * harmonic, from, (size_t) n, rate) / toneAmplitude (l, fOut, from, (size_t) n, rate)), 0.0 };
+    return { db (toneAmplitude (l, fOut, from, (size_t) n, rate) / amp), db (toneAmplitude (r, fOut, from, (size_t) n, rate) / amp) };
+}
+} // namespace
+
+TEST_CASE ("Distortion end-to-end: small-signal response at Send 25 / 50 / 75 / 100 % (spec r3 7.2)", "[colour][distortion]")
+{
+    struct Row { double send, tol; std::vector<std::pair<double, double>> pts; };
+    const Row rows[] = {
+        { 50.0, 2.0, { { 100, 12.1 }, { 200, 14.7 }, { 500, 13.9 }, { 1000, 11.7 }, { 2000, 6.4 }, { 4000, -2.7 } } },
+        { 75.0, 3.0, { { 100, 23.2 }, { 1000, 24.4 }, { 4000, 10.8 } } },
+        { 100.0, 3.0, { { 100, 26.1 }, { 1000, 28.7 }, { 2000, 30.8 }, { 4000, 24.3 }, { 8000, 11.3 } } },
+        { 25.0, 3.0, { { 100, -5.7 }, { 1000, -1.7 }, { 2000, -10.8 }, { 4000, -23.7 }, { 8000, -40.6 } } },
+    };
+    for (double rate : rates)
+        for (const auto& row : rows)
+            for (const auto& p : row.pts)
+            {
+                const double g = e2e (rate, true, row.send, p.first, -40.0).first;
+                INFO ("fs " << rate << " Send " << row.send << " % " << p.first << " Hz: " << g << " dB, expected " << p.second);
+                CHECK (g == Approx (p.second).margin (row.tol));
+            }
+}
+
+TEST_CASE ("Distortion end-to-end: 1 kHz gain vs input level (+-3 dB)", "[colour][distortion]")
+{
+    struct Row { double send; std::vector<std::pair<double, double>> pts; };
+    const Row rows[] = {
+        { 100.0, { { -40, 28.7 }, { -32, 21.3 }, { -24, 13.5 }, { -16, 5.5 }, { -8, -2.5 }, { 0, -10.5 } } },
+        { 50.0, { { -40, 11.7 }, { -28, 10.9 }, { -24, 8.7 }, { -16, 2.3 }, { -8, -4.9 }, { 0, -12.3 } } },
+        { 25.0, { { -40, -1.8 }, { -32, -2.0 }, { -24, -3.7 }, { -16, -7.9 }, { -8, -13.7 }, { 0, -19.3 } } },
+        { 10.0, { { -28, -10.7 }, { -24, -11.8 }, { -20, -13.6 }, { -16, -16.0 }, { -12, -18.8 }, { -8, -21.8 }, { -4, -24.7 }, { 0, -27.4 } } },
+    };
     for (double rate : rates)
     {
-        const double s50[][2] = { { 100, 12.1 }, { 200, 14.7 }, { 500, 13.9 }, { 1000, 11.7 }, { 2000, 6.4 }, { 4000, -2.7 } };
-        for (const auto& p : s50)
-        {
-            const double g = distGain (rate, 50.0, p[0], -40.0).first;
-            INFO ("fs " << rate << " Send 50 % " << p[0] << " Hz: " << g << " dB, expected " << p[1]);
-            CHECK (g == Approx (p[1]).margin (2.0));
-        }
-        const double s75[][2] = { { 100, 23.2 }, { 1000, 24.4 }, { 4000, 10.8 } };
-        for (const auto& p : s75)
-        {
-            const double g = distGain (rate, 75.0, p[0], -40.0).first;
-            INFO ("fs " << rate << " Send 75 % " << p[0] << " Hz: " << g << " dB, expected " << p[1]);
-            CHECK (g == Approx (p[1]).margin (3.0));
-        }
-        const double s100[][2] = { { 100, 26.1 }, { 1000, 28.7 }, { 2000, 30.8 }, { 4000, 24.3 }, { 8000, 11.3 } };
-        for (const auto& p : s100)
-        {
-            const double g = distGain (rate, 100.0, p[0], -40.0).first;
-            INFO ("fs " << rate << " Send 100 % " << p[0] << " Hz: " << g << " dB, expected " << p[1]);
-            CHECK (g == Approx (p[1]).margin (3.0));
-        }
-        // Send 25 %: output present at -40 dBFS, about -1.7 dB at 1 kHz
-        CHECK (distGain (rate, 25.0, 1000.0, -40.0).first == Approx (-1.7).margin (2.0));
-        // shape outside the toleranced band
-        CHECK (distGain (rate, 50.0, 50.0, -40.0).first < 0.0);
-        CHECK (distGain (rate, 50.0, 8000.0, -40.0).first < -10.0);
+        for (const auto& row : rows)
+            for (const auto& p : row.pts)
+            {
+                const double g = e2e (rate, true, row.send, 1000.0, p.first).first;
+                INFO ("fs " << rate << " Send " << row.send << " % at " << p.first << " dBFS: " << g << " dB, expected " << p.second);
+                CHECK (g == Approx (p.second).margin (3.0));
+            }
+        // test vector: Send 10 % silent at -32 dBFS (both channels)
+        const auto q = e2e (rate, true, 10.0, 1000.0, -32.0);
+        CHECK (q.first < -200.0);
+        CHECK (q.second < -200.0);
     }
 }
 
-TEST_CASE ("Distortion: 1 kHz gain vs input level (+-3 dB)", "[colour][distortion]")
-{
-    const double t100[][2] = { { -40, 28.7 }, { -32, 21.3 }, { -24, 13.5 }, { -16, 5.5 }, { -8, -2.5 }, { 0, -10.5 } };
-    const double t50[][2] = { { -40, 11.7 }, { -28, 10.9 }, { -24, 8.7 }, { -16, 2.3 }, { -8, -4.9 }, { 0, -12.3 } };
-    for (double rate : rates)
-    {
-        for (const auto& p : t100)
-        {
-            const double g = distGain (rate, 100.0, 1000.0, p[0]).first;
-            INFO ("fs " << rate << " Send 100 % at " << p[0] << " dBFS: " << g << " dB, expected " << p[1]);
-            CHECK (g == Approx (p[1]).margin (3.0));
-        }
-        for (const auto& p : t50)
-        {
-            const double g = distGain (rate, 50.0, 1000.0, p[0]).first;
-            INFO ("fs " << rate << " Send 50 % at " << p[0] << " dBFS: " << g << " dB, expected " << p[1]);
-            CHECK (g == Approx (p[1]).margin (3.0));
-        }
-    }
-}
-
-TEST_CASE ("Distortion: odd-harmonic profile at 1 kHz (+-4 dB) and no even harmonics", "[colour][distortion]")
+TEST_CASE ("Distortion end-to-end: odd-harmonic profile at 1 kHz (+-4 dB) and no even harmonics", "[colour][distortion]")
 {
     for (double rate : rates)
     {
         const double pts[][3] = { { 100, -40, -9 }, { 100, 0, -5 }, { 50, -24, -20 }, { 50, 0, -11 } };
         for (const auto& p : pts)
         {
-            const double h3 = distHarmonicDb (rate, p[0], p[1], 3);
+            const double h3 = e2e (rate, true, p[0], 1000.0, p[1], true, 3).first;
             INFO ("fs " << rate << " Send " << p[0] << " %, " << p[1] << " dBFS: H3 " << h3 << " dB, expected " << p[2]);
             CHECK (h3 == Approx (p[2]).margin (4.0));
         }
@@ -318,7 +350,13 @@ TEST_CASE ("Distortion: per-channel routing, gate thresholds per channel (+-4 dB
 {
     for (double rate : rates)
     {
-        // test vector: Send 50 %, 1 kHz -40 dBFS on L only: +11.7 dB left, right silent; on both: +11.7 dB each
+        // test vector (end-to-end): Send 50 %, 1 kHz -40 dBFS on L only: +11.7 dB left, right silent; both: +11.7 dB each
+        const auto e1 = e2e (rate, true, 50.0, 1000.0, -40.0, false), e2 = e2e (rate, true, 50.0, 1000.0, -40.0, true);
+        CHECK (e1.first == Approx (11.7).margin (2.0));
+        CHECK (e1.second < e1.first - 90.0);
+        CHECK (e2.first == Approx (11.7).margin (2.0));
+        CHECK (e2.second == Approx (e2.first).margin (1e-6));
+        // component level
         const auto one = distGain (rate, 50.0, 1000.0, -40.0);
         CHECK (one.first == Approx (11.7).margin (2.0));
         CHECK (one.second < one.first - 90.0);
@@ -395,7 +433,7 @@ TEST_CASE ("Distortion: width 0 % identical, 100 % partially decorrelated at equ
 }
 
 // ---------------------------------------------------------------------------------------------
-TEST_CASE ("Doubler: pitch shift exactly Detune cents (+-0.5), level +9.2 dB (+-1), latency <= 15 ms", "[colour][doubler]")
+TEST_CASE ("Doubler: pitch shift exactly Detune cents (+-0.5), level +13.0 dB re its input (+-1), latency <= 15 ms", "[colour][doubler]")
 {
     // A dual-tap delay-line shifter is a sum of grains that each carry exactly f * 2^(cents/1200); at input
     // frequencies where the two taps are in antiphase the steady-state line cancels (comb) and only modulation
@@ -443,7 +481,7 @@ TEST_CASE ("Doubler: pitch shift exactly Detune cents (+-0.5), level +9.2 dB (+-
         const auto out = runEffect (d, x, x);
         const double lvl = db (rms (out.l, 4800, (size_t) n) / rms (x, 4800, (size_t) n));
         INFO ("doubler level (tone) " << lvl << " dB");
-        CHECK (lvl == Approx (9.2).margin (1.0));
+        CHECK (lvl == Approx (13.0).margin (1.0));
     }
     {
         Doubler d;
@@ -460,7 +498,7 @@ TEST_CASE ("Doubler: pitch shift exactly Detune cents (+-0.5), level +9.2 dB (+-
         const auto out = runEffect (d, x, x);
         const double lvl = db (rms (out.l, 4800, (size_t) n) / rms (x, 4800, (size_t) n));
         INFO ("doubler level (noise) " << lvl << " dB");
-        CHECK (lvl == Approx (9.2).margin (1.5));
+        CHECK (lvl == Approx (13.0).margin (1.5));
     }
 
     // latency (detune 0: pure delay at the centre of the 3 ... 10 ms window)
@@ -478,42 +516,41 @@ TEST_CASE ("Doubler: pitch shift exactly Detune cents (+-0.5), level +9.2 dB (+-
     CHECK (lagMs <= 10.0);
 }
 
-TEST_CASE ("Test vector: doubler +9.2 dB per channel on a -20 dBFS 1 kHz tone on both channels (Level 100 %, +8 cents)", "[colour][doubler][vector]")
+TEST_CASE ("Test vector: doubler end-to-end, Level 100 %, +8 cents (spec r3 11)", "[colour][doubler][vector]")
 {
     for (double rate : rates)
     {
-        Settings s = plainWet();
+        // 1 kHz tone on both channels at -40 / -20 / -8 / 0 dBFS: +13.0 / +9.3 / +1.2 / -4.5 dB (follows the compressor)
+        const double pts[][2] = { { -40, 13.0 }, { -20, 9.3 }, { -8, 1.2 }, { 0, -4.5 } };
+        for (const auto& p : pts)
+        {
+            const auto g = e2e (rate, false, 8.0, 1000.0, p[0]);
+            INFO ("fs " << rate << " tone " << p[0] << " dBFS: L " << g.first << " R " << g.second << " dB, expected " << p[1]);
+            CHECK (g.first == Approx (p[1]).margin (1.0));
+            CHECK (g.second == Approx (p[1]).margin (1.0));
+        }
+
+        // -40 dBFS one-sided log sweep 100 Hz - 10 kHz: +12.9 dB (energy ratio), nothing on the right
+        Settings s;
+        s.hostSync = false;
+        s.delayMs = { 100.0, 100.0 };
+        s.feedbackPct = { 0.0, 0.0 };
         s.doublerOn = true;
         s.doublerLevel = 100.0;
         s.doublerCents = 8.0;
-        const int n = (int) (rate * 4.0);
-        const double amp = 0.1;
-        const auto x = sine (1000.0, amp, n, rate);
-        const auto out = render (s, x, x, rate);
-        const double f = 1000.0 * std::pow (2.0, 8.0 / 1200.0);
-        const size_t from = (size_t) (0.5 * rate);
-        const double gl = db (toneAmplitude (out.l, f, from, (size_t) n, rate) / amp);
-        const double gr = db (toneAmplitude (out.r, f, from, (size_t) n, rate) / amp);
-        INFO ("fs " << rate << ": doubler L " << gl << " dB, R " << gr << " dB");
-        CHECK (gl == Approx (9.2).margin (1.0));
-        CHECK (gr == Approx (9.2).margin (1.0));
-
-        // one-sided broadband (band-limited noise) at -20 dBFS peak: doubler output on the left only, about +9.2 dB
-        s.monitor = Monitor::Stereo;
-        auto y = noise (n, 0.1, 99u);
-        Biquad lp1, lp2;
-        lp1.setLowPass (6000.0, 0.7071, rate);
-        lp2.setLowPass (6000.0, 0.7071, rate);
-        for (auto& v : y) v = lp2.process (lp1.process (v));
-        Settings dry = s;
-        dry.doublerOn = false;
-        const auto a = render (s, y, std::vector<double> ((size_t) n, 0.0), rate);
-        const auto b = render (dry, y, std::vector<double> ((size_t) n, 0.0), rate);
+        Settings off = s;
+        off.doublerOn = false;
+        const int n = (int) (rate * 3.0);
+        std::vector<double> y ((size_t) n), z ((size_t) n, 0.0);
+        const double f1 = 100.0, f2 = 10000.0, T = n / rate, Lr = T / std::log (f2 / f1);
+        for (int i = 0; i < n; ++i)
+            y[(size_t) i] = 0.01 * std::sin (twoPi * f1 * Lr * (std::exp ((i / rate) / Lr) - 1.0));
+        const auto a = render (s, y, z, rate), b = render (off, y, z, rate);
         std::vector<double> fx ((size_t) n);
         for (size_t i = 0; i < fx.size(); ++i) fx[i] = a.l[i] - b.l[i];
-        const double lvl = db (rms (fx, from, (size_t) n) / rms (y, from, (size_t) n));
-        INFO ("doubler broadband " << lvl << " dB");
-        CHECK (lvl == Approx (9.2).margin (1.0));
+        const double lvl = db (rms (fx, 0, (size_t) n) / rms (y, 0, (size_t) n));
+        INFO ("doubler -40 dBFS sweep " << lvl << " dB");
+        CHECK (lvl == Approx (12.9).margin (1.0));
         CHECK (a.r == b.r); // nothing on the right
     }
 }

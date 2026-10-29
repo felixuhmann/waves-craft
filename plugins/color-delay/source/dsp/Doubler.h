@@ -26,9 +26,9 @@ class Doubler
 public:
     static constexpr double minDelaySeconds = 0.003, maxDelaySeconds = 0.010;
     static constexpr double travelSeconds = 0.0027; // delay travel per grain
-    // re input at Level 100 %: spec +9.2 dB; +0.2 dB so that tones (+9.4) and band-limited broadband input
-    // (about +8.8; the sin^2 crossfade of partially correlated taps loses some energy) straddle the target
-    static constexpr double outputGainDb = 9.4;
+    // re its (post-compressor) input at Level 100 %: spec r3 +13.0 dB; +0.2 dB so that tones (+13.2) and band-limited
+    // broadband input (about +12.6; the sin^2 crossfade of partially correlated taps loses some energy) straddle it
+    static constexpr double outputGainDb = 13.2;
 
     void prepare (double sampleRate)
     {

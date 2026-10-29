@@ -1,10 +1,23 @@
-# Implementation notes — Craft Colour Delay (spec r2)
+# Implementation notes — Craft Colour Delay (spec r3)
 
-Clean-room implementation (builder side) of [`spec/color-delay/r2/SPEC.md`](../../spec/color-delay/r2/SPEC.md)
-(SHA-256 `080593b0…97d8bc76`, approved 2026-10-29; supersedes r1, SHA-256 `a07b0579…02eb55`). Only the specs,
-`docs/process.md`, the verification report [`docs/verification/color-delay-r1.md`](../../docs/verification/color-delay-r1.md),
-public literature and this implementation were used. No original product, analyst workspace, vendor asset or vendor
+Clean-room implementation (builder side) of [`spec/color-delay/r3/SPEC.md`](../../spec/color-delay/r3/SPEC.md)
+(SHA-256 `ba002d66…d36a2177`, approved 2026-10-29; supersedes r2 `080593b0…97d8bc76` and r1 `a07b0579…02eb55`). Only the
+specs, `docs/process.md`, the verification reports [`color-delay-r1.md`](../../docs/verification/color-delay-r1.md) and
+[`color-delay-r2.md`](../../docs/verification/color-delay-r2.md), public literature and this implementation were used. No original product, analyst workspace, vendor asset or vendor
 installation was accessed.
+
+### Changes for r3 (after the r2 verification)
+
+1. All four colour effects are fed **after** the compressor's gain reduction and the wet gain (r3 §3.4); the r2 build's
+   pre-compressor tap is gone.
+2. Doubler gain +13.0 dB re its own (post-compressor) input (output gain +13.2 dB: tone +13.2, broadband ≈ +12.6 dB).
+   End-to-end at 48 kHz: +13.2 / +9.4 / +1.3 / −4.3 dB for a 1 kHz tone at −40 / −20 / −8 / 0 dBFS (r3: 13.0 / 9.3 /
+   1.2 / −4.5).
+3. Distortion refitted to r3's end-to-end tables (they include the compressor): stage targets = table − compressor gain
+   at that level, at the correspondingly lower stage input level. New knee, voicing, D/M; Send ≤ 25 % is linear in the
+   stage; an extra voicing blended in below Send 50 % gives the narrower Send 25 % response; gate −32 dBFS post-drive;
+   above 60 kHz a 9 kHz low-pass restores the 48 kHz-bilinear high-frequency droop the fit was made with.
+4. Overload bound kept (r3 §7.5).
 
 ### Changes for r2 (after the r1 verification)
 
@@ -18,8 +31,7 @@ installation was accessed.
    correlation 0.6 for an identical 1 kHz tone); voicing, knee and drive/make-up refitted to the r2 Send 50/75/100 %
    small-signal and gain-vs-level tables; gate per channel, Send 25 % passes −40 dBFS; first-order antiderivative
    anti-aliasing in the saturator (heavy drive aliased onto the H2 bin at 44.1 kHz).
-4. Doubler level: the colour effects now tap the wet path before the compressor's gain reduction (see assumption 5) —
-   this was the ≈3.8 dB shortfall at −20 dBFS — and the output gain is +9.4 dB (tone +9.4, broadband ≈ +8.8 dB).
+4. Doubler level: r2 build tapped the effects before the compressor and used +9.4 dB — both superseded by r3.
 
 Product: **Craft Colour Delay** (`CCdl`, CLAP id `com.craftaudio.color-delay`); manufacturer **Craft Audio**
 (`Crft`); version 0.1.0. Formats: VST3, CLAP, Standalone. Platforms: Windows x64 (MSVC), Linux x64 (GCC).
@@ -69,7 +81,7 @@ one filter sets the other to `product / f`, and both stop at `sqrt(product)` whe
 
 **§3 Signal path** (`ColourDelayEngine::processSample`): input gain → per-channel feedback delay
 `w[n] = xi[n−D] + g·w[n−D]` (no cross-feed, `g` up to exactly 1.0) → HP → LP → stereo-linked compressor → wet gain →
-the four colour effects in parallel on the post-wet-gain signal (taken before the compressor gain, assumption 5) →
+the four colour effects in parallel on that post-compressor, post-wet-gain signal →
 `y = dry·xi + wet + Σ effects` → output gain → Monitor. `D = max(1, round(ms·fs/1000))` in ms mode; in Host mode
 `D = max(1, floor(num·60·fs / (den·BPM)))` with the note as an exact fraction `num/den` of a quarter note, evaluated in
 long double with a 1e-9 relative guard and limited to 2 s, using the host tempo from the play head (120 BPM if the host
@@ -90,7 +102,7 @@ reduced by 0.25 above +4 dBFS detector level (soft knee 4 dB), so the normative 
 **§6 Dry/Wet law.** The 21-point wet table; linear in dB between grid points, linear in amplitude between 0 and 5 %;
 dry(m) = wet(100 − m). Gains smoothed (~20 ms one-pole, snapping exactly to the target).
 
-**§7 Colour effects** (fed the post-wet-gain stereo signal before the compressor gain; on/off crossfaded over ~20 ms,
+**§7 Colour effects** (fed the post-compressor, post-wet-gain stereo signal; on/off crossfaded over ~20 ms,
 state cleared when fully off; Level law `(L/100)^3` for the reverb and `^3.5` for the others). Distortion and doubler
 are strictly per channel; the reverb is stereo.
 
@@ -109,17 +121,22 @@ are strictly per channel; the reverb is stereo.
   band, that calibration is sample-rate independent. Measured octave-band density profile re 1 kHz at 44.1/48/96 kHz is
   within 1.3 dB of the spec table (63 Hz – 16 kHz, Size 1/50/100 %).
 - *Distortion* (`Distortion.h`), per channel: drive `D(Send)` → gate on the post-drive peak envelope of that channel
-  (−29.1 dBFS, 2 dB hysteresis, 1 ms / 20 ms) → pre voicing (2× HP 85.2 Hz Q 0.96, LP 2.35 kHz Q 0.3, peak 373 Hz
-  +7.3 dB Q 0.3, LP 11.3 kHz Q 1.5; normalised to 0 dB at 1 kHz) → symmetric saturator (linear up to |x| = 0.685,
-  rational soft limit to 1 above; odd harmonics only; first-order ADAA) → post voicing (peak 1.69 kHz +5.6 dB Q 0.88,
-  LP 6.0 kHz Q 1.5; 0 dB at 1 kHz) → make-up `M(Send)` → 6.5 ms delay → width all-pass. `D` (dB) over Send
-  0/10/25/50/75/100 % = −3.1/0.9/12.8/25.7/38.9/51.2, `M` = −14.5 (≤ 50 %), −14.1 (75 %), −12.7 (100 %). Voicing, knee,
-  D and M at 50/75/100 % were fitted offline (least squares on a simulation of this chain) to the r2 small-signal tables,
-  gain-vs-level tables and H3 profile; below 50 % D is set from Send 25 % = −1.7 dB and the gate thresholds. Width: left
-  ends in a first-order all-pass `(c + z⁻¹)/(1 + c z⁻¹)`, right in the same with `−c`, `c = Width·c_max`, `c_max` solved
-  in `prepare` for a 53.1° phase difference at 1 kHz (correlation 0.60, equal level, no mixing; Width 0 = identical).
+  (−32 dBFS, 2 dB hysteresis, 1 ms / 20 ms) → low-Send voicing blend (below Send 50 %, fully at ≤ 25 %: 1st-order HP
+  242 Hz, LP 3.86 kHz Q 0.2, peak 9.24 kHz +8.7 dB; 0 dB at 1 kHz) → pre voicing (2× HP 96.9 Hz Q 0.87, LP 1.29 kHz Q 0.3,
+  peak 750 Hz +3.9 dB Q 0.87, LP 13.3 kHz Q 1.41; 0 dB at 1 kHz) → symmetric saturator (linear up to |x| = 0.465,
+  rational soft limit to 1 above; odd harmonics only; first-order ADAA) → post voicing (peak 2.26 kHz +6.0 dB Q 0.59,
+  LP 7.16 kHz Q 1.27; 0 dB at 1 kHz; plus 9 kHz Q 0.6 LP above 60 kHz) → make-up `M(Send)` → 6.5 ms delay → width
+  all-pass. `D` (dB) over Send 0/10/25/50/75/100 % = −6/−2/10/24.36/38.09/51.62, `M` = −7.85/−7.85/−11.7/−12.64/−12.72/
+  −12.40. r3's tables are end-to-end (plugin input → isolated effect output, compressor included). The stage targets are
+  the table value minus the §5 compressor gain at that 1 kHz level (−0.14 / −0.81 / −2.03 / −6.10 / −11.92 / −17.53 dB at
+  −32 / −28 / −24 / −16 / −8 / 0 dBFS), at a stage input level lowered by the same amount. Voicing, knee and D/M at
+  50/75/100 % were fitted offline to them (least squares on a simulation of this chain at 48 kHz). At Send ≤ 25 % the
+  stage stays below the knee (linear, −1.7 dB at 25 %, −9.85 dB at 10 %), so the end-to-end decline is the compressor.
+  Width: left ends in a first-order all-pass `(c + z⁻¹)/(1 + c z⁻¹)`, right in the same with `−c`, `c = Width·c_max`,
+  `c_max` solved in `prepare` for a 53.1° phase difference at 1 kHz (correlation 0.60, equal level, no mixing). The r3
+  informative note on the reference's Width-100 % voicing change is not reproduced.
 - *Doubler* (`Doubler.h`): per channel, dual-tap delay-line pitch shifter, delays within 3–10 ms, sin² crossfades, 4-point
-  Lagrange interpolation, +9.4 dB output gain. Each tap's delay moves at `1 − 2^(cents/1200)` samples per sample, so every
+  Lagrange interpolation, +13.2 dB output gain (r3: +13.0 dB re its post-compressor input). Each tap's delay moves at `1 − 2^(cents/1200)` samples per sample, so every
   grain carries exactly the shifted pitch. When a grain ends, the tap restarts at the delay (within a 4.3 ms search span)
   whose lag to the other tap maximises the normalised autocorrelation of the input (L+R used only for this search),
   which removes the comb cancellation / splice phase jumps of a free-running shifter. Same tap positions on both channels.
@@ -140,7 +157,7 @@ Rate. Left edge: input meter above Input; right edge: output meter above Output 
 knobs show their value while hovered/dragged; double-click or Alt-click resets; linked right controls are dimmed and
 mirror the left values; tooltips explain the toggles. The header shows the host tempo in Host mode.
 
-## Tests (`tests/`, Catch2, 35 test cases / 3141 assertions, ~18 s with `ctest -j`; effects at 44.1/48/96 kHz)
+## Tests (`tests/`, Catch2, 35 test cases / 3225 assertions, ~18 s with `ctest -j`; effects at 44.1/48/96 kHz)
 
 - §2 mappings, quantisation round trips, note table; host-sync lengths: all r2 §11 examples (120/100/137/140 BPM) and
   every note × 9 tempi × 3 rates against an exact integer rational floor; 2 s limit; ms lengths; Delay Link.
@@ -148,9 +165,10 @@ mirror the left values; tooltips explain the toggles. The header shows the host 
   through the engine (Dry/Wet 25 % lowers the effects by the wet law).
 - §11 vectors: impulse 0.001 FS, 100 ms, 50 % → 0.001, 0.0005, 0.00025 at 100/200/300 ms, nothing else, R silent;
   Dry/Wet 25 % → 0.74989 dry / 0.24547 wet; HP/LP 1 kHz values (±0.02 dB); Input +6 dB → +5.99 dB ± 0.03;
-  1 kHz static gains at −30/−12/0 dBFS; gain recovery after −6 → −40 dBFS (r2 tolerances); distortion routing
-  (L only → +11.7 dB left, right silent; both → +11.7 dB each); doubler +9.2 ± 1 dB per channel on a −20 dBFS tone on
-  both channels (measured +9.4) and on one-sided band-limited noise (+8.8), nothing on the other channel.
+  1 kHz static gains at −30/−12/0 dBFS; gain recovery after −6 → −40 dBFS; distortion routing end-to-end (L only →
+  +11.7 dB left, right silent; both → +11.7 dB each); doubler end-to-end on a 1 kHz tone on both channels at −40 / −20 /
+  −8 / 0 dBFS (13.0 / 9.3 / 1.2 / −4.5 ± 1 dB, both channels) and on a −40 dBFS one-sided sweep (12.9 ± 1 dB, nothing on
+  the right); distortion Send 10 % silent at −32 dBFS.
 - §10 [exact]: the engine against an independent straight-line model (single third-order polynomial bilinear filter in
   long double, plain delay recursion) on noise, random settings, 44.1/48/96 kHz: ≤ −90 dB re peak. Filters: −3.01 dB at
   fc, LP + HP all-pass and agreement with the analog prototype.
@@ -160,22 +178,25 @@ mirror the left values; tooltips explain the toggles. The header shows the host 
 - Reverb (44.1/48/96 kHz, Size 1/25/50/75/100 %): E within ±1.5 dB (measured within 0.01 dB), octave-band energy
   density profile re 1 kHz within ±2 dB (Size 1/50/100 %), RT60 per octave band (Schroeder T20) within ±15 %, pre-delay
   ±3 ms, |ρ| < 0.2.
-- Distortion (44.1/48/96 kHz): small-signal response Send 50 % ±2 dB (100 Hz – 4 kHz), Send 75/100 % ±3 dB, Send 25 %
-  −1.7 ± 2 dB at −40 dBFS; 1 kHz gain vs level (Send 50/100 %) ±3 dB; H3 profile ±4 dB; H2 < −95 dB; no output on the
+- Distortion (44.1/48/96 kHz), end-to-end through the engine as in r3 (Delay 100 ms, Feedback 0, effect isolated by
+  subtraction): small-signal response Send 50 % ±2 dB (100 Hz – 4 kHz), Send 25/75/100 % ±3 dB; 1 kHz gain vs level
+  (Send 10/25/50/100 %) ±3 dB; H3 profile ±4 dB. Component level: H2 < −95 dB; no output on the
   undriven channel (< −90 dB, also at Width 100 % and loud input); gate per channel (Send 10 %: silent at −32, open at
   −28 dBFS; Send 0 %: silent at −28, open at −24; Send 25 %: open at −40); Width 0 % identical, Width 100 % correlation
   0.6 ± 0.1 and level difference ≤ 0.5 dB; latency 6.8 ± 1 ms.
 - Doubler: pitch within ±0.5 cent (median of 20 ms frequency estimates; 440 Hz / 1 kHz / 2.5 kHz × ±1…±100 cents),
-  level (component) 9.2 ± 1 dB tone / ± 1.5 dB band-limited noise, latency 3–10 ms.
+  level (component, re its input) 13.0 ± 1 dB tone / ± 1.5 dB band-limited noise, latency 3–10 ms.
 - Phaser: ≥ 4 notches at four LFO positions, notch range 1.9–14.6 kHz; LFO rate within ±5 % (0.34, 2, 7 Hz).
 - Monitor, effects silent at Dry/Wet 0 %, effects off contribute nothing (bit-identical), click-free delay change,
   Feedback 100 % lossless, host bypass bit-exact once faded, runaway protection (Feedback 100 %, +18 dB in/out,
   full-scale square, all effects: finite and ≤ +30 dBFS).
 
-Fitted distortion results at 48 kHz (44.1/96 kHz within 0.2 dB up to 4 kHz): Send 50 % 100 Hz…4 kHz 12.1 / 14.7 /
-13.9 / 11.1 / 6.4 / −3.1 dB; Send 75 % 23.2 / 24.4 / 10.5 dB; Send 100 % 26.1 / 28.9 / 30.6 / 24.3 / 9.2 dB; gain vs level
-Send 100 % 28.9 / 21.3 / 13.4 / 5.4 / −2.6 / −10.6 dB, Send 50 % 11.1 / 11.1 / 9.4 / 3.0 / −4.6 / −12.5 dB; H3 −10.0 (spec
-−9), −8.4 (−5), −18.0 (−20), −8.7 (−11) dB.
+End-to-end distortion results at 48 kHz (1 kHz, dB re plugin input; r3 table within 0.2 dB everywhere): Send 100 %
+−40…0 dBFS 28.7 / 21.3 / 13.5 / 5.6 / −2.4 / −10.4; Send 50 % 11.7 / 10.7 / 8.6 / 2.4 / −4.9 / −12.3; Send 25 % −1.7 / −1.9 /
+−3.7 / −7.8 / −13.6 / −19.3; Send 10 % gated at −32, −10.7 / −11.9 / −16.0 / −21.8 / −27.4 at −28 / −24 / −16 / −8 / 0 dBFS.
+Small signal Send 25 % 100 Hz…8 kHz −5.7 / −1.7 / −10.7 / −24.2 / −41.1; Send 50 % 100 Hz…8 kHz 12.1 / 14.7 / 13.9 / 11.7 /
+6.5 / −3.2 / −18.2; Send 100 % 26.2 / 28.7 / 30.3 / 24.3 / 9.3 (44.1/96 kHz within 1 dB up to 8 kHz). H3 −8.3 (spec −9),
+−6.3 (−5), −20.1 (−20), −10.0 (−11) dB.
 
 ## Questions / assumptions (for the review gate)
 
@@ -188,21 +209,17 @@ Send 100 % 28.9 / 21.3 / 13.4 / 5.4 / −2.6 / −10.6 dB, Send 50 % 11.1 / 11.1
 4. **Compressor** (r2): +6 / +12 dBFS easing as above; recovery at 500 ms −4.45 dB and 30 Hz −13.1 dB are the §5
    model's values and within the r2 tolerances. Single-sample transients (§13.1) and in-loop interaction with feedback
    (§13.2) are not modelled.
-5. **Effect tap before the compressor gain**: r2 §11 requires the doubler at +9.2 dB per channel re a −20 dBFS input
-   tone at Level 100 %; with the effects fed after the compressor (GR ≈ 3.5 dB at that level) this is impossible without
-   making the doubler 3.5 dB too loud for quiet signals. So all four effects take the wet signal after filters and wet
-   gain but without the compressor gain reduction (the delay output itself is still compressed). For quiet signals
-   (≤ −35 dBFS, where all the other effect data were measured) the two readings are identical. The phaser's output level
-   is `0.5·(x + allpass)` at Level 100 % (not characterised).
+5. **Effect routing** (r3): the effects take the post-compressor, post-wet-gain signal (the r2 build's pre-compressor
+   tap was non-conformant). The phaser's output level is `0.5·(x + allpass)` at Level 100 % (not characterised).
 6. **Distortion routing / Width** (r2): strictly per channel; Width realised as opposite-sign first-order all-passes
    (my choice of mechanism; r2 fixes only no mixing, equal level and correlation ≈ 0.6 at 1 kHz).
 7. **Distortion voicing**: the Send 100 % "small-signal" data are taken in saturation, so they define the post voicing;
-   pre = Send 50 % shape minus post. H3 at Send 100 % / 0 dBFS is −8.4 dB (spec −5, within ±4); 16 kHz small-signal
-   −68 dB (spec −59.6, outside the toleranced band).
-8. **Gate**: per channel on the broadband post-drive level (before the voicing), −29.1 dBFS with 2 dB hysteresis,
-   1 ms attack / 20 ms release (spec gives only thresholds).
+   pre = Send 50 % shape minus post; the Send 25 % shape needs a Send-dependent extra voicing (blended between 50 and
+   25 %). Make-up at Send 0 % is unspecified (taken equal to 10 %).
+8. **Gate**: per channel on the broadband post-drive level (before the voicing), −32 dBFS with 2 dB hysteresis,
+   1 ms attack / 20 ms release (spec gives only thresholds; Send 0 / 10 / 25 % thresholds land as specified).
 9. **Doubler latency** is interpreted as the 3–10 ms range of the sweeping taps (6.5 ms at Detune 0). Pitch accuracy is
-   per grain. Level +9.4 dB on tones, ≈ +8.8 dB on band-limited noise (both within ±1 dB of +9.2).
+   per grain. Gain +13.2 dB: tones +13.2, broadband ≈ +12.6 dB (r3 +13.0 / +12.9).
 10. **Reverb**: E as defined in r2 (sum over both outputs, left impulse); the octave-band profile is read as mean power
     density per octave band re the 1 kHz band (FFT of the impulse responses); L/R energies are within 0.3 dB of each
     other (r2 informs that the reference's right channel is 1.6–1.7 dB lower; not targeted). Pre-delay is the onset at
@@ -249,7 +266,7 @@ them generically (product zip `craft-colour-delay-<version>-<platform>.zip`). Ed
 
 ## Status
 
-r2: Windows x64 Release build (MSVC 2022, VST3 + CLAP + Standalone, no warnings in this plug-in) and all 35 unit tests
+r3: Windows x64 Release build (MSVC 2022, VST3 + CLAP + Standalone, no warnings in this plug-in) and all 35 unit tests
 pass. `tools/hoststress` (from main) ran 4 + 3 min against the VST3 (44.1/48/96 kHz, mono/stereo in, float/double,
 blocks 1…4096, random automation, state restores, editor open/close): 0 failures (also on Linux / GCC 13 for the DSP core); `ci/package.py` produces `craft-colour-delay-<version>-windows-x64.zip`.
 The Linux plug-in targets were not built locally; they use the same portable CMake as the other Craft plug-ins and are
