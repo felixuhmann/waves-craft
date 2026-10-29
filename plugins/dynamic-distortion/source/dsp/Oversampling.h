@@ -60,12 +60,12 @@ private:
     static std::array<double, N> design()
     {
         std::array<double, N> h {};
-        constexpr double beta = 8.0, kPi = 3.14159265358979323846; // ~80 dB stop band
+        constexpr double beta = 8.0, piValue = 3.14159265358979323846; // ~80 dB stop band
         double sum = 0.0;
         for (int n = 0; n < N; ++n)
         {
             const int m = n - centre;
-            const double sinc = m == 0 ? 0.5 : std::sin (kPi * m / 2.0) / (kPi * m);
+            const double sinc = m == 0 ? 0.5 : std::sin (piValue * m / 2.0) / (piValue * m);
             const double r = double (m) / centre;
             h[size_t (n)] = sinc * besselI0 (beta * std::sqrt (std::max (0.0, 1.0 - r * r))) / besselI0 (beta);
             sum += h[size_t (n)];
@@ -129,7 +129,7 @@ private:
 
     static std::array<double, N> design()
     {
-        constexpr double kPi = 3.14159265358979323846;
+        constexpr double piValue = 3.14159265358979323846;
         const auto& hb = HalfbandFir<N>::coefficients();
         // zero-phase amplitude of the half-band on a dense grid, its square root, inverse cosine transform
         constexpr int K = 4096;
@@ -137,7 +137,7 @@ private:
         std::vector<double> amp (K + 1);
         for (int i = 0; i <= K; ++i)
         {
-            const double w = kPi * i / K;
+            const double w = piValue * i / K;
             double a = hb[size_t (centre)];
             for (int m = 1; m <= centre; ++m)
                 a += 2.0 * hb[size_t (centre + m)] * std::cos (w * m);
@@ -149,7 +149,7 @@ private:
             const int m = n - centre;
             double acc = 0.0;
             for (int i = 0; i <= K; ++i) // trapezoidal rule
-                acc += (i == 0 || i == K ? 0.5 : 1.0) * amp[size_t (i)] * std::cos (kPi * i / K * m);
+                acc += (i == 0 || i == K ? 0.5 : 1.0) * amp[size_t (i)] * std::cos (piValue * i / K * m);
             const double r = double (m) / centre;
             const double win = besselI0 (3.0 * std::sqrt (std::max (0.0, 1.0 - r * r))) / besselI0 (3.0);
             h[size_t (n)] = acc / K * win;
