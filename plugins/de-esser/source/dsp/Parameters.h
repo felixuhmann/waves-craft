@@ -1,4 +1,4 @@
-// Craft De-Esser - parameter mapping and quantisation (spec r1 section 3).
+// Craft De-Esser - parameter mapping and quantisation (spec r2 section 3).
 // Host-independent: no JUCE dependency.
 #pragma once
 

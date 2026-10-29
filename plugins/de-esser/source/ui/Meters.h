@@ -1,4 +1,4 @@
-// Craft De-Esser - display-only meters (spec r1 section 12; ballistics unspecified, section 7).
+// Craft De-Esser - display-only meters (spec r2 section 12; ballistics unspecified, section 7).
 #pragma once
 
 #include <functional>

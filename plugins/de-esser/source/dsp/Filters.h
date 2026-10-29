@@ -1,4 +1,4 @@
-// Craft De-Esser - sidechain filter (spec r1 section 4) and split band filter (section 6).
+// Craft De-Esser - sidechain filter (spec r2 section 4) and split band filter (section 6).
 // Host-independent: no JUCE dependency. All arithmetic in double precision.
 #pragma once
 

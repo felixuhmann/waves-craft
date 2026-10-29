@@ -1,4 +1,4 @@
-// Craft De-Esser - host parameters (spec r1 section 3).
+// Craft De-Esser - host parameters (spec r2 section 3).
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>

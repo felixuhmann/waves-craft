@@ -1,4 +1,4 @@
-// Craft De-Esser - detector, gain computer and gain smoothing (spec r1 section 5).
+// Craft De-Esser - detector, gain computer and gain smoothing (spec r2 section 5).
 // Host-independent: no JUCE dependency. All time constants are in seconds, so behaviour is
 // independent of the sample rate.
 #pragma once
@@ -31,28 +31,18 @@ struct GainComputer
 };
 
 // ---------------------------------------------------------------------------------------------
-// Time constants. The detector and the attack follow spec section 5 directly. The release is a
-// program-dependent two-stage structure (spec 5, "program-dependent release" and D1); its constants
-// were fitted to the spec's envelope vectors 9.4 B, C' and D - see IMPLEMENTATION_NOTES.md.
+// Time constants of spec r2 section 5 (all in seconds).
 struct DynamicsTiming
 {
-    static constexpr double detectorAttack = 11.0e-6;   // s, peak envelope rise
-    static constexpr double detectorRelease = 0.38e-3;  // s, peak envelope fall
-    static constexpr double gainAttack = 0.47e-3;       // s, gain decrease
-
-    // Release stage 1 (linear gain, one-pole): slow after sustained reduction, faster after bursts.
-    static constexpr double releaseSustained = 31.0e-3; // s
-    static constexpr double releaseBurst = 13.0e-3;     // s
-    // Release stage 2 (follows stage 1 upwards only; gives the delayed / S-shaped onset of the release).
-    static constexpr double onsetSustained = 1.5e-3;    // s
-    static constexpr double onsetBurst = 10.0e-3;       // s
-    // Hold history: charges while reduction is requested (how long it has been held) and is kept,
-    // slowly forgetting, while the gain recovers - so the whole release follows the held duration.
-    static constexpr double historyCharge = 100.0e-3;   // s
-    static constexpr double historyForget = 1.0;        // s
+    static constexpr double detectorAttack = 11.0e-6;  // s, peak envelope rise
+    static constexpr double detectorRelease = 0.38e-3; // s, peak envelope fall
+    static constexpr double gainAttack = 0.47e-3;      // s, tau_a: fast part, deficit increasing
+    static constexpr double fastRelease = 11.6e-3;     // s, tau_f: fast part, deficit decreasing
+    static constexpr double slowCharge = 7.2e-3;       // s, tau_c: slow part charging toward the fast part
+    static constexpr double slowRelease = 32.4e-3;     // s, tau_s: slow part releasing toward the target
 };
 
-// Detector + gain computer + smoothing for one (linked) sidechain signal.
+// Detector + gain computer + two-component release (spec r2 section 5) for one (linked) sidechain signal.
 class GainReducer
 {
 public:
@@ -62,24 +52,21 @@ public:
         aDet = onePoleCoeff (DynamicsTiming::detectorAttack, fs);
         rDet = std::exp (-1.0 / (DynamicsTiming::detectorRelease * fs));
         cAttack = onePoleCoeff (DynamicsTiming::gainAttack, fs);
-        cRelSustained = onePoleCoeff (DynamicsTiming::releaseSustained, fs);
-        cRelBurst = onePoleCoeff (DynamicsTiming::releaseBurst, fs);
-        cOnsetSustained = onePoleCoeff (DynamicsTiming::onsetSustained, fs);
-        cOnsetBurst = onePoleCoeff (DynamicsTiming::onsetBurst, fs);
-        cHistoryCharge = onePoleCoeff (DynamicsTiming::historyCharge, fs);
-        cHistoryForget = onePoleCoeff (DynamicsTiming::historyForget, fs);
+        cFast = onePoleCoeff (DynamicsTiming::fastRelease, fs);
+        cCharge = onePoleCoeff (DynamicsTiming::slowCharge, fs);
+        cSlow = onePoleCoeff (DynamicsTiming::slowRelease, fs);
         reset();
     }
 
     void reset() noexcept
     {
         envelope = 0.0;
-        gain1 = gain = 1.0;
-        held = 0.0;
+        fast = slow = 0.0;
+        gain = 1.0;
         lastTargetDb = 0.0;
     }
 
-    // Processes one sidechain sample; returns the smoothed linear gain (exactly 1 without reduction).
+    // Processes one sidechain sample; returns the applied linear gain (exactly 1 without reduction).
     double process (double d, double thresholdDb) noexcept
     {
         // 1. peak envelope
@@ -91,37 +78,31 @@ public:
         if (envelope < tiny)
             envelope = 0.0; // flush denormals / silence
 
-        // 2. static curve
+        // 2. static curve -> target deficit dt = 1 - 10^(-GR/20)
         const double levelDb = envelope > 0.0 ? 20.0 * std::log10 (envelope) : -400.0;
         const double grDb = GainComputer::reductionDb (levelDb, thresholdDb);
         lastTargetDb = grDb;
-        const double target = grDb > 0.0 ? std::pow (10.0, -grDb / 20.0) : 1.0;
+        const double target = grDb > 0.0 ? 1.0 - std::pow (10.0, -grDb / 20.0) : 0.0;
 
-        // history of reduction (0 = idle, 1 = reducing for a long time)
-        if (grDb > 0.0)
-            held += (1.0 - held) * cHistoryCharge;
-        else
-            held -= held * cHistoryForget;
+        // 3. fast part: attack when dt > df, release when dt < df
+        if (target > fast)
+            fast += (target - fast) * cAttack;
+        else if (target < fast)
+            fast += (target - fast) * cFast;
+        if (std::abs (fast - target) <= snapEpsilon)
+            fast = target;
 
-        // 3. smoothing, stage 1: attack / program-dependent release
-        if (target < gain1)
-            gain1 += (target - gain1) * cAttack;
-        else if (gain1 != target)
+        //    slow part: charges toward df while df > ds, otherwise releases toward dt while dt < ds
+        if (fast > slow)
+            slow += (fast - slow) * cCharge;
+        else if (target < slow)
         {
-            gain1 += (target - gain1) * (cRelBurst + (cRelSustained - cRelBurst) * held);
-            if (target - gain1 <= snapEpsilon)
-                gain1 = target;
+            slow += (target - slow) * cSlow;
+            if (slow - target <= snapEpsilon)
+                slow = target;
         }
 
-        // stage 2: follows decreases at once, rises with the (program-dependent) onset smoothing
-        if (gain1 <= gain)
-            gain = gain1;
-        else
-        {
-            gain += (gain1 - gain) * (cOnsetBurst + (cOnsetSustained - cOnsetBurst) * held);
-            if (gain1 - gain <= snapEpsilon)
-                gain = gain1;
-        }
+        gain = 1.0 - std::max (fast, slow);
         return gain;
     }
 
@@ -134,11 +115,8 @@ private:
     static constexpr double snapEpsilon = 1.0e-10;
 
     double fs = 48000.0;
-    double aDet = 0.0, rDet = 0.0, cAttack = 0.0;
-    double cRelSustained = 0.0, cRelBurst = 0.0, cOnsetSustained = 0.0, cOnsetBurst = 0.0;
-    double cHistoryCharge = 0.0, cHistoryForget = 0.0;
-
-    double envelope = 0.0, gain1 = 1.0, gain = 1.0, held = 0.0, lastTargetDb = 0.0;
+    double aDet = 0.0, rDet = 0.0, cAttack = 0.0, cFast = 0.0, cCharge = 0.0, cSlow = 0.0;
+    double envelope = 0.0, fast = 0.0, slow = 0.0, gain = 1.0, lastTargetDb = 0.0;
 };
 
 } // namespace craft::deesser::dsp

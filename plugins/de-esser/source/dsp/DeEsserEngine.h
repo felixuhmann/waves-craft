@@ -1,4 +1,4 @@
-// Craft De-Esser - complete per-sample processor (spec r1 sections 2-6, decisions D2/D3).
+// Craft De-Esser - complete per-sample processor (spec r2 sections 2-6, decisions D2/D3).
 // Host-independent: no JUCE dependency.
 #pragma once
 
