@@ -206,4 +206,12 @@ Release/{VST3,CLAP,Standalone}`. `ci/package.py` finds the artefact directory au
 
 ## Status
 
-STATUS_PLACEHOLDER
+* Windows x64 Release (MSVC, Visual Studio 17 2022): VST3, CLAP, Standalone, tests, snapshot tool build without
+  warnings in this plug-in's code. Installed for local testing to the user / common VST3 folders and the user CLAP folder.
+* Unit tests: 32 / 32 test cases pass on Windows (ctest) and Linux (GCC).
+* `craft_hoststress --seconds 300 --editor` against the Release VST3: 543 M samples, 297 prepares (44.1 / 48 / 96 kHz,
+  float / double, block sizes 64 … 4096), 1451 state restores, 1.2 M parameter moves, 107 editor opens, **0 failures**.
+  (The host's mono-in / stereo-out layout is rejected by design – this plug-in supports 1 → 1 and 2 → 2; the mono
+  path is covered by the unit tests.)
+* Editor snapshots reviewed (`-DCRAFT_BUILD_SNAPSHOT=ON`, `punch_compressor_snapshot <dir>`).
+* Not done: independent verification report (verifier side).
