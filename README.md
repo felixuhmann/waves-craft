@@ -80,6 +80,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | [`peak-limiter`](plugins/peak-limiter) | Craft Peak Limiter (stereo / mono, look-ahead 64/128/256 samples) | [r1](spec/peak-limiter/r1/SPEC.md) | [notes](plugins/peak-limiter/IMPLEMENTATION_NOTES.md) |
 | [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
 | [`vocal-compressor`](plugins/vocal-compressor) | Craft Vocal Compressor (stereo / mono, gate + compressor, look-ahead 64/128/256 samples) | [r2](spec/vocal-compressor/r2/SPEC.md) | [notes](plugins/vocal-compressor/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/vocal-compressor-r1.md) |
+| [`dynamics`](plugins/dynamics) | Craft Dynamics, Craft Compressor, Craft Gate, Craft Compressor SC | [r3](spec/dynamics/r3/SPEC.md) | [notes](plugins/dynamics/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/dynamics-r1.md), [r2](docs/verification/dynamics-r2.md) |
 | [`mastering-limiter`](plugins/mastering-limiter) | Craft Mastering Limiter | [r1](spec/mastering-limiter/r1/SPEC.md) | [notes](plugins/mastering-limiter/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
