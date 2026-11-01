@@ -3,9 +3,12 @@ add_executable (punch_compressor_tests
     StaticCurveTests.cpp
     DynamicsTests.cpp
     AnalogTests.cpp
-    EngineTests.cpp)
+    EngineTests.cpp
+    R2Tests.cpp)
 target_link_libraries (punch_compressor_tests PRIVATE punch_compressor_dsp Catch2::Catch2WithMain)
 target_compile_features (punch_compressor_tests PRIVATE cxx_std_17)
+target_compile_definitions (punch_compressor_tests PRIVATE
+    PUNCH_RELEASE_TABLE="${CMAKE_CURRENT_SOURCE_DIR}/../../../spec/punch-compressor/r2/tables/release_after_burst.csv")
 if (MSVC)
     target_compile_options (punch_compressor_tests PRIVATE /W4 /bigobj)
 else()

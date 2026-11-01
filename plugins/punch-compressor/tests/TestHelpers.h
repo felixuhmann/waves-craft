@@ -123,21 +123,34 @@ struct ToneResult
     double gainDb, h2Dbc, h3Dbc;
 };
 
-// Steady tone through the engine: fundamental gain re input, H2 and H3 re fundamental. Analysis window: the last
-// `analysisSeconds` (rounded to whole periods) after `settleSeconds`.
-inline ToneResult measureTone (double fs, const Settings& s, double f, double amp, double settleSeconds = 0.5,
+// Amplitude at f with a Hann window over [a, b) (spec r2 section 10).
+inline double hannAmplitude (const std::vector<double>& x, size_t a, size_t b, double f, double fs)
+{
+    std::complex<double> acc { 0.0, 0.0 };
+    double wsum = 0.0;
+    const double n = double (b - a);
+    for (size_t i = a; i < b; ++i)
+    {
+        const double w = 0.5 - 0.5 * std::cos (2.0 * pi * double (i - a) / n);
+        wsum += w;
+        acc += w * x[i] * std::polar (1.0, -2.0 * pi * f * double (i) / fs);
+    }
+    return 2.0 * std::abs (acc) / wsum;
+}
+
+// Steady tone through the engine: fundamental gain re input, H2 and H3 re fundamental. Analysis as in r2 section 10:
+// Hann window over a whole number of seconds (at least one), starting `startSeconds` after the tone starts.
+inline ToneResult measureTone (double fs, const Settings& s, double f, double amp, double startSeconds = 0.5,
                                double analysisSeconds = 1.0, bool useStereo = true)
 {
-    const size_t periods = size_t (std::round (analysisSeconds * f));
-    const size_t win = size_t (std::round (double (periods) * fs / f));
-    const size_t n = size_t (settleSeconds * fs) + win;
+    const size_t win = size_t (std::max (1.0, std::round (analysisSeconds)) * fs);
+    const size_t a = size_t (startSeconds * fs), n = a + win;
     // the signal continues past the analysis window, so the look-ahead never sees its end
     const auto x = sine (fs, f, amp, n + size_t (0.05 * fs));
     const auto y = runAligned (useStereo ? stereo (x) : mono (x), fs, s).l;
-    const size_t a = n - win;
-    const double h1 = toneAmplitude (y, a, n, f, fs);
-    return { linToDb (h1 / amp), linToDb (toneAmplitude (y, a, n, 2.0 * f, fs) / h1),
-             linToDb (toneAmplitude (y, a, n, 3.0 * f, fs) / h1) };
+    const double h1 = hannAmplitude (y, a, n, f, fs);
+    return { linToDb (h1 / amp), linToDb (hannAmplitude (y, a, n, 2.0 * f, fs) / h1),
+             linToDb (hannAmplitude (y, a, n, 3.0 * f, fs) / h1) };
 }
 
 // Section 7.4 stimulus: 1 kHz sine -40 dBFS (0.6 s) -> -6 dBFS (0.6 s) -> -40 dBFS (1.4 s).

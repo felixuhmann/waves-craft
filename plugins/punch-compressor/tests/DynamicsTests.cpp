@@ -95,8 +95,9 @@ TEST_CASE ("Attack trajectories (section 7.4)", "[dynamics][attack]")
         { "P20", with ({ { "P", 20.0 } }), { 5.30, 5.30, 5.30, 5.30, 5.30, 5.30, 5.30, 4.25, -3.02, -7.29, -7.63, -7.64 } },
         { "P30", with ({ { "P", 30.0 } }), { 5.30, 5.30, 5.30, 5.30, 5.30, 5.30, 5.30, 5.30, 4.25, -6.29, -7.62, -7.64 } },
     };
-    for (const auto& r : rows)
-        checkTrajectory (r, true);
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (const auto& r : rows)
+            checkTrajectory (r, true, fs);
 }
 
 TEST_CASE ("Release trajectories incl. host sync (section 7.4)", "[dynamics][release]")
@@ -111,8 +112,9 @@ TEST_CASE ("Release trajectories incl. host sync (section 7.4)", "[dynamics][rel
         { "Host_1-8", with ({ { "HostNote", 20 } }), { -7.46, -7.21, -6.94, -6.61, -6.00, -4.45, -2.47, 0.36, 5.44, 5.44, 5.44 } },
         { "Host_1-4", with ({ { "HostNote", 27 } }), { -7.43, -7.22, -7.01, -6.82, -6.50, -5.61, -4.36, -2.39, 0.44, 5.48, 5.48 } },
     };
-    for (const auto& r : rows)
-        checkTrajectory (r, false);
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (const auto& r : rows)
+            checkTrajectory (r, false, fs);
 }
 
 TEST_CASE ("Punch delays both the gain-reduction onset and the release start by P ms (+-0.5 ms)", "[dynamics][punch]")

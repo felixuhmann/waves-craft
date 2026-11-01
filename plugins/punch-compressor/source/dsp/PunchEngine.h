@@ -42,13 +42,15 @@ public:
         for (auto& d : audioDelay)
             d.prepare (H);
         smoother.prepare (fs);
-        outputStage.prepare (fs, H);
+        outputStage.prepare (H);
 
         for (auto* s : { &thresholdSm, &ratioUSm, &makeupSm, &mixSm, &outputSm })
             s->setTimeConstant (parameterSmoothingSeconds, fs);
         fadeStep = 1.0 / std::max (1.0, fadeSeconds * fs);
         for (int c = 0; c < maxChannels; ++c)
             noise[size_t (c)].seed (0x2545f491u + 0x9e3779b9u * std::uint32_t (c + 1));
+        for (int m = 0; m < 5; ++m)
+            noiseShapes[size_t (m)] = AnalogNoise::makeShape (m, fs);
 
         applySettings (true);
         reset();
@@ -77,6 +79,7 @@ public:
             analog[size_t (c)].prepare (activeMode, fs);
             analogOld[size_t (c)].prepare (activeMode, fs);
             analogPred[size_t (c)].prepare (activeMode, fs);
+            noise[size_t (c)].setShape (noiseShapes[size_t (activeMode)]);
         }
         modeFade = 1.0;
         wet = bypassed ? 0.0 : 1.0;
@@ -138,8 +141,8 @@ public:
             minGain = std::min (minGain, g);
             const double gc = g * mkLin;
 
-            // composite gain of the newest sample, for the output-stage prediction
-            const double gPred = (1.0 + mix * (gc - 1.0)) * outLin;
+            // composite gain for the newest input sample, H samples from now, for the output-stage prediction
+            const double gPred = (1.0 + mix * (smoother.predictGain (target, H) * mkLin - 1.0)) * outLin;
 
             if (modeFade < 1.0)
                 modeFade = std::min (1.0, modeFade + fadeStep);
@@ -161,8 +164,7 @@ public:
                 double y3 = analog[ch].process (y2);
                 if (modeFade < 1.0)
                     y3 = modeFade * y3 + (1.0 - modeFade) * analogOld[ch].process (y2);
-                if (noiseScale > 0.0)
-                    y3 += noiseScale * noise[ch].next();
+                y3 += noise[ch].next();
                 y[c] = y3;
                 // prediction of the chain output for the newest input sample
                 predPeak = std::max (predPeak, std::abs (analogPred[ch].process (in[c] * gPred)));
@@ -227,9 +229,10 @@ private:
                 analogPred[ch].prepare (mode, fs);
             }
             activeMode = mode;
+            for (auto& n : noise)
+                n.setShape (noiseShapes[size_t (mode)]);
             modeFade = snapAll ? 1.0 : 0.0;
         }
-        noiseScale = analog[0].noiseRms() * std::sqrt (3.0); // uniform [-1, 1) has RMS 1/sqrt(3)
         if (snapAll)
             for (auto* s : { &thresholdSm, &ratioUSm, &makeupSm, &mixSm, &outputSm })
                 s->snap();
@@ -245,11 +248,12 @@ private:
     GainSmoother smoother;
     OutputStage outputStage;
     std::array<AnalogStage, maxChannels> analog, analogOld, analogPred;
-    std::array<WhiteNoise, maxChannels> noise;
+    std::array<AnalogNoise, maxChannels> noise;
+    std::array<AnalogNoise::Shape, 5> noiseShapes;
     Smoother thresholdSm, ratioUSm, makeupSm, mixSm, outputSm;
 
     int activeMode = 0, punchSamples = 0;
-    double modeFade = 1.0, fadeStep = 0.01, noiseScale = 0.0;
+    double modeFade = 1.0, fadeStep = 0.01;
     double effectiveReleaseMs = 100.0, makeupDb = 0.0, lastAttack = -1.0, lastRelease = -1.0;
     bool bypassed = false;
     double wet = 1.0;
