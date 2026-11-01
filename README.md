@@ -79,6 +79,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | [`de-esser`](plugins/de-esser) | Craft De-Esser, Craft De-Esser Mono | [r1](spec/de-esser/r1/SPEC.md) | [notes](plugins/de-esser/IMPLEMENTATION_NOTES.md) |
 | [`doubler`](plugins/doubler) | Craft Doubler 4, Craft Doubler 2 | [r1](spec/doubler/r1/SPEC.md) | [notes](plugins/doubler/IMPLEMENTATION_NOTES.md) |
 | [`peak-limiter`](plugins/peak-limiter) | Craft Peak Limiter (stereo / mono, look-ahead 64/128/256 samples) | [r1](spec/peak-limiter/r1/SPEC.md) | [notes](plugins/peak-limiter/IMPLEMENTATION_NOTES.md) |
+| [`multiband`](plugins/multiband) | Craft Multiband (4-band dynamics, stereo / mono, zero latency) | [r1](spec/multiband/r1/SPEC.md) | [notes](plugins/multiband/IMPLEMENTATION_NOTES.md) |
 | [`flanger`](plugins/flanger) | Craft Flanger, Craft Flanger Mono, Craft Flanger Mono-Stereo | [r1](spec/flanger/r1/SPEC.md) | [notes](plugins/flanger/IMPLEMENTATION_NOTES.md) |
 | [`vocal-compressor`](plugins/vocal-compressor) | Craft Vocal Compressor (stereo / mono, gate + compressor, look-ahead 64/128/256 samples) | [r2](spec/vocal-compressor/r2/SPEC.md) | [notes](plugins/vocal-compressor/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/vocal-compressor-r1.md) |
 | [`dynamics`](plugins/dynamics) | Craft Dynamics, Craft Compressor, Craft Gate, Craft Compressor SC | [r3](spec/dynamics/r3/SPEC.md) | [notes](plugins/dynamics/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/dynamics-r1.md), [r2](docs/verification/dynamics-r2.md) |
