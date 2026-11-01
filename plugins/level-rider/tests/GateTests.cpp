@@ -1,38 +1,14 @@
-// Spec r1 section 7 / tables T4 (idle behaviour, +-1.0 dB) and T5 (activity gate state), start-up, Spill.
+// Spec r2 section 7 / tables T4 (idle behaviour, +-1.0 dB) and T5 (activity gate state), start-up, Spill.
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "TestHelpers.h"
+#include "Tables.h"
 
 using namespace craft::levelrider::test;
 using Catch::Approx;
 
 namespace
 {
-struct T4Row
-{
-    double idle;
-    bool fast;
-    double burst;
-    double gain[10];
-};
-
-const double t4Times[10] = { 0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4 };
-const T4Row t4[] = {
-    { 0, false, -9, { -11.91, -11.91, -11.91, -10.97, -9.92, -7.56, -4.89, -1.96, +0.00, +0.00 } },
-    { 0, false, -33, { +6.69, +6.69, +6.69, +5.02, +3.35, +0.13, +0.00, +0.00, +0.00, +0.00 } },
-    { 0, false, -21, { -3.70, -3.70, -3.70, -2.24, -0.70, +0.00, +0.00, +0.00, +0.00, +0.00 } },
-    { 6, false, -9, { -11.91, -11.91, -11.91, -10.97, -9.92, -7.56, -4.89, -1.96, +1.16, +6.00 } },
-    { 6, false, -33, { +6.69, +6.69, +6.69, +6.00, +6.00, +6.00, +6.00, +6.00, +6.00, +6.00 } },
-    { 6, false, -21, { -3.70, -3.70, -3.70, -2.24, -0.70, +2.49, +5.81, +6.00, +6.00, +6.00 } },
-    { -6, false, -9, { -11.91, -11.91, -11.91, -10.97, -9.92, -7.56, -6.00, -6.00, -6.00, -6.00 } },
-    { -6, false, -33, { +6.69, +6.69, +6.69, +5.02, +3.35, +0.13, -2.94, -5.79, -6.00, -6.00 } },
-    { -6, false, -21, { -3.70, -3.70, -3.70, -5.11, -6.00, -6.00, -6.00, -6.00, -6.00, -6.00 } },
-    { 0, true, -9, { -11.83, -11.26, -10.24, -9.13, -7.93, -5.30, -2.41, +0.00, +0.00, +0.00 } },
-    { 0, true, -33, { +4.37, +3.41, +1.78, +0.18, +0.00, +0.00, +0.00, +0.00, +0.00, +0.00 } },
-    { 0, true, -21, { -5.27, -4.43, -2.97, -1.47, +0.00, +0.00, +0.00, +0.00, +0.00, +0.00 } },
-};
-
 const double t5Levels[20] = { -80, -21, -27, -33, -39, -45, -51, -57, -63, -69, -75, -69, -63, -57, -51, -45, -39, -33, -27, -21 };
 struct T5Row
 {
@@ -50,37 +26,41 @@ const T5Row t5[] = {
 };
 } // namespace
 
-TEST_CASE ("T4: idle behaviour after a burst falls to -80 dBFS noise", "[T4][gate]")
+TEST_CASE ("T4: idle behaviour after a burst falls to -80 dBFS noise (bursts -9, -33, -21 in sequence)", "[T4][gate]")
 {
-    for (const auto& row : t4)
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
     {
-        auto e = makeEngine (48000.0, -12, 12, row.fast, -21, row.idle);
-        const auto tr = runSegments (e, { { row.burst, 12.0 }, { -80.0, 5.0 } }); // 12 s bursts like the T2 holds
-        for (size_t j = 0; j < 10; ++j)
+        std::vector<CellResult> cells;
+        evalT4 (fs, nullptr, cells);
+        for (const auto& c : cells)
         {
-            const double g = tr.at (12.0 + t4Times[j]);
-            INFO ("Idle " << row.idle << (row.fast ? " Fast" : " Slow") << ", burst " << row.burst << ", " << t4Times[j]
-                          << " s: " << g << " vs " << row.gain[j]);
-            CHECK (std::abs (g - row.gain[j]) <= 1.0);
+            INFO ("fs " << fs << ", " << c.label << ": " << c.value << " vs " << c.ref);
+            CHECK (c.pass);
         }
-        // the fader stops exactly at Idle
-        CHECK (tr.at (17.0) == Approx (row.idle).margin (1e-9));
+    }
+    // the fader stops exactly at Idle
+    for (double idle : { -6.0, 0.0, 6.0 })
+    {
+        auto e = makeEngine (48000.0, -12, 12, false, -21, idle);
+        const auto tr = runSegments (e, { { -21.0, 12.0 }, { -80.0, 6.0 } });
+        CHECK (tr.at (18.0) == Approx (idle).margin (1e-9));
     }
 }
 
 TEST_CASE ("T5: activity gate state at the end of each 4 s step", "[T5][gate]")
 {
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
     for (const auto& row : t5)
     {
-        auto e = makeEngine (48000.0, -12, 12, row.fast, -21, 0.0, row.vocalSens);
-        BandNoise noise (48000.0, 11);
-        const int win = 240;
+        auto e = makeEngine (fs, -12, 12, row.fast, -21, 0.0, row.vocalSens);
+        BandNoise noise (fs, 11);
+        const int win = 100; // divides 4 s at 44.1, 48 and 96 kHz
         std::vector<double> l (static_cast<size_t> (win)), r (static_cast<size_t> (win));
         bool refRide[20], ride[20];
         for (size_t s = 0; s < 20; ++s)
         {
             const double a = dbToGain (t5Levels[s]);
-            for (int w = 0; w < 4 * 200; ++w)
+            for (int w = 0; w < int (4.0 * fs) / win; ++w)
             {
                 for (int i = 0; i < win; ++i)
                     l[size_t (i)] = r[size_t (i)] = a * noise.next();
@@ -93,7 +73,7 @@ TEST_CASE ("T5: activity gate state at the end of each 4 s step", "[T5][gate]")
         for (size_t s = 0; s < 20; ++s)
         {
             const bool adjacent = (s > 0 && refRide[s - 1] != refRide[s]) || (s + 1 < 20 && refRide[s + 1] != refRide[s]);
-            INFO ("Vocal Sensitivity " << row.vocalSens << (row.fast ? " Fast" : " Slow") << ", step " << s + 1 << " ("
+            INFO ("fs " << fs << ", Vocal Sensitivity " << row.vocalSens << (row.fast ? " Fast" : " Slow") << ", step " << s + 1 << " ("
                                        << t5Levels[s] << " dBFS): riding " << ride[s] << " vs " << refRide[s]);
             if (! adjacent)
                 CHECK (ride[s] == refRide[s]);

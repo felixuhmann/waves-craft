@@ -1,4 +1,4 @@
-// Craft Level Rider - static law (spec r1 section 5), level detector and gain ballistics (section 6),
+// Craft Level Rider - static law (spec r2 section 5), level detector and gain ballistics (section 6),
 // activity gate (section 7.1, 7.2, 7.4) and idle movement (section 7.3).
 // Host-independent: no JUCE dependency. All state is updated once per 1 ms detector block.
 #pragma once
@@ -34,16 +34,31 @@ struct StaticLaw
 };
 
 // ---------------------------------------------------------------------------------------------
-// Section 6 constants (Slow / Fast). The spec's structure is non-binding and its constants are a starting point
-// (Slow 71 ms / 50 ms / 0.94 s / 0.45 s / 52 ms, Fast 2.1 ms / 450 ms / 1.30 s / 0.79 s / 15 ms). Because this
-// detector reads the analytic (ripple-free) power instead of the plain block mean square, the constants were
-// re-fitted to the normative tables T2 / T3 (least squares, see IMPLEMENTATION_NOTES.md).
+// Section 6 constants of one Attack mode. The spec's structure is non-binding and its constants a starting point
+// (Slow 71 ms / 50 ms / 0.94 s / 0.45 s / 52 ms, Fast 2.1 ms / 450 ms / 1.30 s / 0.79 s / 15 ms). This detector
+// reads the analytic power and adds a "near" release (below); all constants are fitted to the normative tables
+// T2 / T3 / T4 / T7 (see IMPLEMENTATION_NOTES.md).
 struct Ballistics
 {
     double attack, hold, release, up, down;
+    // Program-dependent release: while the block power is within nearDb below the state (a moderate level change)
+    // the state follows with nearRelease; further below (a pause or a large drop) it releases with `release`.
+    double nearDb, nearRelease;
+    // Section 7.2 relative threshold (r2) for this mode.
+    double relativeDropDb = 24.0;     // Idle when the short-term level falls this far below Lref
+    double referenceDecay = 1.5;      // Lref decay (dB/s) while not exceeded, also while Idle
+    double reentryDb = 20.0;          // ride again once the short-term level is back within this of Lref
+    double seedOffsetDb = 0.0;        // after a relative Idle the detector restarts from Lref + this
+    int referenceSource = 0;          // Lref = running max of: 0 the 1 ms block level, 1 the 10 ms level, 2 the 0.1 s level
+    // Blocks more than farDb below the state release with farRelease (the wait after a large drop grows with its size).
+    double farDb = 0.0, farRelease = 1.0;
+};
 
-    static Ballistics slow() noexcept { return { 0.0512, 0.0780, 1.004, 0.492, 0.0430 }; }
-    static Ballistics fast() noexcept { return { 0.00137, 0.482, 1.502, 0.751, 0.0143 }; }
+// Complete set of fitted constants (both Attack modes).
+struct Tuning
+{
+    Ballistics slow { 0.059575, 0.097442, 1.6584, 0.44703, 0.048725, 8.2557, 0.38748, 24.31, 1.3677, 17.601, 5.1977, 2 };
+    Ballistics fast { 0.0012102, 0.5566, 1.667, 0.77546, 0.0098301, 8.6176, 0.28828, 23.436, 1.431, 21.212, 2.0463, 0 };
 };
 
 // Level detector on the weighted mean power of 1 ms blocks: attack when the block power exceeds the state,
@@ -67,7 +82,11 @@ public:
         else if (holdLeft > 0.0)
             holdLeft -= dt;
         else
-            state += (blockPower - state) * onePoleCoeff (b.release, dt);
+        {
+            const double below = powerToDb (state) - powerToDb (blockPower);
+            const double tau = below <= b.nearDb ? b.nearRelease : (b.farDb > 0.0 && below > b.farDb ? b.farRelease : b.release);
+            state += (blockPower - state) * onePoleCoeff (tau, dt);
+        }
         if (state < 1.0e-24)
             state = 0.0;
     }
@@ -89,28 +108,32 @@ inline double idleSpeedDbPerSecond (double gDb) noexcept
 }
 
 // ---------------------------------------------------------------------------------------------
-// Section 7 activity gate. Inputs: the weighted block power. Decides Ride / Idle.
+// Section 7 activity gate. Inputs: the weighted block power. Decides Ride / Idle and reports, when riding
+// resumes, whether the Idle was caused by the relative threshold (7.2) or by the absolute threshold / Spill.
 class ActivityGate
 {
 public:
     static constexpr double absoluteSmoothing = 0.100;  // s, one-pole on power (7.1)
     static constexpr double hysteresisDb = 4.0;         // theta_off = theta_on - 4 dB (7.1)
     static constexpr double fastSmoothing = 0.010;      // s, short level used for the relative test (7.2)
-    static constexpr double relativeDropDb = 24.0;      // non-vocal when more than this below the reference (7.2)
-    static constexpr double referenceDecayDbPerSecond = 1.5; // running-maximum decay (7.2)
     static constexpr double spillHysteresisDb = 3.0;    // Live: off below Spill - 3 dB (assumption, 7.4)
     static constexpr double floorDb = -200.0;
+
+    enum class Resume { none, afterRelative, afterAbsolute };
 
     void reset() noexcept
     {
         smoothPower = fastPower = 0.0;
         referenceDb = floorDb;
         absoluteOn = spillOn = false;
+        relativeIdle = relativeCaused = false;
         riding = false;
+        resume = Resume::none;
     }
 
     // thetaOnDb = -62 - Vocal Sensitivity. spillDb only used when spillEnabled.
-    bool update (double blockPower, double thetaOnDb, bool spillEnabled, double spillDb, double dt) noexcept
+    bool update (double blockPower, double thetaOnDb, bool spillEnabled, double spillDb, const Ballistics& t,
+                 double dt) noexcept
     {
         smoothPower += (blockPower - smoothPower) * onePoleCoeff (absoluteSmoothing, dt);
         fastPower += (blockPower - fastPower) * onePoleCoeff (fastSmoothing, dt);
@@ -126,11 +149,15 @@ public:
         else if (smoothDb < thetaOnDb - hysteresisDb)
             absoluteOn = false;
 
-        // 7.2 relative threshold: running maximum of the 1 ms block level, decaying while not exceeded; the
-        // short-term (10 ms) level must not fall more than 24 dB below it
-        referenceDb = std::max (referenceDb - referenceDecayDbPerSecond * dt, powerToDb (blockPower));
-        referenceDb = std::max (referenceDb, floorDb);
-        const bool relativeOk = fastDb >= referenceDb - relativeDropDb;
+        // 7.2 relative threshold: Lref = running maximum of the block level, decaying while not exceeded (also
+        // while Idle). Idle when the short-term level falls more than relativeDropDb below Lref; ride again once
+        // it is back within reentryDb (r2).
+        const double source = t.referenceSource == 2 ? smoothDb : t.referenceSource == 1 ? fastDb : powerToDb (blockPower);
+        referenceDb = std::max (std::max (referenceDb - t.referenceDecay * dt, source), floorDb);
+        if (! relativeIdle && fastDb < referenceDb - t.relativeDropDb)
+            relativeIdle = true;
+        else if (relativeIdle && fastDb >= referenceDb - t.reentryDb)
+            relativeIdle = false;
 
         // 7.4 spill gate (Live products)
         if (! spillEnabled)
@@ -140,18 +167,32 @@ public:
         else if (smoothDb < spillDb - spillHysteresisDb)
             spillOn = false;
 
-        riding = absoluteOn && relativeOk && spillOn;
+        const bool wasRiding = riding;
+        riding = absoluteOn && ! relativeIdle && spillOn;
+        if (! riding && relativeIdle)
+            relativeCaused = true;          // this Idle period involved the relative threshold
+        resume = Resume::none;
+        if (riding && ! wasRiding)
+        {
+            resume = relativeCaused ? Resume::afterRelative : Resume::afterAbsolute;
+            relativeCaused = false;
+        }
+        if (! riding && ! relativeIdle && ! absoluteOn)
+            relativeCaused = false;         // silence after the drop: the absolute threshold rules (T4)
         return riding;
     }
 
     bool isRiding() const noexcept { return riding; }
+    Resume resumed() const noexcept { return resume; }
     double smoothLevelDb() const noexcept { return powerToDb (smoothPower); }
     double fastLevelDb() const noexcept { return powerToDb (fastPower); }
+    double fastPowerValue() const noexcept { return fastPower; }
     double referenceLevelDb() const noexcept { return referenceDb; }
 
 private:
     double smoothPower = 0.0, fastPower = 0.0, referenceDb = floorDb;
-    bool absoluteOn = false, spillOn = false, riding = false;
+    bool absoluteOn = false, spillOn = false, relativeIdle = false, relativeCaused = false, riding = false;
+    Resume resume = Resume::none;
 };
 
 } // namespace craft::levelrider::dsp

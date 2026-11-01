@@ -128,6 +128,10 @@ public:
     }
     const Settings& getSettings() const noexcept { return settings; }
 
+    // Fitted constants (section 6 / 7.2). Defaults are the shipped values; the setter exists for the fitting tools.
+    void setTuning (const Tuning& t) noexcept { tuning = t; }
+    const Tuning& getTuning() const noexcept { return tuning; }
+
     // Section 9.
     void setAutomationMode (AutomationMode m) noexcept { mode = m; }
     AutomationMode getAutomationMode() const noexcept { return mode; }
@@ -225,8 +229,17 @@ private:
 
         updateMusic (haveSc);
 
-        const Ballistics b = settings.fast ? Ballistics::fast() : Ballistics::slow();
-        const bool ride = gate.update (p, -62.0 - settings.vocalSensDb, settings.spillEnabled, settings.spillDb, dt);
+        const Ballistics& b = settings.fast ? tuning.fast : tuning.slow;
+        const bool ride = gate.update (p, -62.0 - settings.vocalSensDb, settings.spillEnabled, settings.spillDb, b, dt);
+
+        // 7.2 (r2): the level detector is not frozen while Idle. When riding resumes after a relative-threshold
+        // Idle it restarts from the decayed recent-vocal level Lref; after an absolute-threshold Idle (silence,
+        // start-up) it restarts from the current input.
+        if (gate.resumed() == ActivityGate::Resume::afterRelative)
+            detector.reset (dbToPower (gate.referenceLevelDb() + b.seedOffsetDb));
+        else if (gate.resumed() == ActivityGate::Resume::afterAbsolute)
+            detector.reset (gate.fastPowerValue());
+        detector.update (p, b, dt);
 
         if (overrideActive)
         {
@@ -243,7 +256,6 @@ private:
         else if (ride)
         {
             idleTime = 0.0;
-            detector.update (p, b, dt);
             const double gStar = StaticLaw::gainDb (detector.levelDb(), targetDb + musicOffsetDb, mn, mx);
             const double tau = gStar > gDb ? b.up : b.down;
             gDb += (gStar - gDb) * onePoleCoeff (tau, dt);
@@ -251,7 +263,7 @@ private:
         }
         else
         {
-            // 7.3 idle: the level detector is frozen; Slow holds g for 0.5 s, Fast moves at once.
+            // 7.3 idle: Slow holds g for 0.5 s, Fast moves at once, toward the Idle value.
             idleTime += dt;
             const double hold = settings.fast ? 0.0 : slowIdleHoldSeconds;
             if (idleTime > hold + 1e-9)
@@ -289,7 +301,7 @@ private:
         const bool reacquire = ! musicPresent || musicAbsentTime > musicReacquireSeconds;
         if (reacquire)
             musicDetector.reset (p); // start at the current level: no spurious offset when the music starts
-        musicDetector.update (p, Ballistics::slow(), dt);
+        musicDetector.update (p, tuning.slow, dt);
         const double m = musicDetector.levelDb();
         if (reacquire)
             musicAverageDb = m;
@@ -311,6 +323,7 @@ private:
     WeightedPower vocal, music;
     ActivityGate gate;
     LevelDetector detector, musicDetector;
+    Tuning tuning;
     BlockRamp targetRamp, minRamp, maxRamp, outputRamp, idleRamp, bypassRamp;
     bool bypassed = false;
 
