@@ -34,8 +34,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout (dsp::
     using Choice = juce::AudioParameterChoice;
     using Bool = juce::AudioParameterBool;
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
-    constexpr int version = 1;
-    auto pid = [] (const juce::String& id) { return juce::ParameterID { id, version }; };
+    auto pid = [] (const juce::String& id) { return juce::ParameterID { id, 1 }; };
 
     auto levelRange = mapped (-30.0f, 0.0f, pm::levelFromNorm, pm::levelToNorm);
     layout.add (std::make_unique<Float> (pid (ids::threshold), "Threshold", levelRange, 0.0f, floatAttrs (dbText)));

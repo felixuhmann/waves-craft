@@ -25,6 +25,8 @@ std::vector<double> grCurve (const std::vector<double>& y, double f, double fs, 
     for (int k = 0; k < count; ++k)
     {
         const int centre = start + k * stepSamples;
+        if (centre - len / 2 + len > int (y.size()))
+            break;
         gr.push_back (linToDb (toneAmplitude (y, f, fs, centre - len / 2, len) / reference));
     }
     return gr;
