@@ -57,8 +57,8 @@ struct Ballistics
 // Complete set of fitted constants (both Attack modes).
 struct Tuning
 {
-    Ballistics slow { 0.059575, 0.097442, 1.6584, 0.44703, 0.048725, 8.2557, 0.38748, 24.31, 1.3677, 17.601, 5.1977, 2 };
-    Ballistics fast { 0.0012102, 0.5566, 1.667, 0.77546, 0.0098301, 8.6176, 0.28828, 23.436, 1.431, 21.212, 2.0463, 0 };
+    Ballistics slow { 0.056843, 0.091291, 1.5795, 0.51907, 0.05131, 11.457, 0.40426, 24.73, 1.6063, 16.939, 5.2522, 2, 16.45, 2.3781 };
+    Ballistics fast { 0.0012763, 0.56052, 1.5578, 0.8062, 0.0091417, 9.6949, 0.29939, 23.61, 1.5966, 19.522, 2.0864, 0, 18.513, 3.4073 };
 };
 
 // Level detector on the weighted mean power of 1 ms blocks: attack when the block power exceeds the state,
