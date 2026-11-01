@@ -148,30 +148,7 @@ def fit_all():
                 P[k] = x
     return P
 
-def fit_hf_high_rate(P):
-    """HF bell parameters for high sample rates: the analogue prototype fitted up to 12.5 kHz only (the 16/20 kHz
-    columns carry the reference's 48 kHz realisation), regularised toward the 48 kHz parameters."""
-    from mb import ana_db
-    m = F <= 12500
-    out = {}
-    for k, y in rows.items():
-        if k.startswith('hpn') or k.startswith('lpn') or classify(k)[0] != 'HFB':
-            continue
-        p0 = np.array(P[k])
-        if p0[1] < 0:  # cuts: keep the 48 kHz fit (reciprocal realisation)
-            out[k] = p0
-            continue
-        s = least_squares(lambda p: np.concatenate([np.nan_to_num((ana_db(protos('bell', p)) - y)[m], nan=100.), 0.3 * (p - p0)]), p0)
-        out[k] = s.x
-    return out
-
-if __name__ == '__main__' and len(sys.argv) > 1 and sys.argv[1] == 'hi':
-    P = {k: np.array(v) for k, v in json.load(open('rowfits.json')).items()}
-    H = dict(P)
-    H.update(fit_hf_high_rate(P))
-    json.dump({k: list(map(float, v)) for k, v in H.items()}, open('rowfits_hi.json', 'w'), indent=1)
-    print('wrote rowfits_hi.json')
-elif __name__ == '__main__':
+if __name__ == '__main__':
     P = fit_all()
     out = {k: list(map(float, v)) for k, v in P.items()}
     json.dump(out, open('rowfits.json', 'w'), indent=1)

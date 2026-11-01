@@ -1,4 +1,4 @@
-// Spec r1 sections 4, 5, 12 and Appendix A: filter and EQ magnitude responses (test vector 2).
+// Spec r3 sections 4, 5, 12 and Appendix A: filter and EQ magnitude responses (test vector 2).
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -20,22 +20,12 @@ bool isHfBandAtHighSetting (const RowSetting& s)
     return (s.band == RowBand::hfBell || s.band == RowBand::hfShelf) && param::hfFreq (s.freqR) >= 8.0 - 1e-9;
 }
 
-// Spec r2 section 12 tolerance (absolute frequency bands at every sample rate).
-double tolerance (const RowSetting& s, double f, double fs)
+// Spec r3 section 12 tolerance (absolute frequency bands at every sample rate).
+double tolerance (const RowSetting& s, double f, double)
 {
-    if (fs != 48000.0 && isHfBandAtHighSetting (s))
-        return 1.5;
     if (f <= 12000.0)
         return 0.5;
     return s.band == RowBand::lp ? 3.0 : 1.5;
-}
-
-// Analogue two-pole of the low-pass pole pair (the section 4 informative f/Q pairs; tables::lpF0 / lpQ), dB
-double analogueLowPassDb (double r, double f)
-{
-    const int i = std::clamp (int (std::lround (r * 10.0)) - 1, 0, 9);
-    const double x = f / tables::lpF0[i], q = tables::lpQ[i];
-    return -10.0 * std::log10 ((1 - x * x) * (1 - x * x) + x * x / (q * q));
 }
 
 struct Worst
@@ -54,24 +44,16 @@ Worst checkAllRows (double fs, int& checked)
         if (! isMagnitudeRow (row))
             continue;
         const auto set = classifyRow (row.id);
+        if (fs != 48000.0 && (set.band == RowBand::lp || isHfBandAtHighSetting (set)))
+            continue; // Appendix C.2 / C.3 are normative at these rates
         const auto coeffs = designEq (eqForRow (set), fs);
         const auto& freqs = appendixFrequencies();
         for (size_t i = 0; i < freqs.size(); ++i)
         {
             if (freqs[i] >= 0.5 * fs)
                 continue;
-            const double db = eqResponseDb (coeffs, freqs[i], fs);
-            double err = db - row.values[i];
-            double excess = std::abs (err) - tolerance (set, freqs[i], fs);
-            // Low-pass at high rates (section 4: the target is the analogue-like 96 kHz behaviour; the 48 kHz rows
-            // include the reference's 48 kHz roll-off): above 4 kHz the response must lie between A.2 and the
-            // analogue two-pole of its pole pair (each +-0.5 dB).
-            if (set.band == RowBand::lp && fs > 50000.0 && freqs[i] > 4000.0)
-            {
-                const double ana = analogueLowPassDb (set.freqR, freqs[i]);
-                const double lo = std::min (row.values[i], ana) - 0.5, hi = std::max (row.values[i], ana) + 0.5;
-                excess = db < lo ? lo - db : db > hi ? db - hi : -0.5;
-            }
+            const double err = eqResponseDb (coeffs, freqs[i], fs) - row.values[i];
+            const double excess = std::abs (err) - tolerance (set, freqs[i], fs);
             if (excess > w.excess)
                 w = { excess, row.id, freqs[i], err };
         }
@@ -90,7 +72,31 @@ TEST_CASE ("Appendix A: every magnitude row at 48 kHz is within the section 12 t
     CHECK (w.excess <= 0.0);
 }
 
-TEST_CASE ("Appendix A: rows hold at 44.1 kHz and 96 kHz (analogue-matched, no warping)", "[eq][appendix][samplerate]")
+TEST_CASE ("Appendix C: odd filter positions (C.1), low-pass and EQ rows per rate (C.2, C.3)", "[eq][appendix][samplerate]")
+{
+    int n = 0;
+    for (const auto& row : appendixRows())
+    {
+        if (row.section.rfind ("C.", 0) != 0)
+            continue;
+        const auto set = classifyRow (row.id);
+        const auto coeffs = designEq (eqForRow (set), row.rate);
+        const auto& freqs = appendixCFrequencies();
+        REQUIRE (row.values.size() == freqs.size());
+        for (size_t i = 0; i < freqs.size(); ++i)
+        {
+            // section 12: C rows at 44.1 / 96 kHz +-1.0 dB to 12 kHz, +-1.5 dB above; 48 kHz as the main tolerance
+            const double tol = row.rate == 48000.0 ? tolerance (set, freqs[i], 48000.0) : (freqs[i] <= 12000.0 ? 1.0 : 1.5);
+            const double err = eqResponseDb (coeffs, freqs[i], row.rate) - row.values[i];
+            INFO (row.id << " at " << row.rate << " Hz, " << freqs[i] << " Hz: error " << err);
+            CHECK (std::abs (err) <= tol);
+        }
+        ++n;
+    }
+    CHECK (n == 20 + 2 * 29);
+}
+
+TEST_CASE ("Appendix A: remaining rows hold at other sample rates", "[eq][appendix][samplerate]")
 {
     for (double fs : { 44100.0, 88200.0, 96000.0, 192000.0 })
     {
@@ -133,12 +139,12 @@ TEST_CASE ("Low-pass: steeper with every position, Off is exact", "[eq][lp]")
     CHECK (std::abs (designLowPass (0.1, 48000.0).magnitudeDb (20000.0, 48000.0) + 0.6) < 0.3);
     CHECK (std::abs (designLowPass (0.2, 48000.0).magnitudeDb (20000.0, 48000.0) + 2.0) < 0.3);
     CHECK (std::abs (designLowPass (0.3, 48000.0).magnitudeDb (20000.0, 48000.0) + 7.7) < 0.3);
-    // never a boost of more than 0.5 dB anywhere below Nyquist, at any rate
+    // never a boost of more than 0.5 dB in the normative band, at any rate
     for (double fs : { 44100.0, 48000.0, 96000.0 })
-        for (double r = 0.05; r <= 1.0001; r += 0.05)
+        for (double r = 0.05; r <= 1.0001; r += 0.025)
         {
             const auto c = designLowPass (r, fs);
-            for (double f = 20.0; f < 0.5 * fs; f *= 1.05)
+            for (double f = 20.0; f < 20000.0; f *= 1.05)
                 CHECK (c.magnitudeDb (f, fs) < 0.5);
         }
 }

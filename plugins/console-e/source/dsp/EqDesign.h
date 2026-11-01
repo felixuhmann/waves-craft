@@ -161,42 +161,38 @@ inline BandCoeffs designEqBand (Band band, bool bell, double freqR, double qR, d
         case Band::hmf: return designBand (BandKind::bell, lookup (tables::hmf, freqR, qR, gainDb), fs);
         case Band::hf:
         {
-            if (! bell)
-                return designBand (BandKind::highShelf, lookup (tables::hfShelf, freqR, 0, gainDb), fs);
-            // the 16 / 20 kHz columns of the HF bell rows carry the reference's 48 kHz realisation; above 48 kHz
-            // the parameters move toward the analogue prototype fitted to the columns up to 12.5 kHz
-            auto p = lookup (tables::hfBell, freqR, 0, gainDb);
-            const double w = std::clamp ((fs - 48000.0) / 48000.0, 0.0, 1.0);
-            if (w > 0.0)
+            // measured rows differ per rate (spec r3 C.3): 44.1, 48 and 96 kHz sets, interpolated in log(fs)
+            const auto kind = bell ? BandKind::bell : BandKind::highShelf;
+            auto p = lookup (bell ? tables::hfBell : tables::hfShelf, freqR, 0, gainDb);
+            if (fs < 48000.0)
             {
-                const auto h = lookup (tables::hfBellHighRate, freqR, 0, gainDb);
+                const auto h = lookup (bell ? tables::hfBell44 : tables::hfShelf44, freqR, 0, gainDb);
+                const double w = std::clamp (std::log (48000.0 / fs) / std::log (48000.0 / 44100.0), 0.0, 1.0);
                 for (size_t i = 0; i < 4; ++i)
                     p[i] += w * (h[i] - p[i]);
             }
-            return designBand (BandKind::bell, p, fs);
+            else if (fs > 48000.0)
+            {
+                const auto h = lookup (bell ? tables::hfBell96 : tables::hfShelf96, freqR, 0, gainDb);
+                const double w = std::clamp (std::log (fs / 48000.0) / std::log (2.0), 0.0, 1.0);
+                for (size_t i = 0; i < 4; ++i)
+                    p[i] += w * (h[i] - p[i]);
+            }
+            return designBand (kind, p, fs);
         }
     }
     return {};
 }
 
-// ---- high-pass / low-pass -------------------------------------------------------------------------
+// ---- high-pass / low-pass ---------------------------------------------------------------------------
 namespace detail
 {
-// log-linear interpolation of a 10-entry table at r = 0.1 ... 1.0 (extrapolated below 0.1 from the first segment)
-inline double tableLog (const double* t, double r) noexcept
+// position r -> index and weight in tables with entries at r = 0.05 ... 1 (clamped below 0.05)
+inline void position (double r, int& i, double& w) noexcept
 {
-    const double x = std::clamp (r, 0.0, 1.0) * 10.0 - 1.0; // index
-    int i = int (std::floor (x));
-    i = std::clamp (i, 0, 8);
-    const double w = x - i;
-    return std::exp (std::log (t[i]) + w * (std::log (t[i + 1]) - std::log (t[i])));
-}
-inline double tableLin (const double* t, double r) noexcept
-{
-    const double x = std::clamp (r, 0.1, 1.0) * 10.0 - 1.0;
-    const int i = std::clamp (int (std::floor (x)), 0, 8);
-    const double w = x - i;
-    return t[i] + w * (t[i + 1] - t[i]);
+    const double x = std::clamp (r, 0.05, 1.0) * 20.0 - 1.0;
+    i = std::clamp (int (x), 0, 18);
+    w = x - i;
 }
 } // namespace detail
 
@@ -206,61 +202,87 @@ inline BandCoeffs designHighPass (double r, double fs) noexcept
     BandCoeffs out;
     if (r <= 0.0)
         return out;
-    const double fc = detail::tableLog (tables::hpCorner, r);
+    int i;
+    double t;
+    detail::position (r, i, t);
+    const double fc = std::exp ((1 - t) * std::log (tables::hpCorner[i]) + t * std::log (tables::hpCorner[i + 1]));
     const double w = 2 * pi * fc;
     out.s[0] = designMatchedFirstOrder (1.0, 0.0, w, fs);
     AnalogSection s;
     s.b2 = 1; s.b1 = 0; s.b0 = 0;
-    s.a1 = w / 1.0; s.a0 = w * w;
+    s.a1 = w; s.a0 = w * w;
     out.s[1] = designMatched (s, fs, std::min (w, 0.5 * pi * fs));
     out.count = 2;
     return out;
 }
 
-// Low-pass (spec r2 section 4, Appendix A.2): an analogue pole pair (f0, Q) mapped by impulse invariance and a
-// normalised second-order numerator 1 + c1 z^-1 + c2 z^-2 with the same coefficients at every sample rate, unity at
-// DC. At 48 kHz this reproduces A.2 within 0.005 dB; the near-Nyquist roll-off it adds scales with the sample rate
-// (steeper at 44.1/48 kHz, analogue-like at 96 kHz), as described for the reference. r = 0 is Off.
+namespace detail
+{
+struct LowPassTable { const double* f0; const double* q; const double* c1; const double* c2; };
+
+// one table position realised at rate fs: impulse-invariant pole pair, normalised numerator, unity at DC
+inline BiquadCoeffs lowPassEntry (const LowPassTable& t, int i, double fs) noexcept
+{
+    const double w = 2 * pi * std::min (t.f0[i], 0.998 * fs);
+    BiquadCoeffs c;
+    matchedPoles (w / t.q[i], w * w, 1.0 / fs, c.a1, c.a2);
+    const double k = (1.0 + c.a1 + c.a2) / (1.0 + t.c1[i] + t.c2[i]);
+    c.b0 = k;
+    c.b1 = k * t.c1[i];
+    c.b2 = k * t.c2[i];
+    return c;
+}
+
+inline BiquadCoeffs mix (const BiquadCoeffs& a, const BiquadCoeffs& b, double w) noexcept
+{
+    BiquadCoeffs c;
+    c.b0 = a.b0 + w * (b.b0 - a.b0);
+    c.b1 = a.b1 + w * (b.b1 - a.b1);
+    c.b2 = a.b2 + w * (b.b2 - a.b2);
+    c.a1 = a.a1 + w * (b.a1 - a.a1);
+    c.a2 = a.a2 + w * (b.a2 - a.a2);
+    return c;
+}
+
+// coefficient interpolation between the positions (a convex mix of stable sections stays stable)
+inline BiquadCoeffs lowPassAt (const LowPassTable& t, int i, double w, double fs) noexcept
+{
+    return mix (lowPassEntry (t, i, fs), lowPassEntry (t, i + 1, fs), w);
+}
+} // namespace detail
+
+// Low-pass (spec r3 section 4, A.2, C.1, C.2): measured per rate, one biquad per position and rate; between the
+// measured rates the coefficients are interpolated in log(fs); above 96 kHz an analogue two-pole fitted to the
+// 96 kHz targets. r = 0 is Off.
 inline BandCoeffs designLowPass (double r, double fs) noexcept
 {
     BandCoeffs out;
     if (r <= 0.0)
         return out;
-    const double f0 = detail::tableLog (tables::lpF0, std::max (r, 0.1));
-    double q = detail::tableLin (tables::lpQ, r);
-    // r < 0.4: the fitted pole pair sits at 0.8 ... 1 x Nyquist at 48 kHz and, with its numerator, only shapes the
-    // response near Nyquist. Where it would lie well inside the band (higher rates) the section moves to a plain
-    // analogue-matched two-pole whose Q matches A.2 at 12.5 ... 20 kHz (0.85 / 0.66 / 0.60 at r = 0.1 / 0.2 / 0.3).
-    double wModel = 1.0;
-    if (r < 0.4)
+    using namespace tables;
+    int i;
+    double t;
+    detail::position (r, i, t);
+    const detail::LowPassTable t44 { lpF0_44, lpQ_44, lpC1_44, lpC2_44 }, t48 { lpF0_48, lpQ_48, lpC1_48, lpC2_48 },
+                               t96 { lpF0_96, lpQ_96, lpC1_96, lpC2_96 };
+    if (fs <= 44100.0)
+        out.s[0] = detail::lowPassAt (t44, i, t, fs);
+    else if (fs < 48000.0)
+        out.s[0] = detail::mix (detail::lowPassAt (t44, i, t, fs), detail::lowPassAt (t48, i, t, fs),
+                                std::log (fs / 44100.0) / std::log (48000.0 / 44100.0));
+    else if (fs <= 96000.0)
+        out.s[0] = detail::mix (detail::lowPassAt (t48, i, t, fs), detail::lowPassAt (t96, i, t, fs), std::log (fs / 48000.0) / std::log (2.0));
+    else
     {
-        static constexpr double qAnalogue[] = { 0.851, 0.664, 0.60, 0.6872 };
-        const double x = std::clamp (r, 0.1, 0.4) * 10.0 - 1.0;
-        const int i = std::min (int (x), 2);
-        const double qa = qAnalogue[i] + (x - i) * (qAnalogue[i + 1] - qAnalogue[i]);
-        wModel = std::clamp ((96000.0 - fs) / 48000.0, 0.0, 1.0); // 48 kHz model up to 48 kHz, analogue from 96 kHz
-        q = qa + (q - qa) * wModel;
+        const auto entry = [fs] (int k) {
+            const double w = 2 * pi * lpF0_analogue[k];
+            AnalogSection s;
+            s.b2 = 0; s.b1 = 0; s.b0 = w * w;
+            s.a1 = w / lpQ_analogue[k]; s.a0 = w * w;
+            return designMatched (s, fs);
+        };
+        out.s[0] = detail::mix (entry (i), entry (i + 1), t);
     }
-    const double c1 = detail::tableLin (tables::lpC1, r);
-    const double c2 = detail::tableLin (tables::lpC2, r);
-    const double w = 2 * pi * std::min (f0, 0.998 * fs);
-    BiquadCoeffs c;
-    matchedPoles (w / q, w * w, 1.0 / fs, c.a1, c.a2);
-    const double k = (1.0 + c.a1 + c.a2) / (1.0 + c1 + c2);
-    c.b0 = k;
-    c.b1 = k * c1;
-    c.b2 = k * c2;
-    if (wModel < 1.0)
-    {
-        AnalogSection s;
-        s.b2 = 0; s.b1 = 0; s.b0 = w * w;
-        s.a1 = w / q; s.a0 = w * w;
-        const auto m = designMatched (s, fs); // same poles, magnitude-matched numerator
-        c.b0 = wModel * c.b0 + (1 - wModel) * m.b0;
-        c.b1 = wModel * c.b1 + (1 - wModel) * m.b1;
-        c.b2 = wModel * c.b2 + (1 - wModel) * m.b2;
-    }
-    out.s[0] = c;
     out.count = 1;
     return out;
 }

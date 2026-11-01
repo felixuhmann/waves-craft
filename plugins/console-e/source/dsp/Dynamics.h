@@ -3,8 +3,8 @@
 // One linked detector for all channels: each channel is high-frequency-emphasised (section 6.4), squared and
 // averaged; the largest channel mean square sets the level (dBFS, calibrated so that a 1 kHz sine reads its
 // peak level). The compressor applies the Appendix B static curve to that level and smooths the gain
-// reduction in dB with an attack stage and a two-component release; the expander/gate drives a level
-// envelope that falls at a constant dB rate set by its release control.
+// reduction in dB with an attack stage and a two-component release; the expander/gate closes after a
+// hold with a one-pole in dB toward the floor of its range.
 #pragma once
 
 #include <algorithm>
@@ -78,17 +78,30 @@ inline constexpr std::array<SteadyPoint, 4> steadyFast { { { 0.1, { -0.80, -1.09
                                                            { 1.0, { -1.01, -1.47, -1.93, -2.14, -2.46 } },
                                                            { 4.0, { -1.09, -1.62, -2.14, -2.39, -2.76 } } } };
 
-// Expander/gate: the level envelope falls at a constant rate (dB/s) set by the release control.
+// Expander/gate closing (spec r3 sections 7 and 7.2): after a hold time the gain falls with a one-pole in dB toward
+// the floor of the range, and stops at the static gain of the input level. The hold is tabulated by range at
+// release 0.4 s and scales with the release.
 struct EnvelopePoint
 {
-    double releaseS, rateDbPerS, gateTau;
+    double releaseS, expTau, gateTau, holdScale;
 };
-inline constexpr std::array<EnvelopePoint, 4> envelope { { { 0.1, 389.0, 0.141 },
-                                                           { 0.4, 157.0, 0.352 },
-                                                           { 1.0, 71.4, 0.771 },
-                                                           { 4.0, 19.3, 1.70 } } };
+inline constexpr std::array<EnvelopePoint, 4> envelope { { { 0.1, 0.141, 0.141, 0.1 },
+                                                           { 0.4, 0.340, 0.350, 1.0 },
+                                                           { 1.0, 0.771, 0.771, 3.0 },
+                                                           { 4.0, 2.75, 1.70, 13.0 } } };
+inline constexpr std::array<double, 6> holdRange { 5, 10, 15, 20, 30, 40 };
+inline constexpr std::array<double, 6> holdSeconds { 0.741, 0.185, 0.112, 0.072, 0.040, 0.026 };
 inline constexpr double openSlowTau = 0.0012, openFastTau = 0.00015;
-inline constexpr double expanderFollowTau = 0.0005;
+
+inline double holdForRange (double range) noexcept
+{
+    if (range <= holdRange[0]) return holdSeconds[0];
+    for (size_t i = 1; i < holdRange.size(); ++i)
+        if (range <= holdRange[i])
+            return std::exp (std::log (holdSeconds[i - 1]) + (std::log (holdSeconds[i]) - std::log (holdSeconds[i - 1]))
+                                 * (range - holdRange[i - 1]) / (holdRange[i] - holdRange[i - 1]));
+    return holdSeconds.back();
+}
 
 template <typename Point, typename Get>
 inline double interpLog (const std::array<Point, 4>& t, double releaseS, Get get) noexcept
@@ -156,7 +169,7 @@ public:
         delayLine.fill (0.0);
         delayPos = 0;
         s1 = s2 = smooth = 0.0;
-        env = -200.0;
+        holdLeft = 0;
         expGain = 0.0;
         if (fs > 0) // settle the gate/expander closed for silence
             expGain = -currentFloor();
@@ -206,26 +219,27 @@ public:
         reduction = std::min (0.0, compDb - makeup);
 
         // ---- expander / gate
-        if (expLevel > env)
-            env = expLevel;
-        else
-            env = std::max (expLevel, env - envFall);
         double expDb = 0.0;
         if (settings.expRangeDb > 0.0)
         {
-            double target;
             const double floorDb = currentFloor();
-            if (settings.gate)
-                target = env >= expander::gateSwitchDbfs (settings.expThresholdDb) ? 0.0 : -floorDb;
+            const double target = settings.gate ? (expLevel >= expander::gateSwitchDbfs (settings.expThresholdDb) ? 0.0 : -floorDb)
+                                                : expander::staticGainDb (expLevel, settings.expThresholdDb, settings.expRangeDb);
+            if (target >= expGain)
+            {
+                holdLeft = holdSamples;
+                expGain += (target - expGain) * openCoeff;
+            }
+            else if (holdLeft > 0)
+                --holdLeft;
             else
-                target = expander::staticGainDb (env, settings.expThresholdDb, settings.expRangeDb);
-            const double k = target > expGain ? openCoeff : (settings.gate ? gateCoeff : followCoeff);
-            expGain += (target - expGain) * k;
+                expGain = std::max (target, expGain + (-floorDb - expGain) * closeCoeff);
             expDb = expGain;
         }
         else
         {
             expGain = 0.0;
+            holdLeft = holdSamples;
         }
         expanderGain = expDb;
         return compDb + expDb;
@@ -275,10 +289,11 @@ private:
         rel2Coeff = coeffForTau (interpLog (rt, settings.compReleaseS, [] (const ReleasePoint& p) { return p.tau2; }), fs);
         makeup = comp::makeupDb (settings.compThresholdDb, settings.compInvRatio);
 
-        envFall = interpLog (envelope, settings.expReleaseS, [] (const EnvelopePoint& p) { return p.rateDbPerS; }) / fs;
-        gateCoeff = coeffForTau (interpLog (envelope, settings.expReleaseS, [] (const EnvelopePoint& p) { return p.gateTau; }), fs);
+        closeCoeff = coeffForTau (settings.gate ? interpLog (envelope, settings.expReleaseS, [] (const EnvelopePoint& p) { return p.gateTau; })
+                                                : interpLog (envelope, settings.expReleaseS, [] (const EnvelopePoint& p) { return p.expTau; }), fs);
+        holdSamples = int (holdForRange (settings.expRangeDb)
+                           * interpLog (envelope, settings.expReleaseS, [] (const EnvelopePoint& p) { return p.holdScale; }) * fs);
         openCoeff = coeffForTau (settings.expFastAttack ? openFastTau : openSlowTau, fs);
-        followCoeff = coeffForTau (expanderFollowTau, fs);
     }
 
     double fs = 0.0;
@@ -295,8 +310,9 @@ private:
     std::array<double, maxDelay> delayLine {};
     int delayLength = 1, delayPos = 0;
 
-    double envFall = 0, gateCoeff = 0, openCoeff = 0, followCoeff = 0;
-    double env = -200.0, expGain = 0.0, expanderGain = 0.0;
+    double closeCoeff = 0, openCoeff = 0;
+    int holdSamples = 0, holdLeft = 0;
+    double expGain = 0.0, expanderGain = 0.0;
 };
 
 } // namespace craft::consolee::dsp

@@ -1,4 +1,4 @@
-// Development aid (not shipped): prints the dynamics timing and static measurements next to the spec r2 targets.
+// Development aid (not shipped): prints the dynamics timing and static measurements next to the spec r3 targets.
 // Build: g++ -O2 -std=c++17 TimingProbe.cpp -o timing_probe   (from this directory)
 #include <cstdio>
 #include <vector>
@@ -109,14 +109,22 @@ int main()
     for (int gate = 0; gate < 2; ++gate)
     {
         e.gate = gate;
-        const double start = (gate ? expander::gateSwitchDbfs (-20) : expander::kneeDbfs (-20)) + 6.0;
         for (double rr : { 0.1, 0.4, 1.0, 4.0 })
         {
             e.expReleaseS = rr;
             e.expFastAttack = rr == 0.4;
-            auto r = stepRun (e, start, -20 - 18 - 35, fs, 1.0, 10.0, true);
+            auto r = stepRun (e, -25, -60, fs, 1.0, 12.0, true);
             std::printf ("%s rel %.1f: %.0f / %.0f / %.0f\n", gate ? "gate" : "exp ", rr, r.t10, r.t63, r.t90);
         }
+    }
+    const double r72[][5] = { { -30, 40, 52, 111, 146 }, { -20, 40, 58, 166, 237 }, { -30, 20, 110, 270, 394 }, { -20, 20, 123, 427, 875 }, { -30, 10, 238, 542, 989 },
+                              { -20, 10, 237, 542, 988 }, { -10, 5, 776, 1078, 1515 }, { -10, 15, 155, 460, 906 }, { -10, 30, 88, 367, 714 } };
+    e.gate = false; e.expFastAttack = false; e.expReleaseS = 0.4;
+    for (const auto& q : r72)
+    {
+        e.expThresholdDb = q[0]; e.expRangeDb = q[1];
+        auto r = stepRun (e, -25, -60, fs, 1.0, 6.0, true);
+        std::printf ("7.2 thr %.0f range %.0f: %.0f/%.0f/%.0f (%.0f/%.0f/%.0f)\n", q[0], q[1], r.t10, r.t63, r.t90, q[2], q[3], q[4]);
     }
     std::printf ("targets exp: 24/68/96 58/166/236 128/364/520 470/1344/1922; gate 36/156/332 86/390/830 188/856/1826 626/2260/3700\n");
 }

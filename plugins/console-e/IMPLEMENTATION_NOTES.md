@@ -1,8 +1,8 @@
-# Implementation notes — Craft Console E (spec r2)
+# Implementation notes — Craft Console E (spec r3)
 
-Clean-room implementation (builder side) of [`spec/console-e/r2/SPEC.md`](../../spec/console-e/r2/SPEC.md) and its
-normative tables [`APPENDIX.md`](../../spec/console-e/r2/APPENDIX.md) (approved 2026-10-30, supersedes r1; r1
-verification: [docs/verification/console-e-r1.md](../../docs/verification/console-e-r1.md)). Only the spec, this
+Clean-room implementation (builder side) of [`spec/console-e/r3/SPEC.md`](../../spec/console-e/r3/SPEC.md) and its
+normative tables [`APPENDIX.md`](../../spec/console-e/r3/APPENDIX.md) (approved 2026-11-01, supersedes r1, r2;
+verifications: [r1](../../docs/verification/console-e-r1.md), [r2](../../docs/verification/console-e-r2.md)). Only the spec, this
 repository, public DSP references and this implementation were used. No original product, analyst workspace,
 vendor asset or vendor installation was accessed.
 
@@ -49,24 +49,21 @@ for the meters). Neutral settings: every section is an exact identity, so the ou
 precision (test: < 1.4·10⁻⁷). Latency 0. No output limiting (§3 gain staging); output stays finite.
 
 **§2 Parameters.** Every continuous control is stored as its host-normalised `r` (AudioParameterFloat 0..1) and
-follows the exact r2 21-point taper (linear between `r = k/20`) for its value and display (`ParameterLayout.cpp`,
+follows the exact 21-point taper (linear between `r = k/20`) for its value and display (`ParameterLayout.cpp`,
 resolutions as in §2). Ratio: the 21 points, linear in between, the last segment (80 → ∞) linear in `1/R`.
 HP/LP: `r = 0` Off, the label table otherwise ((0, 0.05) shows the first label). Switches are AudioParameterBool.
-Defaults are the r2 positions (0.667 → exactly 2/3, 0.333 → 1/3), which display exactly the stated values.
+Defaults are the spec positions (0.667 → exactly 2/3, 0.333 → 1/3), which display exactly the stated values.
 Appendix A rows are keyed by the displayed value (e.g. LMF 0.50 kHz = r 0.26, Q 0.50 = r 0.90, LF 100 Hz = r 0.35).
 
-**§4 Filters.** HP: third-order Butterworth (first-order pole + pole pair Q = 1 at f_HP), f_HP per position from a
-fit of A.1 (16.9, 17.8, 28.2, 55.7, 102.5, 131.6, 174.0, 230.3, 322.3, 413.8 Hz at r = 0.1…1; fit error ≤ 0.14 dB),
-log-linear in between. LP (`tools/fit/lowpass.py`): one biquad whose poles are an analogue pole pair (f0, Q)
-mapped by impulse invariance and whose numerator is a fixed **normalised** `1 + c1 z⁻¹ + c2 z⁻²` (unity at DC),
-fitted to A.2 at 48 kHz. The fitted pole pairs coincide with the informative §4 f/Q pairs (e.g. 3342 Hz / 0.669 at
-r = 1) and A.2 is met within 0.005 dB at all 17 columns (and therefore smoothly between them — the r1 build was
-0.6 dB too dark at 10–12 kHz). The A.2 rows deviate from the analogue two-pole by an almost r-independent extra
-roll-off (−1.5 dB at 8 kHz, −3.3 dB at 12 kHz), the reference's 48 kHz realisation. As the numerator coefficients
-are the same at every rate, that roll-off scales with the sample rate: a little steeper at 44.1 kHz, analogue-like
-at 96 kHz (§4). For r < 0.4 (pole pair at 0.8–1 × Nyquist at 48 kHz, high Q) the section moves between 48 and
-96 kHz toward a plain matched two-pole with Q 0.85 / 0.66 / 0.60 (r = 0.1 / 0.2 / 0.3, matching A.2 at 12.5–20 kHz),
-so it never resonates inside the band. Off is exact.
+**§4 Filters.** HP: third-order Butterworth (first-order pole + pole pair Q = 1 at f_HP); f_HP per position
+r = 0.05 … 1 in 0.05 steps, fitted to A.1 + C.1 (fit error ≤ 0.14 dB), log-linear in between. LP
+(`tools/fit/lowpass.py`): the response is measured per rate, not a fixed analogue curve, so there is one table per
+rate (44.1 / 48 / 96 kHz) and position (0.05 steps, A.2 + C.1 at 48 kHz, C.2 elsewhere): one biquad with an
+impulse-invariant pole pair (f0, Q) and a normalised numerator `1 + c1 z⁻¹ + c2 z⁻²`, unity at DC. Fit error ≤ 0.01 dB
+at measured rows. Odd positions at 44.1 / 96 kHz are not measured: their target is the 48 kHz row plus the mean rate
+difference of the two neighbours (fit ≤ 0.32 dB). Between positions and between rates (log fs) the digital
+coefficients are mixed linearly (a convex mix of stable sections stays stable); above 96 kHz an analogue two-pole
+fitted to the 96 kHz targets (not measured). Off is exact. The r2 rate-scaling model was wrong and is gone.
 
 **§5 Equaliser.** Every Appendix A row was fitted with one analogue prototype per band, realised with the
 matched design below (the fit runs on the realised 48 kHz response):
@@ -85,11 +82,11 @@ plus residuals borrowed from the measured sweeps: gain residuals from the 60 Hz 
 (A.14–A.16; HMF borrows the LMF shape scaled to its +7.5 dB gain), Q residuals from the LMF Q sweep (A.13, shared
 by HMF), frequency residuals from the frequency sweeps (A.9–A.12; the shelves borrow the log-frequency shift of
 their band's bell). Gain 0 is an exact identity.
-HF bell above 48 kHz: the 16 / 20 kHz columns carry the reference's 48 kHz realisation, so a second parameter set
-(the analogue prototype fitted to the columns up to 12.5 kHz, regularised toward the 48 kHz fit; cuts unchanged)
-is blended in linearly from 48 to 96 kHz (r1 verification: 16 kHz bell at 96 kHz was 1.65 dB off).
-`tools/fit/` regenerates `EqTables.h` (numpy + scipy): `python3 gen.py && python3 gen.py hi && python3 build.py &&
-ROWFITS=rowfits_hi.json GRIDS=grids_hi.json python3 build.py && python3 emit.py ../../source/dsp/EqTables.h`.
+HF band at other rates (C.3): the mid and LF rows already meet C.3; the HF band gets a grid per rate (`tools/fit/rates.py`):
+the 48 kHz grid plus a parameter delta fitted to the measured 16 kHz bell / shelf rows of that rate (≤ 0.36 dB to
+12 kHz), linear in gain (0 at 0 dB) and ramping in from frequency position 0.5 to 1; interpolated in log fs.
+`tools/fit/` regenerates `EqTables.h` (numpy + scipy): `python3 gen.py && python3 build.py && python3 rates.py &&
+python3 emit.py ../../source/dsp/EqTables.h`.
 
 **Matched design (no warping).** `MatchedBiquad.h`: poles by impulse invariance (`z = e^{sT}`), numerator by
 magnitude matching at DC, Nyquist and one in-band frequency (min(ω0, π·fs/2)) — the scheme of M. Vicanek,
@@ -122,10 +119,12 @@ extrapolated below −57 dBFS with the row's slope), plus a small range-dependen
 0.1 / 0 dB at range 5 / 10 / 15 / 20 / 30 / 40, from the other rows), limited by the measured floors (0.8 / 7.7 /
 14.5 / 21.4 dB at range 5 / 10 / 15 / 20, then +1.38 dB per dB). Gate: unity at or above the switching level
 (expander knee + 1.5 dB: −38.4 dBFS at threshold −20, −30.6 at −10), the floor below (25.4 dB at 20, 52.7 dB at
-40, linear). The level envelope follows rises instantly and falls at a constant rate (389 / 157 / 71.4 / 19.3 dB/s
-at release 0.1 / 0.4 / 1 / 4 s) — the almost linear-in-time expander closing of the §7 table; the gate gain closes
-with a one-pole in dB (0.14 / 0.35 / 0.77 / 1.7 s). Opening: one-pole 1.2 ms (fast 0.15 ms). All twelve §7.1 rows
-within 0.5 dB; closing within 9 % (expander) / 21 % (gate) of the §7 table; opening t90 3–4 ms (fast < 1 ms).
+40, linear). Closing (§7, §7.2; one mechanism for expander and gate): after a hold the gain falls with a one-pole in dB
+toward the **floor of the range** and stops at the static gain of the input. The hold depends on the range (741 /
+185 / 112 / 72 / 40 / 26 ms at range 5 / 10 / 15 / 20 / 30 / 40, release 0.4 s) and scales with the release; the
+time constant is 0.14 / 0.34 / 0.77 / 2.75 s (expander; gate 1.7 s at 4 s). This reproduces all nine §7.2 rows within
+about 10 % and the §7 table within 22 %. Opening: one-pole 1.2 ms (fast 0.15 ms); opening t90 3–4 ms (fast < 1 ms).
+All twelve §7.1 rows within 0.5 dB.
 
 **§8 Routing** as in §3; the §8 example values are reproduced within 0.75 dB (test).
 
@@ -147,26 +146,24 @@ control to reset.
 
 ## Tests (`tests/`, Catch2, registered with CTest as `console-e/…`)
 
-* **EqTests** — every Appendix A magnitude row (275) at 48 kHz within §12 (absolute bands); the same rows at 44.1 /
-  88.2 / 96 / 192 kHz (LP above 50 kHz: ±0.5 dB up to 4 kHz, above that between A.2 and the analogue two-pole of
-  its pole pair ±0.5 dB — §4: the 48 kHz roll-off is not present at high rates); HP corners and slope; LP
-  monotonic, the §4 20 kHz losses (−0.6 / −2.0 / −7.7 dB), no boost > 0.5 dB at any rate, Off; A.17 peak gains
-  (192 rows, ≤ 0.5 dB) and frequencies (±10 %); proportional-Q character and reciprocity; exact identity at
-  neutral; stability over the whole control space at three rates.
+* **EqTests** — every Appendix A row (275) at 48 kHz within §12; all of C.1 (48 kHz, §12), C.2 and C.3 (44.1 / 96 kHz,
+  ±1.0 dB to 12 kHz, ±1.5 dB above); the other A rows at 44.1 / 88.2 / 96 / 192 kHz (LP and HF ≥ 8 kHz are governed
+  by C there); HP corners and slope; LP monotonic, §4 20 kHz losses, no boost > 0.5 dB to 20 kHz, Off; A.17 peak gains
+  (192 rows, ≤ 0.5 dB) and frequencies (±10 %); proportional-Q, reciprocity; neutral identity; stability over the
+  control space at three rates.
 * **DynamicsTests** — test vector 3 (1 kHz staircases −51…+3 dBFS for all B ratios at +10, 0, −10, −20 against
   B.1 + B.2 read from the spec, ±0.5 dB), make-up, §6.4, linking, §6.5 table (±0.5 dB), §6.6 attack table and §6
-  release table (±25 %), 96 kHz time constants, all §7.1 rows (±0.5 dB), expander floors, expander and gate
-  closing tables and opening times.
+  release table (±25 %), 96 kHz time constants, all §7.1 rows (±0.5 dB), expander floors, §7 and §7.2 closing tables
+  and opening times.
 * **EngineTests** — test vector 1 (neutral, ≤ −30 dBFS), zero latency, test vector 5 (trim / fader exact to
   0.002 dB, exact polarity inversion), §9 saturation, test vector 6 (noise, independence, leakage), §8 routing,
   bypasses, mono == one stereo channel, click-free control jumps.
 * **ParameterTests** — every taper, the ratio and the HP/LP labels at all 21 points of the §2 table (read from the
   spec), mid-points, inverses, defaults.
 
-Timing setup (not given by the spec): ratio 4, threshold −10 dB, 1 kHz sine stepping between −36.5 and −6.5 dBFS
-(≈ 13 dB reduction); expander/gate: threshold −20, range 40, 1 kHz sine falling from 6 dB above the knee /
-switching level to 35 dB below the threshold's internal level (−73 dBFS), and back for opening. At fast attack /
-0.4 s §6 (≈ 1/2/5 ms) and §6.6 (1.5/3.0/6.0 ms) differ; the newer §6.6 is followed and tested.
+Timing setup: ratio 4, threshold −10 dB, 1 kHz sine stepping between −36.5 and −6.5 dBFS (≈ 13 dB reduction; not
+given by the spec); expander/gate: 1 kHz sine −25 → −60 dBFS (§7.2; used for the §7 table at threshold −20, range
+40, whose rows coincide with it) and back for opening.
 
 ## Public references
 
@@ -178,29 +175,22 @@ switching level to 35 dB below the threshold's internal level (−73 dBFS), and 
 
 ## Questions / assumptions
 
-The r1 questions were adjudicated in [docs/verification/console-e-r1.md](../../docs/verification/console-e-r1.md)
-and are resolved by r2. Remaining choices:
+Earlier questions were adjudicated in docs/verification/console-e-r1.md and -r2.md. Remaining choices:
 
-1. **Low-pass at 96 kHz.** The model makes the 48 kHz-specific roll-off scale with the sample rate (analogue-like
-   at 96 kHz, as the verification measured on the reference: the r1 build, which followed A.2 at 96 kHz, was
-   1.24 dB darker there). Read literally, "A.2 ±0.5 dB to 12 kHz at every rate" is then not met at 96 kHz (up to
-   +1.1 dB at 8 kHz, +2.8 dB at 12.5 kHz); the tests check the intended behaviour instead (see above).
-2. **HF bell above 48 kHz**: the direction of the high-rate correction (brighter at 16–20 kHz) is inferred, not
-   measured; the result stays within ±1.5 dB of A.2.
-3. **Ratio ∞, threshold −10**: the build follows Appendix B.1/B.2 within 0.03 dB at every staircase step, so the
-   0.76 dB the verification found is the reference's own deviation from B (§6: "0.5 dB at ∞"). It cannot be
-   reproduced without the measured values — please supply an ∞ / −10 staircase if it must be matched.
-4. **§6.5 for other ratios / thresholds** uses ΔG as a function of the Appendix B reduction (the informative k rule).
-5. **§7.1 between the tabulated thresholds / ranges** follows the interpolation above; the gate switching level is
-   the expander knee + 1.5 dB (inside both measured intervals), without hysteresis.
-6. **EQ bypass** also bypasses HP/LP in the split position and the EQ in the sidechain; *dynamics bypass* with
+1. **Unmeasured LP positions at 44.1 / 96 kHz** (odd r) and rates other than 44.1 / 48 / 96 kHz follow the
+   interpolation above.
+2. **HF band between the measured 8 and 16 kHz settings at other rates** follows the delta ramp above.
+3. **§6.5 for other ratios / thresholds** uses ΔG as a function of the Appendix B reduction (the informative k rule).
+4. **§7.1 between the tabulated thresholds / ranges** follows the interpolation above; the gate switching level is
+   the expander knee + 1.5 dB, without hysteresis. Gate hold per range is assumed equal to the expander's (§7.2
+   measures the expander only); dependence of the hold on release is fitted to the single-range §7 table.
+5. **EQ bypass** also bypasses HP/LP in the split position and the EQ in the sidechain; *dynamics bypass* with
    *EQ to sidechain* leaves the audio without EQ.
-7. **Untabulated EQ combinations** (e.g. HMF gains other than ±15/+7.5, Q between the measured values at other
-   frequencies, shelf frequencies between label positions) follow the borrowed-residual interpolation above.
-8. **Stereo linking** uses the larger channel mean square; mono = one channel of the stereo engine (§14.4).
+6. **Untabulated EQ combinations** follow the borrowed-residual interpolation above.
+7. **Stereo linking** uses the larger channel mean square; mono = one channel of the stereo engine.
 
 ## Status
 
-* Windows x64 Release (MSVC 17 2022): VST3, CLAP, Standalone; 32/32 Catch2 test cases pass (Windows and Linux GCC).
+* Windows x64 Release (MSVC 17 2022): VST3, CLAP, Standalone; 34/34 Catch2 test cases pass (Windows and Linux GCC).
 * `tools/hoststress`: no crash, no NaN/Inf, no hang. Samples above +40 dBFS are reported with full-scale input and
   all gains at maximum — expected (§3: no output limiting, as on the reference).

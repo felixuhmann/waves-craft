@@ -362,8 +362,7 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
                          { 0.4, true, 58, 166, 236, 86, 390, 830 },
                          { 1.0, false, 128, 364, 520, 188, 856, 1826 },
                          { 4.0, false, 470, 1344, 1922, 626, 2260, 3700 } };
-    // the signal falls from 6 dB above the switching level to 35 dB below the threshold's internal level (T - 18 dBFS)
-    const double low = -20.0 - 18.0 - 35.0;
+    // the input falls from -25 to -60 dBFS (threshold -20)
     for (const auto& r : rows)
         for (bool gate : { false, true })
         {
@@ -374,8 +373,7 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
             s.expRelease = param::expRelease.toNorm (r.release);
             s.expFastAttack = r.fast;
             double before = 0;
-            const double start = (gate ? expander::gateSwitchDbfs (-20.0) : expander::kneeDbfs (-20.0)) + 6.0;
-            const auto tr = stepTrace (s, start, low, 1.0, 9.0, probe, before);
+            const auto tr = stepTrace (s, -25.0, -60.0, 1.0, 12.0, probe, before);
             const auto t = crossings (tr, before, tr.back());
             INFO ((gate ? "gate" : "expander") << " release " << r.release << ": " << t.t10 << " / " << t.t63 << " / " << t.t90);
             CHECK (within (t.t10, gate ? r.g10 : r.e10));
@@ -392,10 +390,31 @@ TEST_CASE ("Expander and gate: closing and opening times (section 7)", "[dynamic
             s.expRange = param::expRange.toNorm (40.0);
             s.expFastAttack = fast;
             double before = 0;
-            const double high = (gate ? expander::gateSwitchDbfs (-20.0) : expander::kneeDbfs (-20.0)) + 6.0;
-            const auto tr = stepTrace (s, low, high, 2.0, 0.5, probe, before);
+            const auto tr = stepTrace (s, -60.0, -25.0, 2.0, 0.5, probe, before);
             const auto t = crossings (tr, before, tr.back());
             INFO ((gate ? "gate" : "expander") << (fast ? " fast" : " slow") << " opening t90 " << t.t90 << " ms");
             CHECK (t.t90 <= (fast ? 1.0 : 5.0));
         }
+}
+
+TEST_CASE ("Expander: closing vs threshold and range (section 7.2)", "[dynamics][expander][timing]")
+{
+    auto probe = [] (const ConsoleEngine& e) { return e.getDynamics().getExpanderGainDb(); };
+    const double rows[][5] = { { -30, 40, 52, 111, 146 }, { -20, 40, 58, 166, 237 }, { -30, 20, 110, 270, 394 },
+                               { -20, 20, 123, 427, 875 }, { -30, 10, 238, 542, 989 }, { -20, 10, 237, 542, 988 },
+                               { -10, 5, 776, 1078, 1515 }, { -10, 15, 155, 460, 906 }, { -10, 30, 88, 367, 714 } };
+    for (const auto& r : rows)
+    {
+        Settings s;
+        s.expThreshold = param::expThreshold.toNorm (r[0]);
+        s.expRange = param::expRange.toNorm (r[1]);
+        s.expRelease = param::expRelease.toNorm (0.4);
+        double before = 0;
+        const auto tr = stepTrace (s, -25.0, -60.0, 1.0, 5.0, probe, before);
+        const auto t = crossings (tr, before, tr.back());
+        INFO ("threshold " << r[0] << " range " << r[1] << ": " << t.t10 << " / " << t.t63 << " / " << t.t90);
+        CHECK (within (t.t10, r[2]));
+        CHECK (within (t.t63, r[3]));
+        CHECK (within (t.t90, r[4]));
+    }
 }

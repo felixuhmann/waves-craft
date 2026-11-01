@@ -23,11 +23,18 @@ struct AppendixRow
 {
     std::string section, id;
     std::vector<double> values;
+    double rate = 48000.0; // sample rate of the table (Appendix C)
 };
 
 inline const std::vector<double>& appendixFrequencies()
 {
     static const std::vector<double> f { 20, 31.5, 50, 80, 125, 200, 315, 500, 800, 1250, 2000, 3150, 5000, 8000, 12500, 16000, 20000 };
+    return f;
+}
+
+inline const std::vector<double>& appendixCFrequencies()
+{
+    static const std::vector<double> f { 20, 31.5, 50, 80, 125, 200, 315, 500, 800, 1250, 2000, 3150, 5000, 8000, 10000, 12500, 16000, 20000 };
     return f;
 }
 
@@ -61,12 +68,14 @@ inline const std::vector<AppendixRow>& appendixRows()
         std::vector<AppendixRow> out;
         std::ifstream in (CONSOLE_E_APPENDIX);
         std::string line, section;
+        double rate = 48000.0;
         while (std::getline (in, line))
         {
             if (line.rfind ("### ", 0) == 0)
             {
                 std::stringstream ss (line.substr (4));
                 ss >> section;
+                rate = line.find ("44100") != std::string::npos ? 44100.0 : line.find ("96000") != std::string::npos ? 96000.0 : 48000.0;
                 continue;
             }
             if (line.rfind ("|", 0) != 0 || line.rfind ("|---", 0) == 0)
@@ -76,11 +85,12 @@ inline const std::vector<AppendixRow>& appendixRows()
                 continue;
             const std::string& first = cells[0];
             // skip header rows (first value cell not numeric or a header label)
-            if (first == "id" || first == "R \\ u" || first == "R \\ T" || first == "HP" || first == "LP" || first.find (' ') != std::string::npos)
+            if (first == "id" || first == "Row" || first == "R \\ u" || first == "R \\ T" || first == "HP" || first == "LP" || first.find (' ') != std::string::npos)
                 continue;
             AppendixRow r;
             r.section = section;
             r.id = first;
+            r.rate = rate;
             for (size_t i = 1; i < cells.size(); ++i)
                 r.values.push_back (parseNumber (cells[i]));
             out.push_back (r);
