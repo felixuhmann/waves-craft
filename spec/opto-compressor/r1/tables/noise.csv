@@ -1,0 +1,4 @@
+setting,noise_rms_dBFS,hum1_dBFS,hum2_dBFS,hum3_dBFS
+analog50_gain4.08,-87.7,-95.6,-104.7,-105.4
+analog60_gain4.08,-87.7,-95.6,-104.8,-105.8
+analog60_gain10,-82.7,-95.7,-105.0,-105.1
