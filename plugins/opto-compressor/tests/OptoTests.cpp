@@ -441,6 +441,24 @@ TEST_CASE ("Stereo link: a tone on one channel gets the same reduction, no cross
     CHECK (std::abs ((lin2db (tone (yl, 1000.0, fs)) + 12.0) - (lin2db (tone (yr, 1000.0, fs)) + 32.0)) < 0.1);
 }
 
+TEST_CASE ("Mono path behaves like one channel of stereo (D4)", "[opto]")
+{
+    for (double fs : rates)
+    {
+        Settings s;
+        s.peakReduction = 8;
+        OptoEngine mono, stereo;
+        mono.setSettings (s);
+        stereo.setSettings (s);
+        mono.prepare (fs);
+        stereo.prepare (fs);
+        const auto a = runSine (mono, fs, 1000.0, -12.0, 0.5, 0.1, false);
+        const auto b = runSine (stereo, fs, 1000.0, -12.0, 0.5, 0.1, true);
+        for (size_t i = 0; i < a.size(); ++i)
+            REQUIRE (std::abs (a[i] - b[i]) < 1.0e-9);
+    }
+}
+
 TEST_CASE ("Analog noise and hum (spec 8)", "[opto]")
 {
     const struct { int analog; double gain, hz; const char* name; } cases[] = {
