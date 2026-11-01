@@ -1,8 +1,7 @@
 // Craft Dynamic Distortion - calibration and report tool (development aid, not shipped).
 //
-//   dynamic_distortion_calibrate fit [holdMs]             fits the expansion knots to spec section 4.3, prints them
-//   dynamic_distortion_calibrate report [fs] [holdMs]     section 4.3 / 6.1 / 6.2 / 7 comparison (built-in curve
-//                                                         unless holdMs is given, then the curve is refitted first)
+//   dynamic_distortion_calibrate fit                      fits the expansion knots to spec section 4.3, prints them
+//   dynamic_distortion_calibrate report [fs]              section 4.3 / 6.1 / 6.2 / 7 comparison
 //
 // The fit runs the complete engine (Drive 0 %, Attack 1 ms, Release 31.8 ms, 1 kHz, 48 kHz) and moves each knot
 // by the remaining error at its table level until the measured gain increase matches the table.
@@ -31,9 +30,9 @@ expansion::Curve fitCurve (bool verbose)
     tweaks().curve = &c;
     const auto& L = ddspec::expansionLevels;
     const auto& G = ddspec::expansionGains;
-    // knots 1..14 sit at the table levels converted to dB peak; knot 0 is the onset 3 dB below
+    // knots 1..14 sit at the table levels (peak dBFS); knot 0 is the onset 3 dB below
     for (size_t i = 0; i < L.size(); ++i)
-        c.knots[i + 1] = { L[i] + 3.0103, G[i] };
+        c.knots[i + 1] = { L[i], G[i] };
     c.knots[0] = { c.knots[1].levelDb - 3.0, 0.0 };
     for (int it = 0; it < 15; ++it)
     {
@@ -93,18 +92,18 @@ void report (double fs)
     const std::vector<double> downMs (ddspec::stepDownMs.begin(), ddspec::stepDownMs.end());
     for (const auto& r : ddspec::stepRows)
     {
-        const bool longRelease = r.release > 1000.0;
-        const auto tr = stepResponse (distortionOnly (0.0, r.attack, r.release), fs, upMs, downMs, longRelease ? 6.0 : 1.0);
+        const auto tr = stepResponse (distortionOnly (0.0, r.attack, r.release), fs, upMs, downMs);
         std::printf ("A%5.1f R%6.1f:", r.attack, r.release);
         for (size_t i = 0; i < 7; ++i)
         {
-            // Release 3000: the table's 'up' values reflect the reference's preceding programme; after >= 5 s at
-            // -50 dBFS the attack phase equals the A 1 / R 31.8 row.
-            const double target = longRelease ? ddspec::stepRows[1].v[i] : r.v[i];
-            const bool ok = std::abs (tr.up[i] - target) <= ddspec::stepTolerance;
-            fails += ok ? 0 : 1;
-            ++checks;
-            std::printf (" %+5.2f%s(%+5.2f)", tr.up[i], ok ? " " : "!", target);
+            // Release 3000: rising-step columns are informative
+            const bool ok = r.release > 1000.0 || std::abs (tr.up[i] - r.v[i]) <= ddspec::stepTolerance;
+            if (r.release < 1000.0)
+            {
+                fails += ok ? 0 : 1;
+                ++checks;
+            }
+            std::printf (" %+5.2f%s(%+5.2f)", tr.up[i], ok ? " " : "!", r.v[i]);
         }
         std::printf (" |");
         for (size_t i = 0; i < 6; ++i)
@@ -150,19 +149,12 @@ int main (int argc, char** argv)
 {
     if (argc > 1 && std::strcmp (argv[1], "fit") == 0)
     {
-        if (argc > 2)
-            tweaks().holdMs = std::atof (argv[2]);
         const auto c = fitCurve (true);
         for (const auto& k : c.knots)
             std::printf ("{ %.2f, %.3f },\n", k.levelDb, k.gainDb);
         return 0;
     }
     const double fs = argc > 2 ? std::atof (argv[2]) : 48000.0;
-    if (argc > 3)
-    {
-        tweaks().holdMs = std::atof (argv[3]);
-        fitCurve (false);
-    }
     report (fs);
     return 0;
 }

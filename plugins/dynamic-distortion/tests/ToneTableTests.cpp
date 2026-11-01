@@ -1,4 +1,4 @@
-// Spec r1 section 6.1 static tone tables (fundamental gain and third harmonic), with the section 6.1 tolerances,
+// Spec r2 section 6.1 static tone tables (fundamental gain and third harmonic), with the section 6.1 tolerances,
 // plus sample-rate independence (section 9: +-0.2 dB on section 6.1 at 44.1 / 96 kHz).
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -18,11 +18,6 @@ ToneResult measureCell (const ddspec::ToneTable& t, int fi, int li, double fs)
                         ddspec::toneLevels[size_t (li)], 0.8, 0.25);
 }
 
-// Documented deviations (IMPLEMENTATION_NOTES.md, "Known deviations"): with Attack 100 ms the reference passes a
-// -10 dBFS tone almost unclipped at a fundamental above the clip ceiling that the Drive 50 / 100 tables and
-// section 4.4 establish; no memoryless clipper satisfies both. These cells are checked against wider bounds.
-bool isKnownH3Deviation (int table, int li) { return table == 1 && li == 4; }
-bool isKnownGainDeviation (int table, int fi, int li) { return table == 1 && fi == 0 && li == 5; }
 } // namespace
 
 TEST_CASE ("Static tone tables match section 6.1", "[tones]")
@@ -36,14 +31,8 @@ TEST_CASE ("Static tone tables match section 6.1", "[tones]")
             const auto r = measureCell (t, fi, li, 48000.0);
             const double gainTable = t.cells[fi][li][0], h3Table = t.cells[fi][li][1];
             CAPTURE (ddspec::toneFreqs[size_t (fi)], ddspec::toneLevels[size_t (li)], r.gainDb, gainTable, r.h3Dbc, h3Table);
-            if (isKnownGainDeviation (ti, fi, li))
-                CHECK (r.gainDb == Approx (gainTable).margin (4.5));
-            else
-                CHECK (r.gainDb == Approx (gainTable).margin (ddspec::fundamentalTolerance (t, fi, li)));
-            if (isKnownH3Deviation (ti, li))
-                CHECK (r.h3Dbc < -10.0); // clipped where the reference is not (table -41 .. -44 dBc)
-            else
-                CHECK (ddspec::h3Ok (t, li, h3Table, r.h3Dbc));
+            CHECK (r.gainDb == Approx (gainTable).margin (ddspec::fundamentalTolerance (t, fi, li)));
+            CHECK (ddspec::h3Ok (t, li, h3Table, r.h3Dbc));
         }
 }
 
@@ -76,20 +65,21 @@ TEST_CASE ("Section 6.1 fundamentals at 96 kHz equal 48 kHz within 0.2 dB", "[to
 TEST_CASE ("Clipper: low-frequency ceiling and fully clipped harmonics (section 4.4)", "[clipper]")
 {
     const double fs = 48000.0;
-    // the clip stage (pre-emphasis, clip, de-emphasis) settles at c = 0.30 .. 0.32 on long clipped half-cycles,
-    // i.e. a fully clipped low-frequency tone has -10.1 +- 0.3 dBFS RMS
-    const double fsOs = 4.0 * fs;
-    Biquad pre, postF;
-    pre.design (emphasis::preFilter(), emphasis::poleHz, fsOs);
-    postF.design (emphasis::postFilter(), emphasis::poleHz, fsOs);
+    // plain memoryless limit at c = 0.304 +- 0.01
+    CHECK (DynamicDistortion::clipCeiling == Approx (0.304).margin (0.01));
     AdaaClipper clip;
     clip.setCeiling (DynamicDistortion::clipCeiling);
     double y = 0.0;
-    for (int i = 0; i < int (fsOs); ++i) // 1 s of a heavily overdriven positive half-cycle
-        y = postF.process (clip.process (pre.process (10.0)));
-    CHECK (y >= 0.30);
-    CHECK (y <= 0.32);
-    CHECK (db (y) == Approx (-10.1).margin (0.3));
+    for (int i = 0; i < 16; ++i)
+        y = clip.process (10.0);
+    CHECK (y == Approx (DynamicDistortion::clipCeiling).margin (1e-12));
+    // a fully clipped tone at Distortion Level 100 %: -10.1 +- 0.3 dBFS RMS
+    {
+        const double a = sinePeak (0.0), f0 = 500.0;
+        const size_t st = size_t (0.3 * fs), m = wholePeriods (f0, fs, 0.25);
+        auto o = render (distortionOnly (100.0), fs, st + m, [&] (size_t i) { return a * std::sin (2.0 * pi * f0 * double (i) / fs); });
+        CHECK (db (rms (o, st, m)) == Approx (-10.1).margin (0.3));
+    }
 
     // fully clipped tone: odd harmonics close to a square wave (h3 ~ -9.5 dBc, h5 ~ -14 dBc)
     const double amp = sinePeak (0.0), f = 1000.0;

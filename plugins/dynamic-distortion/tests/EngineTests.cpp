@@ -50,7 +50,6 @@ TEST_CASE ("Distortion path is time-aligned with the direct path", "[latency]")
     // the distortion path's impulse response peaks within a sample of the reported latency (Drive 0 %, flat EQ)
     const double fs = 48000.0;
     auto s = distortionOnly (0.0);
-    s.lowPassHz = 21000.0;
     const auto ir = impulseResponse (s, fs, 0.05);
     size_t peak = 0;
     for (size_t i = 0; i < ir.size(); ++i)
@@ -137,7 +136,7 @@ TEST_CASE ("Small signals are linear (section 5)", "[linear]")
     s.distPercent = 75.0;
     s.drivePercent = 30.0;
     s.bass = s.mid = s.treble = 0.0;
-    s.lowPassHz = 21000.0;
+    s.lowPassHz = post::lpOffHz;
     CHECK (smallSignalDb (s, 48000.0, 1000.0) == Approx (20.30 - 9.0).margin (0.1));
 }
 
@@ -159,6 +158,7 @@ TEST_CASE ("Parameter changes are smoothed and settle within 20 ms (D2)", "[smoo
         { "midfreq", [] (Settings& s) { s.midFreq = 300.0; } },
         { "treble", [] (Settings& s) { s.treble = 50.0; } },
         { "lowpass", [] (Settings& s) { s.lowPassHz = 600.0; } },
+        { "lowpass off", [] (Settings& s) { s.lowPassHz = 21000.0; } },
         { "output", [] (Settings& s) { s.outputDb = -18.0; } },
         { "bypass", [] (Settings& s) { s.bypass = true; } },
     };

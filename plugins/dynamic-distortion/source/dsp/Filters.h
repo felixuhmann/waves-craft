@@ -1,4 +1,4 @@
-// Craft Dynamic Distortion - filters of the distortion path (spec r1 sections 4.5, 4.6).
+// Craft Dynamic Distortion - filters of the distortion path (spec r2 sections 4.5, 4.6).
 //
 // Every filter is an analog prototype (normalised to its corner, s = j f / f0) mapped to the processing rate
 // with the bilinear transform pre-warped at f0 (RBJ audio-EQ cookbook). The distortion path runs oversampled
@@ -185,20 +185,9 @@ namespace post
     {
         return std::abs (hp2().at (f / hp2F0) * hp1().at (f / hp1F0));
     }
-    inline double lpMagnitude (double f, double fc) noexcept { return 1.0 / (1.0 + (f / fc) * (f / fc)); }
+    inline constexpr double lpOffHz = 21000.0; // the LP is off (flat) at its maximum position, r = 1
+    inline bool lpIsOff (double fc) noexcept { return fc >= lpOffHz - 0.5; }
+    inline double lpMagnitude (double f, double fc) noexcept { return lpIsOff (fc) ? 1.0 : 1.0 / (1.0 + (f / fc) * (f / fc)); }
 } // namespace post
-
-// ---------------------------------------------------------------------------------------------
-// Clip emphasis pair: a first-order low-shelf boost before the clipper and its exact inverse after it. The pair
-// is transparent for small signals; for clipped signals it sets the frequency dependence of the clip ceiling
-// (spec section 6.1: fully clipped fundamentals -10.9 dBFS at 50 Hz .. -8.0 dBFS at 2 kHz) and makes long
-// clipped half-cycles settle at the low-frequency clip level c of section 4.4.
-namespace emphasis
-{
-    inline constexpr double zeroHz = 93.37, poleHz = 134.48; // post filter (s + wz) / (s + wp)
-    // post, normalised to the pole: (s + z/p) / (s + 1)
-    inline Analog2 postFilter() noexcept { return { 0.0, 1.0, zeroHz / poleHz, 0.0, 1.0, 1.0 }; }
-    inline Analog2 preFilter() noexcept { return postFilter().inverse(); }
-} // namespace emphasis
 
 } // namespace craft::dd

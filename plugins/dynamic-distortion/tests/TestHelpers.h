@@ -15,8 +15,8 @@ constexpr double pi = 3.14159265358979323846;
 
 inline double db (double g) { return 20.0 * std::log10 (std::max (std::abs (g), 1.0e-30)); }
 inline double fromDb (double d) { return std::pow (10.0, d / 20.0); }
-// Peak amplitude of a sine whose RMS level is `dbRms` dBFS.
-inline double sinePeak (double dbRms) { return std::sqrt (2.0) * fromDb (dbRms); }
+// Amplitude of a tone at L dBFS (spec r2 section 2: input levels are sine peak levels).
+inline double sinePeak (double levelDb) { return fromDb (levelDb); }
 
 // Amplitude of the component at f in y[start, start + n) (quadrature correlation).
 inline double toneAmplitude (const std::vector<double>& y, size_t start, size_t n, double f, double fs)
@@ -56,7 +56,7 @@ inline size_t wholePeriods (double f, double fs, double seconds)
     return size_t (std::round (periods * fs / f));
 }
 
-// Settings of the section 6.1 measurements: Direct 0 %, Distortion Level 100 %, EQ neutral, LP 21 kHz.
+// Settings of the section 6.1 measurements: Direct 0 %, Distortion Level 100 %, EQ neutral, LP off (21 kHz).
 inline Settings distortionOnly (double drivePercent, double attackMs = 1.0, double releaseMs = 31.8)
 {
     Settings s = neutralSettings();
@@ -72,7 +72,6 @@ inline Settings distortionOnly (double drivePercent, double attackMs = 1.0, doub
 struct Tweaks
 {
     const expansion::Curve* curve = nullptr;
-    double holdMs = -1.0;
 };
 inline Tweaks& tweaks()
 {
@@ -84,8 +83,6 @@ inline void prepareEngine (DynamicDistortion& e, const Settings& s, double fs)
 {
     if (tweaks().curve != nullptr)
         e.setCurve (*tweaks().curve);
-    if (tweaks().holdMs >= 0.0)
-        e.setDetectorHold (tweaks().holdMs);
     e.setSettings (s);
     e.prepare (fs);
 }
@@ -121,11 +118,11 @@ struct ToneResult
     double outRmsDb; // total output RMS (dBFS)
 };
 
-// Steady-state measurement of a sine at `levelDbRms` (RMS dBFS) and frequency f.
-inline ToneResult measureTone (const Settings& s, double fs, double f, double levelDbRms, double settleSeconds = 0.6,
+// Steady-state measurement of a sine at `levelDb` (peak dBFS) and frequency f.
+inline ToneResult measureTone (const Settings& s, double fs, double f, double levelDb, double settleSeconds = 0.6,
                                double measureSeconds = 0.25)
 {
-    const double amp = sinePeak (levelDbRms);
+    const double amp = sinePeak (levelDb);
     const size_t settle = size_t (settleSeconds * fs);
     const size_t n = wholePeriods (f, fs, std::max (measureSeconds, 10.0 / f));
     auto y = render (s, fs, settle + n, [&] (size_t i) { return amp * std::sin (2.0 * pi * f * double (i) / fs); });
@@ -136,9 +133,9 @@ inline ToneResult measureTone (const Settings& s, double fs, double f, double le
 }
 
 // Small-signal gain (dB) of the processor at f (sine at -50 dBFS unless given).
-inline double smallSignalDb (const Settings& s, double fs, double f, double levelDbRms = -50.0)
+inline double smallSignalDb (const Settings& s, double fs, double f, double levelDb = -50.0)
 {
-    return measureTone (s, fs, f, levelDbRms, 0.4, 0.2).gainDb;
+    return measureTone (s, fs, f, levelDb, 0.4, 0.2).gainDb;
 }
 
 // Section 6.2 step test: 1 kHz sine, -50 dBFS for `pre` seconds, -20 dBFS for 1 s, then -50 dBFS for 2 s.

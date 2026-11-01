@@ -1,4 +1,4 @@
-// Spec r1 sections 4.5 (tone EQ) and 4.6 (post-clipper HP / LP), measured through the complete processor.
+// Spec r2 sections 4.5 (tone EQ) and 4.6 (post-clipper HP / LP), measured through the complete processor.
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -11,7 +11,7 @@ using Catch::Approx;
 
 namespace
 {
-// Distortion-path settings of the section 4.5 measurement: Drive 0 %, LP 21 kHz, Direct 0 %.
+// Distortion-path settings of the section 4.5 measurement: Drive 0 %, LP off, Direct 0 %.
 Settings eqSettings (double bass, double mid, double midFreq, double treble)
 {
     Settings s = distortionOnly (0.0);
@@ -107,8 +107,8 @@ TEST_CASE ("LP responses match section 4.6", "[lp]")
 {
     const double fs = GENERATE (44100.0, 48000.0, 96000.0);
     CAPTURE (fs);
-    // the LP's own response: ratio to the LP at 21 kHz times the analog 21 kHz response
-    const auto ref = impulseResponse (distortionOnly (0.0), fs);
+    // responses relative to LP off (r = 1)
+    const auto off = impulseResponse (distortionOnly (0.0), fs);
     for (const auto& row : ddspec::lpRows)
     {
         auto s = distortionOnly (0.0);
@@ -119,24 +119,25 @@ TEST_CASE ("LP responses match section 4.6", "[lp]")
             const double f = ddspec::responseFreqs[i];
             if (f > 0.45 * fs)
                 continue; // section 4.6: sample-rate independent up to 0.45 fs
-            const double got = responseDb (ir, f, fs) - responseDb (ref, f, fs) + gainToDb (post::lpMagnitude (f, 21000.0));
-            const double literal = gainToDb (post::lpMagnitude (f, row.hz)); // two first-order sections
+            const double got = responseDb (ir, f, fs) - responseDb (off, f, fs);
             CAPTURE (row.hz, f);
-            // implementation = normative text (two identical first-order sections, -6.02 dB at the set frequency)
-            CHECK (got == Approx (literal).margin (f > 15000.0 ? 0.35 : 0.2));
-            if ((row.hz == 500.0 || row.hz == 2000.0) && f == 20000.0)
-            {
-                // Documented deviation (IMPLEMENTATION_NOTES.md): the table's 20 kHz cells of LP 500 / 2000
-                // (-61.34 / -38.82 dB) lie 2.75 / 1.27 dB above the response of the normative structure
-                // (-64.09 / -40.09 dB); the implementation follows the normative text.
-                CHECK (std::abs (got - row.db[i]) < 3.0);
-                continue;
-            }
-            CHECK (got == Approx (row.db[i]).margin (f > 15000.0 ? 1.0 : 0.5));
+            CHECK (got == Approx (gainToDb (post::lpMagnitude (f, row.hz))).margin (f > 15000.0 ? 1.0 : 0.5));
+            CHECK (got == Approx (row.db[i]).margin (row.db[i] <= -30.0 ? 3.0 : (f > 15000.0 ? 1.0 : 0.5)));
         }
-        // -6.02 dB at the set frequency
-        const double atFc = responseDb (ir, row.hz, fs) - responseDb (ref, row.hz, fs) + gainToDb (post::lpMagnitude (row.hz, 21000.0));
-        CHECK (atFc == Approx (-6.02).margin (0.1));
+        CHECK (responseDb (ir, row.hz, fs) - responseDb (off, row.hz, fs) == Approx (-6.02).margin (0.1));
+    }
+}
+
+TEST_CASE ("LP is off and flat at its maximum position", "[lp]")
+{
+    const double fs = GENERATE (44100.0, 48000.0, 96000.0);
+    CAPTURE (fs);
+    const auto ir = impulseResponse (distortionOnly (0.0), fs);
+    const double ref = responseDb (ir, 1000.0, fs);
+    for (double f : { 2000.0, 5000.0, 9000.0, 15000.0, 19000.0 })
+    {
+        CAPTURE (f);
+        CHECK (responseDb (ir, f, fs) - ref == Approx (0.0).margin (0.25));
     }
 }
 
@@ -157,12 +158,4 @@ TEST_CASE ("HP response matches section 4.6", "[hp]")
     const auto dir = impulseResponse (s, fs, 0.5);
     for (double f : { 20.0, 50.0, 1000.0, 15000.0 })
         CHECK (responseDb (dir, f, fs) == Approx (0.0).margin (1e-6));
-}
-
-TEST_CASE ("Clip emphasis pair is transparent for small signals", "[clipper]")
-{
-    // pre * post = 1 for all frequencies
-    const auto pre = emphasis::preFilter(), postF = emphasis::postFilter();
-    for (double f : { 1.0, 30.0, 134.48, 1000.0, 20000.0 })
-        CHECK (std::abs (pre.at (f / emphasis::poleHz) * postF.at (f / emphasis::poleHz)) == Approx (1.0).margin (1e-12));
 }

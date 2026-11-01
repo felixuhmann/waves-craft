@@ -1,9 +1,9 @@
-// Craft Dynamic Distortion - host-independent DSP core (spec r1 section 4 signal flow).
+// Craft Dynamic Distortion - host-independent DSP core (spec r2 section 4 signal flow).
 //
 // Per channel (channels are fully independent):
 //   x -> x Input -+--------------------------------------------------------------> delay -> x Direct ---+
 //                 +-> [4x up] -> peak follower -> expansion gain E                                      |
-//                 |            -> tone EQ -> x Drive -> x E -> pre-emphasis -> ADAA clip -> de-emphasis   + -> x Output
+//                 |            -> tone EQ -> x Drive -> x E -> ADAA clip                              + -> x Output
 //                 |               -> HP -> LP -> [4x down] -> x Distortion Level ------------------------+
 //
 // The distortion path runs at 4x the host rate (review decision D1). The direct path is delayed by the
@@ -42,7 +42,7 @@ struct Settings
     bool bypass = false; // crossfades to the (latency-aligned) unprocessed input
 };
 
-// Neutral settings used by the spec's measurements: EQ flat, LP 21 kHz, Input/Output 0 dB.
+// Neutral settings used by the spec's measurements: EQ flat, LP off (21 kHz), Input/Output 0 dB.
 inline Settings neutralSettings()
 {
     Settings s;
@@ -56,10 +56,7 @@ class DynamicDistortion
 public:
     static constexpr int maxChannels = 2;
     static constexpr int oversampling = 4;
-    // Clip ceiling of the (pre-emphasised) clipper. The low-frequency ceiling, i.e. the level long clipped
-    // half-cycles settle at after de-emphasis, is clipCeiling * zero / pole = 0.310 (section 4.4).
-    static constexpr double clipCeiling = 0.4461;
-    static constexpr double detectorHoldMs = 2.0;  // peak hold before the release phase starts
+    static constexpr double clipCeiling = 0.307; // section 4.4: 0.304 +- 0.01; 0.304 misses the 6.1 h3 limit at A 100, 50 Hz, -10 dBFS by 0.14 dB
     static constexpr double smoothingMs = 4.0;   // parameter smoothing time constant (D2: settled < 20 ms)
     static constexpr int coefficientInterval = 16; // base samples between filter updates while smoothing
 
@@ -90,7 +87,7 @@ public:
         {
             ch.os.reset();
             ch.follower.reset();
-            for (auto* b : { &ch.bass, &ch.mid, &ch.treble, &ch.pre, &ch.post, &ch.hp2, &ch.hp1, &ch.lpA, &ch.lpB })
+            for (auto* b : { &ch.bass, &ch.mid, &ch.treble, &ch.hp2, &ch.hp1, &ch.lpA, &ch.lpB })
                 b->reset();
             ch.clip.reset();
             std::fill (ch.delay.begin(), ch.delay.end(), 0.0);
@@ -101,8 +98,6 @@ public:
 
     // Development aid (calibration): replaces the expansion curve. The curve must outlive the engine.
     void setCurve (const expansion::Curve& c) noexcept { curve = &c; }
-    // Development aid (calibration): detector hold time in ms (call before prepare()).
-    void setDetectorHold (double ms) noexcept { holdMs = ms; }
 
     int getLatencySamples() const noexcept { return latency; }
     double getSampleRate() const noexcept { return fs; }
@@ -138,10 +133,10 @@ public:
     }
 
     // Small-signal gain of the drive stage (linear), including the correction that makes the 1 kHz
-    // small-signal gain of the whole distortion path equal to the section 4.2 table at LP 21 kHz.
+    // small-signal gain of the whole distortion path equal to the section 4.2 table with the LP off.
     static double driveGain (double percent) noexcept
     {
-        static const double correctionDb = -gainToDb (post::hpMagnitude (1000.0) * post::lpMagnitude (1000.0, 21000.0));
+        static const double correctionDb = -gainToDb (post::hpMagnitude (1000.0));
         return dbToGain (laws::driveDb (percent) + correctionDb);
     }
 
@@ -150,7 +145,7 @@ private:
     {
         Oversampler os;
         PeakFollower follower;
-        Biquad bass, mid, treble, pre, post, hp2, hp1, lpA, lpB;
+        Biquad bass, mid, treble, hp2, hp1, lpA, lpB;
         AdaaClipper clip;
         std::vector<double> delay;
         int delayPos = 0;
@@ -162,7 +157,7 @@ private:
         double inGain = 1, directGain = 1, distGain = 1, outGain = 1, driveGain = 1;
         double bass = 0, mid = 0, treble = 0, logMidFreq = 0, logLp = 0;
         double attackMs = 1, releaseMs = 31.8;
-        double bypassMix = 0;
+        double bypassMix = 0, lpOffMix = 0;
     };
 
     Controls targetControls() const noexcept
@@ -181,6 +176,7 @@ private:
         c.attackMs = clampd (target.attackMs, param::Attack::minValue, param::Attack::maxValue);
         c.releaseMs = clampd (target.releaseMs, param::Release::minValue, param::Release::maxValue);
         c.bypassMix = target.bypass ? 1.0 : 0.0;
+        c.lpOffMix = post::lpIsOff (target.lowPassHz) ? 1.0 : 0.0;
         return c;
     }
 
@@ -192,7 +188,7 @@ private:
         designFilters();
         for (auto& ch : channels)
         {
-            ch.follower.setTimes (cur.attackMs, cur.releaseMs, holdMs, fsOs);
+            ch.follower.setTimes (cur.attackMs, cur.releaseMs, fsOs);
             ch.clip.setCeiling (clipCeiling);
         }
     }
@@ -218,12 +214,13 @@ private:
         glide (cur.logMidFreq, t.logMidFreq);
         glide (cur.logLp, t.logLp);
         glide (cur.bypassMix, t.bypassMix);
+        glide (cur.lpOffMix, t.lpOffMix);
         if (t.attackMs != cur.attackMs || t.releaseMs != cur.releaseMs)
         {
             cur.attackMs = t.attackMs;
             cur.releaseMs = t.releaseMs;
             for (auto& ch : channels)
-                ch.follower.setTimes (cur.attackMs, cur.releaseMs, holdMs, fsOs);
+                ch.follower.setTimes (cur.attackMs, cur.releaseMs, fsOs);
         }
         if (--countdown > 0)
             return false;
@@ -245,12 +242,10 @@ private:
         const auto& c = filterControls;
         const double midFreq = std::exp (c.logMidFreq), lp = std::exp (c.logLp);
         const auto midShape = eq::midShape (midFreq);
-        Biquad bass, mid, treble, pre, postF, hp2, hp1, lpS;
+        Biquad bass, mid, treble, hp2, hp1, lpS;
         bass.design (eq::bass (c.bass), eq::bassF0, fsOs);
         mid.design (eq::mid (c.mid, midShape.qn), midShape.centreHz, fsOs);
         treble.design (eq::treble (c.treble), eq::trebleF0, fsOs);
-        pre.design (emphasis::preFilter(), emphasis::poleHz, fsOs);
-        postF.design (emphasis::postFilter(), emphasis::poleHz, fsOs);
         hp2.design (post::hp2(), post::hp2F0, fsOs);
         hp1.design (post::hp1(), post::hp1F0, fsOs);
         lpS.designMatchedLowpass1 (lp, fsOs);
@@ -259,8 +254,6 @@ private:
             ch.bass.copyCoefficients (bass);
             ch.mid.copyCoefficients (mid);
             ch.treble.copyCoefficients (treble);
-            ch.pre.copyCoefficients (pre);
-            ch.post.copyCoefficients (postF);
             ch.hp2.copyCoefficients (hp2);
             ch.hp1.copyCoefficients (hp1);
             ch.lpA.copyCoefficients (lpS);
@@ -292,10 +285,10 @@ private:
             const double e = ch.follower.process (u);
             const double gain = cur.driveGain * curve->gain (e);
             double v = ch.treble.process (ch.mid.process (ch.bass.process (u)));
-            v = ch.pre.process (v * gain);
-            v = ch.post.process (ch.clip.process (v));
+            v = ch.clip.process (v * gain);
             v = ch.hp1.process (ch.hp2.process (v));
-            up[k] = ch.lpB.process (ch.lpA.process (v));
+            const double low = ch.lpB.process (ch.lpA.process (v));
+            up[k] = low + cur.lpOffMix * (v - low); // LP off at r = 1, crossfaded so that switching is click-free
         }
         const double dist = ch.os.down (up);
 
@@ -311,7 +304,7 @@ private:
     const expansion::Curve* curve = &expansion::defaultCurve();
     Controls cur, filterControls;
     std::array<Channel, maxChannels> channels;
-    double fs = 48000.0, fsOs = 192000.0, smoothCoef = 0.0, holdMs = detectorHoldMs;
+    double fs = 48000.0, fsOs = 192000.0, smoothCoef = 0.0;
     int latency = 0, delayLength = 1, countdown = 0;
 };
 

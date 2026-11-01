@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Fits the analog filter prototypes of the Craft Dynamic Distortion to the spec r1 response tables.
+"""Fits the analog filter prototypes of the Craft Dynamic Distortion to the spec r2 response tables.
 
 Development aid (numpy + scipy). Prints the constants used in source/dsp/Filters.h and the residuals.
   Bass:   RBJ low shelf (corner, Q) fitted to bass -50 / -25 jointly (bass +25/+50 are the mirrored cuts).
   Mid:    bell with fixed zeros (s^2 + s/Qn + 1) / (s^2 + s/(g Qn) + 1), per Mid Freq anchor (centre, Qn).
   Treble: same bell family fitted to treble -50 and the mirrored treble +25 jointly.
   HP:     second-order x first-order high-pass fitted to the section 4.6 HP table (relative to 1 kHz).
-  Clip emphasis: first-order shelf pair and clip ceiling fitted to the fully clipped fundamentals of the
-          section 6.1 Drive 100 % / 0 dBFS row (50 / 200 / 500 / 2000 Hz).
 """
 import numpy as np
 from scipy.optimize import least_squares
@@ -70,21 +68,3 @@ def hp(f, f2, q, f1):
 
 r = lambda p: db(hp(FH, *p)) - db(hp(np.array([1000.0]), *p)) - TH
 s = least_squares(r, [30, 0.7, 20], bounds=(0.01, 1000)); show('hp (f2, Q, f1)', s.x, r(s.x))
-hp_p = s.x
-
-# Clip emphasis: fully clipped fundamental = square of the ceiling through the de-emphasis, HP and LP 21 kHz
-fr = np.array([50, 200, 500, 2000.0])
-tgt = np.array([-10.9, -8.7, -8.1, -8.0])  # section 6.1, Drive 100 %, 0 dBFS (gain = output level)
-
-
-def ceiling_db(p, f):
-    c, fz, fp = p
-    post = (1j * f + fz) / (1j * f + fp)
-    lp = 1 / (1 + 1j * f / 21000.0) ** 2
-    return db(4 * c / np.pi / np.sqrt(2) * post * hp(f, *hp_p) * lp)
-
-
-r = lambda p: ceiling_db(p, fr) - tgt
-s = least_squares(r, [0.44, 85, 125], bounds=([0.1, 1, 1], [1, 5000, 5000]))
-show('clip (ceiling, zero Hz, pole Hz)', s.x, r(s.x))
-print(f"  low-frequency ceiling c = {s.x[0] * s.x[1] / s.x[2]:.4f} ({20 * np.log10(s.x[0] * s.x[1] / s.x[2]):.2f} dBFS)")

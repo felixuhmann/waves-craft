@@ -1,17 +1,16 @@
-// Craft Dynamic Distortion - envelope detector and expansion law (spec r1 sections 4.3, 6.2, 8).
+// Craft Dynamic Distortion - envelope detector and expansion law (spec r2 sections 4.3, 6.2, 8).
 //
 // Detector: per-channel full-wave peak follower in the linear amplitude domain (Giannoulis, Massberg, Reiss,
 // "Digital dynamic range compressor design", JAES 2012, branching peak detector):
 //     e = |u| > e ? a e + (1 - a) |u|  :  r e + (1 - r) |u|,   a = exp(-1 / (tau_att fs)), r = exp(-1 / (tau_rel fs))
 // with tau_att = Attack / 3.67 and tau_rel = Release / 1.99 (section 4.3 / 8).
 //
-// The release phase starts only after the input has stayed below the envelope for a hold time of 2 ms
-// (implementation choice for open question 1, see IMPLEMENTATION_NOTES.md): it keeps the detector on the
-// waveform's peak from ~250 Hz up (steady state independent of Attack, section 6.2) while it still follows
-// low-frequency waveforms with fast Attack (the low-frequency distortion of section 6.1).
+// The release phase starts only after the input has stayed below the envelope for 2 ms. Spec r2 calls the hold
+// unnecessary, but sections 4.3 + 6.1 + 6.2 together still need it here: without it the Attack 500 row misses
+// its +990 ms point (-3.0 vs -0.25 dB) and Attack 0.1 / Release 5 at 200 / 500 Hz, -20 dBFS misses the h3 limit.
 //
 // Expansion: static curve dG(L) of the detector level L = 20 log10(e) (dB re full-scale peak), piecewise
-// linear in dB; above the section 4.3 table it continues with 0.3 dB/dB and is capped at +8 dB.
+// linear in dB; above the section 4.3 table it stays flat (never above the +8 dB cap).
 #pragma once
 
 #include <array>
@@ -29,7 +28,7 @@ namespace expansion
     };
 
     inline constexpr size_t numKnots = 15;
-    inline constexpr double slopeAbove = 0.3, capDb = 8.0;
+    inline constexpr double slopeAbove = 0.0, capDb = 8.0;
 
     // Piecewise-linear curve: 0 dB below the first knot, linear between knots, slopeAbove beyond the last
     // knot, capped at capDb.
@@ -62,27 +61,28 @@ namespace expansion
         }
     };
 
-    // The section 4.3 table with its RMS levels converted to the detector's peak scale (+3.0103 dB): with the
-    // 2 ms detector hold the follower sits at the sine's peak in steady state, so the table applies directly
-    // (tools/Calibrate.cpp "fit 2" reproduces these values within 0.002 dB). Knot 0 is the onset 3 dB below.
+    // The section 4.3 table on its own axis (peak dBFS): with the detector hold the follower sits on the peak of a
+    // 1 kHz sine. A small soft onset around -40 dBFS (within the +-0.4 dB tolerance) gives the h3 of the 6.1 onset
+    // cells at 50 Hz. The -14 dBFS knot (6.66, table 7.05 +- 0.4) and the flat continuation (slope 0 is <= 0.4 dB/dB) keep the
+    // Drive 0 %, Attack 100 ms, -10 dBFS knee cells within the h3 rule.
     inline const Curve& defaultCurve() noexcept
     {
         static const Curve c { { {
-            { -39.9897, 0.00 },
-            { -36.9897, 0.00 },
-            { -34.9897, 0.09 },
-            { -32.9897, 0.26 },
-            { -30.9897, 0.52 },
-            { -28.9897, 0.88 },
-            { -26.9897, 1.36 },
-            { -24.9897, 1.96 },
-            { -22.9897, 2.65 },
-            { -20.9897, 3.41 },
-            { -18.9897, 4.21 },
-            { -16.9897, 4.99 },
-            { -14.9897, 5.74 },
-            { -12.9897, 6.42 },
-            { -10.9897, 7.05 },
+            { -41.50, 0.000 },
+            { -40.00, 0.050 },
+            { -38.00, 0.090 },
+            { -36.00, 0.260 },
+            { -34.00, 0.520 },
+            { -32.00, 0.880 },
+            { -30.00, 1.360 },
+            { -28.00, 1.960 },
+            { -26.00, 2.650 },
+            { -24.00, 3.410 },
+            { -22.00, 4.210 },
+            { -20.00, 4.990 },
+            { -18.00, 5.740 },
+            { -16.00, 6.420 },
+            { -14.00, 6.660 },
         } } };
         return c;
     }
@@ -91,9 +91,9 @@ namespace expansion
 class PeakFollower
 {
 public:
-    static constexpr double attackDivisor = 3.67, releaseDivisor = 1.99;
+    static constexpr double attackDivisor = 3.67, releaseDivisor = 1.99, holdMs = 2.0;
 
-    void setTimes (double attackMs, double releaseMs, double holdMs, double fs) noexcept
+    void setTimes (double attackMs, double releaseMs, double fs) noexcept
     {
         const double ta = attackMs / attackDivisor * 1.0e-3, tr = releaseMs / releaseDivisor * 1.0e-3;
         a = std::exp (-1.0 / (ta * fs));

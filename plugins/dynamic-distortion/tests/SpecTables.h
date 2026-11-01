@@ -1,4 +1,4 @@
-// Normative tables of spec/dynamic-distortion/r1/SPEC.md, transcribed for the tests and the calibration tool.
+// Normative tables of spec/dynamic-distortion/r2/SPEC.md, transcribed for the tests and the calibration tool.
 #pragma once
 
 #include <array>
@@ -7,7 +7,7 @@
 namespace ddspec
 {
 
-// Section 4.3: expansion (gain increase vs RMS level, 1 kHz, Drive 0 %, A 1 ms, R 31.8 ms). Tolerance +-0.4 dB.
+// Section 4.3: expansion (gain increase vs peak level, 1 kHz, Drive 0 %, A 1 ms, R 31.8 ms). Tolerance +-0.4 dB.
 inline constexpr std::array<double, 14> expansionLevels { -40, -38, -36, -34, -32, -30, -28, -26, -24, -22, -20, -18, -16, -14 };
 inline constexpr std::array<double, 14> expansionGains { 0.00, 0.09, 0.26, 0.52, 0.88, 1.36, 1.96, 2.65, 3.41, 4.21, 4.99, 5.74, 6.42, 7.05 };
 
@@ -94,9 +94,7 @@ inline double fundamentalTolerance (const ToneTable& t, int freqIndex, int level
     const bool knee = t.drive == 0.0 && toneLevels[size_t (levelIndex)] >= -10.0;
     return (toneFreqs[size_t (freqIndex)] == 50.0 || knee) ? 3.5 : 2.0;
 }
-// Returns true when the measured h3 satisfies the rule for the table value. Table values in (-50, -40] are not
-// covered by the spec's rules; they get the one-sided onset-band bound (at most table + 18 dB), see
-// IMPLEMENTATION_NOTES.md.
+// Returns true when the measured h3 satisfies the section 6.1 rule for the table value.
 inline bool h3Ok (const ToneTable& t, int levelIndex, double table, double got)
 {
     const bool knee = t.drive == 0.0 && toneLevels[size_t (levelIndex)] >= -10.0;
@@ -105,7 +103,7 @@ inline bool h3Ok (const ToneTable& t, int levelIndex, double table, double got)
     if (table > -40.0)
         return std::abs (got - table) <= 18.0;
     if (table > -50.0)
-        return got <= table + 18.0;
+        return got <= (knee ? -20.0 : -30.0);
     return got <= -40.0;
 }
 
