@@ -87,7 +87,7 @@ current depth and on Release. `GainSmoother` (all on the linear gain-reduction g
   above gain 0.72 (the last 3 dB, as in the table). Repeated peaks with the gate closed charge gS with τ 300 ms.
 
 Constants: `tools/fit/opt.py` + `tune.cpp` (limited Nelder-Mead) and manual trims. Results at 48 kHz (limits in
-brackets): §7.5 max error 1.49 dB (1.5), first 5 ms 2.48 dB (3), RMS per Release ≤ 0.52 dB; §7.4 release max
+brackets): §7.5 max error 1.50 dB (1.5), first 5 ms 2.48 dB (3), RMS per Release ≤ 0.52 dB; §7.4 release max
 1.93 dB, within the first 5 ms (3), ≤ 1.29 otherwise; noise vs sine −0.35 … −0.48 dB (±0.5); LF ripple max 3.8 dB (4);
 100 Hz levels −0.59 / +0.26 / −0.56 dB (1), H3 −1.5 / +3.9 / −2.4 dB (4). **Margins are thin** on §7.5, noise vs sine
 and the 100 Hz, a = 0.3 H3: noise vs sine has a systematic negative offset that trades against that H3. The tests use
@@ -204,4 +204,7 @@ Release/{VST3,CLAP,Standalone}`. `ci/package.py` finds the artefact directory au
 
 ## Status
 
-STATUS_PLACEHOLDER
+* Windows x64 Release (MSVC): VST3, CLAP, Standalone, tests build; installed to the user and common VST3 folders and the user CLAP folder.
+* Unit tests: 37 / 37 test cases pass on Windows (ctest) and Linux (GCC).
+* `craft_hoststress --seconds 120 --editor`: 73.6 M samples, 94 prepares, 413 state restores, 179 k parameter moves, 30 editor opens, **0 failures**. Its mono-in / stereo-out layout is rejected by design; mono is covered by unit tests.
+* Not re-verified since r2: GUI snapshots (no GUI change) and independent verification.
