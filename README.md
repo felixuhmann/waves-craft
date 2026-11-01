@@ -74,6 +74,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 |---|---|---|---|
 | [`h-delay`](plugins/h-delay) | Craft Hybrid Delay | [r3](spec/h-delay/r3/SPEC.md) | [notes](plugins/h-delay/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/h-delay-r1.md), [r2](docs/verification/h-delay-r2.md) |
 | [`stereo-imager`](plugins/stereo-imager) | Craft Shuffler, Craft Imager, Craft MS Matrix | [r1](spec/stereo-imager/r1/SPEC.md) | [notes](plugins/stereo-imager/IMPLEMENTATION_NOTES.md), [verification](docs/verification/stereo-imager-r1.md) |
+| [`color-delay`](plugins/color-delay) | Craft Colour Delay | [r1](spec/color-delay/r1/SPEC.md) | [notes](plugins/color-delay/IMPLEMENTATION_NOTES.md) |
 | [`motion-filter`](plugins/motion-filter) | Craft Motion Filter | [r1](spec/motion-filter/r1/SPEC.md) | [notes](plugins/motion-filter/IMPLEMENTATION_NOTES.md) |
 | [`de-esser`](plugins/de-esser) | Craft De-Esser, Craft De-Esser Mono | [r1](spec/de-esser/r1/SPEC.md) | [notes](plugins/de-esser/IMPLEMENTATION_NOTES.md) |
 | [`doubler`](plugins/doubler) | Craft Doubler 4, Craft Doubler 2 | [r1](spec/doubler/r1/SPEC.md) | [notes](plugins/doubler/IMPLEMENTATION_NOTES.md) |

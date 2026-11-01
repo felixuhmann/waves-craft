@@ -9,6 +9,9 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | Slug | Revision | Target | Status | SHA-256 |
 |---|---|---|---|---|
 | `stereo-imager` | [r1](stereo-imager/r1/SPEC.md) | Stereo imager (Full / Imager / MS matrix) | Approved 2026-10-29 | dad6a104e00c7296284e86a984cf5c10ce8e29b2b2bb06d9ee9b969ec0955dcc |
+| `color-delay` | [r1](color-delay/r1/SPEC.md) | Colour delay (delay, filters, compressor, reverb/distortion/doubler/phaser colours) | Approved 2026-10-29 | a07b05796212aee5ac905bf44f50d6613add25e8f7ffbdcbb64121840902eb55 |
+| `color-delay` | [r2](color-delay/r2/SPEC.md) | Colour delay (supersedes r1: sync rounding, compressor high-level gains, per-channel effect routing, reverb/distortion/doubler targets) | Approved 2026-10-29 | 080593b053714469f8cbdeda2512fdb90d63cf1d2a596b6d86ebccca97d8bc76 |
+| `color-delay` | [r3](color-delay/r3/SPEC.md) | Colour delay (supersedes r2: effects fed after the compressor, doubler gain +13.0 dB, end-to-end distortion tables incl. Send 10/25 %, overload clause) | Approved 2026-10-29 | ba002d6674e6402171a3cc2645b4611f72661bd8d9aca66fed44d61dd36a2177 |
 | `motion-filter` | [r1](motion-filter/r1/SPEC.md) | Modulated multimode filter (LFO/sequencer/follower, comb, delay, drive, crush) | Approved 2026-10-29 | 4fd105a9f069561bb815467763eb5ffbc1f9feeb4a589d55ee386fd3aeee92cc |
 | `motion-filter` | [r2](motion-filter/r2/SPEC.md) | Modulated multimode filter — r2: BP gain, Q above Res 90, follower law, crush law | Approved 2026-10-29 | 764676474a100daff4f779bccc2d69a3aa091b457b7224ea1db520462c5edaf8 |
 | `h-delay` | [r1](h-delay/r1/SPEC.md) | Hybrid delay (stereo, ping-pong, filters, modulation, analog modes) | Approved 2026-10-29 | 2ceea26722543f5a180d1de71ff1e563f960d174db7bc779fdc6ba4fd76922ba |
