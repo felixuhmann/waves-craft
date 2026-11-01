@@ -166,7 +166,7 @@ to type one. Meters: instant rise, 20 dB/s fall, 1.5 s peak marker.
 
 ## Tests (`tests/`, Catch2)
 
-TESTLINE, registered with CTest as `console-g/<name>`; MSVC 2022 Release and GCC 13.
+30 test cases (about 1.86 million assertions), registered with CTest as `console-g/<name>`; MSVC 2022 Release and GCC 13.
 
 - Tapers: all 820 cells, interpolation, inversion, defaults. HP: prototypes, bilinear rule at 44.1/48/96 kHz, −3 dB
   points, vectors. LP: per-rate tables at 44.1/48/96 kHz (≤ 0.5 / 1.5 dB), off-grid, §9.1 vectors (now within tolerance).
@@ -176,7 +176,7 @@ TESTLINE, registered with CTest as `console-g/<name>`; MSVC 2022 Release and GCC
 - Expander/gate: all 1680 static points, §9.2 rows, §6 timing tables at three rates, long-release staircases, D7.
 - Strip: baseline as last stage, analog noise, polarity, latency, routing, bypass, mono, smoothing, extreme settings.
 
-Host stress (`tools/hoststress`, VST3, `--editor`): HOSTLINE
+Host stress (`tools/hoststress`, VST3, `--editor`, 120 s): 129 M samples, 84 prepares, 429 state restores, 0 failures.
 
 ## Public references
 

@@ -401,3 +401,80 @@ TEST_CASE ("expander floor is always finite; the strip never latches into silenc
         CHECK (gdb > -60.0);
     }
 }
+
+TEST_CASE ("dynamics statics, noise sensitivity and H3 hold at 44.1 and 96 kHz", "[dynamics][rates]")
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    const auto& tab = cg::CompressorTable::get();
+    for (double fs : { 44100.0, 96000.0 })
+    {
+        for (double T : { 0.0, -10.0, -20.0 })
+            for (double R : { 2.0, 4.0, inf })
+            {
+                const auto g = staircase (comp (T, R), fs);
+                const auto c = tab.curve (T, R);
+                for (int k = 0; k < cg::CompressorTable::numLevels; ++k)
+                {
+                    const double L = -54.0 + 2.0 * k;
+                    INFO ("fs " << fs << " T " << T << " R " << R << " in " << L << ": " << g[size_t (k)] << " vs " << c[size_t (k)]);
+                    CHECK (std::abs (g[size_t (k)] - c[size_t (k)]) <= compTolerance (T, L));
+                }
+            }
+        struct Vec { const char* name; cg::Settings s; double db[6]; };
+        Vec vecs[] = {
+            { "fast", comp (-10, 4, true), { 2.98, 1.84, -2.15, -7.10, -12.37, -16.51 } },
+            { "release 4 s", comp (-10, 4, false, 4.0), { 2.98, 2.14, -1.56, -6.32, -11.61, -15.66 } },
+            { "expander T-20 range 40", expander (cg::Settings::defaults(), -20, 40), { -17.04, 0, 0, 0, 0.01, 0.02 } },
+            { "gate T-20 range 40", expander (cg::Settings::defaults(), -20, 40, true), { -33.90, 0, 0, 0, 0.01, 0.02 } },
+        };
+        const double levels[] = { -54, -30, -22, -14, -6, 0 };
+        for (auto& v : vecs)
+        {
+            const auto g = staircase (v.s, fs);
+            for (int k = 0; k < 6; ++k)
+            {
+                const double got = g[size_t ((levels[k] + 54) / 2)];
+                INFO (v.name << " fs " << fs << " at " << levels[k] << ": " << got << " vs " << v.db[k]);
+                CHECK (std::abs (got - v.db[k]) <= 1.0);
+            }
+        }
+        // noise vs sine, H3 at -6 dBFS
+        for (int fast = 0; fast < 2; ++fast)
+        {
+            auto run1 = [&] (bool noise) {
+                auto e = makeEngine (fs, comp (-10, 4, fast == 1));
+                std::mt19937 rng (3);
+                std::normal_distribution<double> nd (0.0, 0.1);
+                std::vector<double> x (size_t (fs * 3.0));
+                for (size_t i = 0; i < x.size(); ++i)
+                    x[i] = noise ? nd (rng) : 0.1 * std::sqrt (2.0) * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fs);
+                auto y = x;
+                run (e, y);
+                return cg::gainToDb (rms (y, x.size() / 2, x.size()) / rms (x, x.size() / 2, x.size()));
+            };
+            INFO ("fs " << fs << " fast " << fast);
+            // 9.3 is a 48 kHz vector; white noise at another rate is a different signal: 44.1 kHz stays comparable
+            if (fs < 50000.0)
+                CHECK (std::abs (run1 (true) - (fast ? -6.15 : -4.28)) < 0.6);
+            else
+                CHECK (run1 (true) < run1 (false));
+            CHECK (std::abs (run1 (false) - (fast ? -5.20 : -3.62)) < 0.5);
+
+            auto e = makeEngine (fs, comp (-10, 4, fast == 1));
+            const double a = cg::dbToGain (-6.0);
+            std::vector<double> x (size_t (fs * 2));
+            for (size_t i = 0; i < x.size(); ++i)
+                x[i] = a * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fs);
+            run (e, x);
+            std::complex<double> h1, h3;
+            for (size_t i = size_t (fs); i < x.size(); ++i)
+            {
+                h1 += x[i] * std::polar (1.0, -2.0 * cg::pi * 1000.0 * double (i) / fs);
+                h3 += x[i] * std::polar (1.0, -2.0 * cg::pi * 3000.0 * double (i) / fs);
+            }
+            const double d = cg::gainToDb (std::abs (h3) / std::abs (h1));
+            INFO ("H3 " << d);
+            CHECK (std::abs (d - (fast ? -52.0 : -70.0)) <= 6.0);
+        }
+    }
+}
