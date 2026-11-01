@@ -42,7 +42,7 @@ or third-party trademarks (SSL, CLA, Abbey Road, …).
 | 24 | [ ] | CLA-76 | Analog model | FET compressor model; level- and frequency-dependent nonlinearity |
 | 25 | [ ] | CLA-2A | Analog model | Opto compressor model; program-dependent release |
 | 26 | [ ] | CLA-3A | Analog model | Opto compressor/limiter model |
-| 27 | [ ] | Vitamin | Multiband enhancer | Multiband harmonic processing |
+| 27 | [ ] | Vitamin | Multiband enhancer | Multiband harmonic processing — built as Craft Enhancer (`plugins/enhancer`) |
 | 28 | [ ] | L3 Multi | Multiband limiter | Multiband peak limiting with adaptive behaviour |
 | 29 | [ ] | L3 Ultra | Multiband limiter | Same family as #28 |
 | 30 | [ ] | L3-LL Multi | Multiband limiter | Low-latency variant of #28 |
