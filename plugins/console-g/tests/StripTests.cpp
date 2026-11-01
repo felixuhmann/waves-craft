@@ -22,7 +22,7 @@ double harmonic (const std::vector<double>& y, size_t from, size_t len, double f
 }
 } // namespace
 
-TEST_CASE ("baseline curve y = x + 0.00316 x^3 is always active (spec 1.1)", "[strip]")
+TEST_CASE ("baseline curve y = x + 0.00316 x^3 is always active (spec r2 1.1: last stage)", "[strip]")
 {
     for (double fs : { 44100.0, 48000.0, 96000.0 })
     {
@@ -140,9 +140,21 @@ TEST_CASE ("routing (spec 7): pre-EQ default, Ch Out post-EQ, filters to side-ch
     const auto pre = staircase (shelf (comp (-10, 4)), fsTest);
     const double shelfDb = stripMagnitudeDb (shelf (cg::Settings::defaults()), fsTest, 1000.0);
     INFO ("shelf at 1 kHz " << shelfDb);
-    CHECK (std::abs (shelfDb - 5.9) < 1.0); // off-grid shelf (11.9 dB on the sparse 450 Hz row): spec 10, <= 1 dB
+    CHECK (std::abs (shelfDb - 5.81) < 0.5); // measured row lf_450_extra.csv
     for (size_t k = 0; k < base.size(); ++k)
         CHECK (std::abs (pre[k] - (base[k] + shelfDb)) < 0.1);
+    // the curve follows the output gain: H3 follows the output level, not the input level
+    auto hot = cg::Settings::defaults();
+    hot.outputGain = rOf (TaperId::outputGain, -24.0);
+    {
+        auto e = makeEngine (fsTest, hot);
+        std::vector<double> x (48000);
+        for (size_t i = 0; i < x.size(); ++i)
+            x[i] = std::sin (2.0 * cg::pi * 1000.0 * double (i) / fsTest);
+        run (e, x);
+        const double h1 = harmonic (x, 24000, 24000, 1000.0, fsTest), h3 = harmonic (x, 24000, 24000, 3000.0, fsTest);
+        CHECK (cg::gainToDb (h3 / h1) < -100.0); // -62 dBc at 0 dBFS output, 48 dB lower at -24 dBFS
+    }
 
     // Ch Out: the shelf moves the compressor curve by its gain (spec 9.2 row)
     auto post = shelf (comp (-10, 4));

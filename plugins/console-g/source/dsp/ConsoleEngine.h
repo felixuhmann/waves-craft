@@ -131,7 +131,6 @@ public:
                 if (! std::isfinite (v))
                     v = 0.0;
                 v *= polaritySm * trimSm;
-                v += baselineCubic * v * v * v;
                 blockInPeak = std::max (blockInPeak, std::abs (v));
                 x[c] = v;
             }
@@ -172,6 +171,7 @@ public:
                 if (analogMix > 0.0)
                     v += analogMix * noiseAmp * chans[size_t (c)].noise();
                 v *= outSm * duck;
+                v += baselineCubic * v * v * v; // last stage (spec r2 1.1)
                 if (! std::isfinite (v))
                     v = 0.0;
                 v = safetyClip (v);
@@ -414,7 +414,7 @@ private:
             auto p = BellTable::hmf().params (t[TaperId::hmfGain].valueAt (sm[smHmfG].value), sm[smHmfQ].value,
                                               t[TaperId::hmfFreq].valueAt (sm[smHmfF].value));
             if (target.hmfX3)
-                p.f0 *= 3.0;
+                p.f0 *= 2.88; // spec r2 4.3
             const auto c = p.matched (fs);
             for (auto& ch : chans) ch.hmf.c = c;
             mark (smHmfG); mark (smHmfF); mark (smHmfQ);

@@ -1,7 +1,9 @@
 // Spec sections 5, 6, 9.2, 9.3, 10: compressor and expander / gate.
 #include <catch2/catch_test_macros.hpp>
 
+#include <complex>
 #include <cstdio>
+#include <limits>
 #include <random>
 #include <sstream>
 
@@ -84,20 +86,20 @@ namespace
 {
 // Burst -40 -> -4 -> -40 dBFS (1 kHz); times (ms) to 50/63/90 % of the gain change after each edge.
 struct Timing { double att[3], rel[3]; };
-Timing burstTiming (const cg::Settings& s)
+Timing burstTiming (const cg::Settings& s, double fs)
 {
-    auto e = makeEngine (fsTest, s);
-    const size_t seg = size_t (fsTest * 2.0);
+    auto e = makeEngine (fs, s);
+    const size_t seg = size_t (fs * 2.0);
     std::vector<double> x (3 * seg);
     for (size_t i = 0; i < x.size(); ++i)
     {
         const double a = (i >= seg && i < 2 * seg) ? cg::dbToGain (-4.0) : cg::dbToGain (-40.0);
-        x[i] = a * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fsTest);
+        x[i] = a * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fs);
     }
     auto y = x;
     run (e, y);
     // gain envelope per 1 ms window (one period)
-    const size_t w = size_t (fsTest / 1000.0);
+    const size_t w = size_t (fs / 1000.0);
     std::vector<double> g;
     for (size_t i = 0; i + w <= x.size(); i += w)
         g.push_back (cg::gainToDb (rms (y, i, i + w) / rms (x, i, i + w)));
@@ -121,27 +123,114 @@ Timing burstTiming (const cg::Settings& s)
 }
 } // namespace
 
-TEST_CASE ("compressor: attack / release timing (spec 5 table) within 25 %", "[dynamics][timing]")
+TEST_CASE ("compressor: timing table of spec r2 5.1 within 25 %, independent of threshold and ratio", "[dynamics][timing]")
 {
-    struct Ref { bool fast; double release; double att[3], rel[3]; } refs[] = {
-        { false, 0.4, { 31, 45, 85 }, { 87, 126, 334 } },
-        { false, 0.1, { 34, 48, 94 }, { 61, 87, 220 } },
-        { false, 1.2, { 34, 47, 93 }, { 201, 345, 1197 } },
-        { true, 0.4, { 1.5, 2.5, 4.5 }, { 43, 66, 268 } },
-        { true, 0.1, { 1.5, 2.5, 4.5 }, { 22, 30, 72 } },
+    const double inf = std::numeric_limits<double>::infinity();
+    struct Ref { const char* name; double T, R; bool fast; double release; double att[3], rel[3]; } refs[] = {
+        { "t0 r2", 0, 2, false, 0.4, { 32, 44, 95 }, { 86, 126, 325 } },
+        { "t0 rInf", 0, inf, false, 0.4, { 32, 44, 85 }, { 86, 126, 325 } },
+        { "t-10 r1.5", -10, 1.5, false, 0.4, { 32, 44, 85 }, { 87, 127, 329 } },
+        { "t-10 r4", -10, 4, false, 0.4, { 32, 44, 85 }, { 86, 126, 325 } },
+        { "t-20 r2", -20, 2, false, 0.4, { 32, 44, 85 }, { 87, 127, 328 } },
+        { "t-20 rInf", -20, inf, false, 0.4, { 32, 44, 85 }, { 80, 116, 271 } },
+        { "rel0.1", -10, 4, false, 0.1, { 34, 48, 93 }, { 61, 88, 219 } },
+        { "rel1.2", -10, 4, false, 1.2, { 34, 46, 93 }, { 172, 281, 866 } },
+        { "rel4", -10, 4, false, 4.0, { 38, 52, 125 }, { 301, 502, 1074 } },
+        { "fast", -10, 4, true, 0.4, { 2, 2, 4 }, { 43, 64, 245 } },
+        { "fast rel0.1", -10, 4, true, 0.1, { 2, 2, 4 }, { 22, 30, 72 } },
     };
-    for (const auto& r : refs)
-    {
-        const auto t = burstTiming (comp (-10, 4, r.fast, r.release));
-        WARN ((r.fast ? "fast" : "auto") << " rel " << r.release << ": attack " << t.att[0] << "/" << t.att[1] << "/" << t.att[2]
-                                          << " release " << t.rel[0] << "/" << t.rel[1] << "/" << t.rel[2]);
-        for (int k = 0; k < 3; ++k)
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (const auto& r : refs)
         {
-            INFO ((r.fast ? "fast" : "auto") << " release " << r.release << " k " << k);
-            // attack of the fast setting is resolved to the 1 ms analysis window
-            const double attTol = r.fast ? 1.5 : 0.25 * r.att[k];
-            CHECK (std::abs (t.att[k] - r.att[k]) <= attTol);
-            CHECK (std::abs (t.rel[k] - r.rel[k]) <= 0.25 * r.rel[k]);
+            const auto t = burstTiming (comp (r.T, r.R, r.fast, r.release), fs);
+            if (fs == 48000.0)
+                WARN (r.name << ": attack " << t.att[0] << "/" << t.att[1] << "/" << t.att[2] << " release " << t.rel[0] << "/" << t.rel[1] << "/" << t.rel[2]);
+            for (int k = 0; k < 3; ++k)
+            {
+                INFO (r.name << " fs " << fs << " k " << k << " att " << t.att[k] << " rel " << t.rel[k]);
+                // fast attack is resolved to the 1 ms analysis window
+                CHECK (std::abs (t.att[k] - r.att[k]) <= (r.fast ? 1.5 : 0.25 * r.att[k]));
+                CHECK (std::abs (t.rel[k] - r.rel[k]) <= 0.25 * r.rel[k]);
+            }
+        }
+}
+
+TEST_CASE ("compressor: gain-modulation H3 (spec 5, r2 10) within 6 dB", "[dynamics][h3]")
+{
+    const double levels[] = { -30, -18, -6, 0 };
+    const double autoRef[] = { -86, -73, -70, -69 }, fastRef[] = { -72, -57, -52, -51 };
+    for (int mode = 0; mode < 2; ++mode)
+        for (int k = 0; k < 4; ++k)
+        {
+            auto e = makeEngine (fsTest, comp (-10, 4, mode == 1));
+            const double a = cg::dbToGain (levels[k]);
+            std::vector<double> x (size_t (fsTest * 2));
+            for (size_t i = 0; i < x.size(); ++i)
+                x[i] = a * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fsTest);
+            run (e, x);
+            std::complex<double> h1, h3;
+            const size_t from = size_t (fsTest);
+            for (size_t i = from; i < x.size(); ++i)
+            {
+                h1 += x[i] * std::polar (1.0, -2.0 * cg::pi * 1000.0 * double (i) / fsTest);
+                h3 += x[i] * std::polar (1.0, -2.0 * cg::pi * 3000.0 * double (i) / fsTest);
+            }
+            const double d = cg::gainToDb (std::abs (h3) / std::abs (h1));
+            const double ref = mode == 1 ? fastRef[k] : autoRef[k];
+            WARN ((mode == 1 ? "fast" : "auto") << " H3 at " << levels[k] << ": " << d << " vs " << ref);
+            CHECK (std::abs (d - ref) <= 6.0);
+        }
+}
+
+TEST_CASE ("expander / gate: timing tables of spec r2 6", "[dynamics][timing]")
+{
+    const double dropT[] = { 10, 30, 50, 75, 100, 150, 200, 300, 500, 1000 }, riseT[] = { 1, 2, 3, 5 };
+    struct Ref { const char* name; double range; bool gate; double drop[10], rise[4]; } refs[] = {
+        { "exp r10", 10, false, { 0, 0, 0, 0, 0, -1.0, -2.5, -4.5, -6.5, -7.6 }, { -4.0, -0.3, 0, 0 } },
+        { "exp r40", 40, false, { 0, -1.2, -5.6, -10.8, -15.1, -20.4, -20.4, -20.4, -20.4, -20.4 }, { -12.9, -4.7, -0.5, 0 } },
+        { "gate r40", 40, true, { 0, 0, -4.9, -10.6, -15.4, -23.4, -29.8, -38.7, -47.5, -52.4 }, { -33.9, -16.1, -5.7, 0 } },
+    };
+    for (double fs : { 44100.0, 48000.0, 96000.0 })
+        for (const auto& r : refs)
+        {
+            auto e = makeEngine (fs, expander (cg::Settings::defaults(), 0, r.range, r.gate));
+            const size_t seg = size_t (fs * 2.0);
+            std::vector<double> x (3 * seg);
+            for (size_t i = 0; i < x.size(); ++i)
+                x[i] = (i >= seg && i < 2 * seg ? cg::dbToGain (-40.0) : cg::dbToGain (-4.0)) * std::sin (2.0 * cg::pi * 1000.0 * double (i) / fs);
+            auto y = x;
+            run (e, y);
+            auto gainAt = [&] (size_t edge, double ms) { // half-period window centred at the time
+                const size_t c = edge + size_t (ms * fs / 1000.0), w = size_t (fs / 2000.0);
+                return cg::gainToDb (rms (y, c - w / 2, c - w / 2 + w) / rms (x, c - w / 2, c - w / 2 + w));
+            };
+            for (int k = 0; k < 10; ++k)
+            {
+                const double got = gainAt (seg, dropT[k]);
+                INFO (r.name << " fs " << fs << " drop " << dropT[k] << " ms: " << got << " vs " << r.drop[k]);
+                CHECK (std::abs (got - r.drop[k]) <= (dropT[k] <= 30.0 ? 3.0 : 1.5));
+            }
+            for (int k = 0; k < 4; ++k)
+            {
+                const double got = gainAt (2 * seg, riseT[k]);
+                INFO (r.name << " fs " << fs << " rise " << riseT[k] << " ms: " << got << " vs " << r.rise[k]);
+                CHECK (std::abs (got - r.rise[k]) <= 3.0);
+            }
+        }
+
+    struct Stair { double release; double db[6]; } stairs[] = {
+        { 1.0, { -9.1, -14.5, -12.1, -9.7, -7.3, -4.8 } },
+        { 4.0, { 0.0, -3.6, -8.2, -9.5, -7.1, -4.6 } },
+    };
+    for (const auto& st : stairs)
+    {
+        auto s = expander (cg::Settings::defaults(), -20, 40);
+        s.expRelease = rOf (TaperId::expRelease, st.release);
+        const auto g = staircase (s, fsTest);
+        for (size_t k = 0; k < 6; ++k)
+        {
+            INFO ("release " << st.release << " step " << k << ": " << g[k] << " vs " << st.db[k]);
+            CHECK (std::abs (g[k] - st.db[k]) <= 1.5);
         }
     }
 }

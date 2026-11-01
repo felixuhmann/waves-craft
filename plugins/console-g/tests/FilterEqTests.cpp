@@ -138,11 +138,11 @@ TEST_CASE ("high-pass: -3 dB points and spec 9.1 vectors", "[filters]")
     }
 }
 
-TEST_CASE ("low-pass: fitted rows meet lp_target.csv at 44.1/48/96 kHz", "[filters]")
+TEST_CASE ("low-pass: fitted rows meet the per-rate LP tables at 44.1/48/96 kHz", "[filters]")
 {
-    const auto& target = cg::LowPassTarget::get();
     for (double fs : rates)
     {
+        const auto& target = cg::LowPassTarget::forRate (fs);
         cg::LowPassDesigner d;
         d.prepare (fs);
         double worst = 0.0;
@@ -177,10 +177,7 @@ TEST_CASE ("low-pass: fitted rows meet lp_target.csv at 44.1/48/96 kHz", "[filte
     }
 }
 
-// The 9.1 LP vectors were measured at 48 kHz, where the reference's low-pass deviates from its 96 kHz target
-// (lp_target.csv) by up to 0.7 dB below 10 kHz and ~3 dB at 20 kHz (cramping towards Nyquist). Spec 8 / 10 make the
-// rate-independent target normative for LP, so the vectors are checked with the observed spread (see notes).
-TEST_CASE ("low-pass: spec 9.1 vectors at 48 kHz (informative, target is normative)", "[filters]")
+TEST_CASE ("low-pass: spec 9.1 vectors at 48 kHz", "[filters]")
 {
     struct Vec { double display; double db[13]; } vecs[] = {
         { 3200, { 0, 0, 0, 0, -0.03, -0.14, -0.79, -3.49, -7.55, -15.46, -24.06, -30.81, -34.15 } },
@@ -197,7 +194,7 @@ TEST_CASE ("low-pass: spec 9.1 vectors at 48 kHz (informative, target is normati
         {
             const double f = vectorFreqs()[k];
             INFO ("LP " << v.display << " at " << f << ": " << c.magnitudeDb (f, 48000.0) << " vs " << v.db[k]);
-            CHECK (std::abs (c.magnitudeDb (f, 48000.0) - v.db[k]) < (f <= 12000.0 ? 1.5 : 3.5));
+            CHECK (std::abs (c.magnitudeDb (f, 48000.0) - v.db[k]) < (f <= 15000.0 ? 0.5 : 1.5));
         }
     }
 }
@@ -333,23 +330,49 @@ TEST_CASE ("HMF bell: table points reproduced; magnitude-matched digital bell me
             {
                 INFO ("fs " << fs << " f " << f);
                 const double err = std::abs (c.magnitudeDb (f, fs) - analogDb (p.response (f)));
-                CHECK (err < (f <= 15000.0 ? 0.5 : 1.5));
+                CHECK (err < (f <= 15000.0 ? 0.25 : 1.5)); // spec 0.5 dB incl. the table's own fit error (<= 0.26 dB)
             }
         }
     }
     // x3 at the top of the range stays within tolerance at 44.1 kHz
     auto p = tab.params (12.0, rOf (TaperId::hmfQ, 1.5), 7000.0);
-    p.f0 *= 3.0;
+    p.f0 *= 2.88;
     const auto c = p.matched (44100.0);
     for (double f = 20.0; f <= 15000.0; f *= 1.15)
         CHECK (std::abs (c.magnitudeDb (f, 44100.0) - analogDb (p.response (f))) < 0.5);
 }
 
-TEST_CASE ("sample-rate rule: HMF and LP are nearly rate independent, shelves follow the bilinear rule", "[eq]")
+TEST_CASE ("LF 450 Hz extra rows (spec r2 10) within 0.5 dB; HMF x3 factor 2.88", "[eq]")
+{
+    const auto t = cg::parseCsv (cgt::lf_450_extra, cgt::lf_450_extra_count);
+    for (const auto& r : t.rows)
+    {
+        const auto proto = cg::ShelfTable::lf().prototype (cg::parseCell (r[0]), 450.0);
+        for (size_t c = 1; c < r.size(); ++c)
+        {
+            const double f = std::strtod (t.header[c].c_str(), nullptr);
+            INFO ("gain " << r[0] << " f " << f);
+            CHECK (std::abs (analogDb (proto.response (f)) - cg::parseCell (r[c])) < 0.5);
+        }
+    }
+    auto s = cg::Settings::defaults();
+    s.hmfGain = rOf (TaperId::hmfGain, 12.0);
+    s.hmfFreq = rOf (TaperId::hmfFreq, 3500.0);
+    s.hmfX3 = true;
+    // the effective centre: 2.88 x 3.27 kHz = 9.4 kHz: the peak of the response lies there
+    double best = 0.0, bestF = 0.0;
+    for (double f = 7000.0; f < 13000.0; f += 100.0)
+    {
+        const double d = stripMagnitudeDb (s, 96000.0, f);
+        if (d > best) { best = d; bestF = f; }
+    }
+    CHECK (std::abs (bestF - 9400.0) < 400.0);
+}
+
+TEST_CASE ("sample-rate rule: HMF nearly rate independent", "[eq]")
 {
     auto s = cg::Settings::defaults();
     s.hmfGain = rOf (TaperId::hmfGain, 12.0);
-    s.lpFreq = rOf (TaperId::lpFreq, 8000.0);
     for (double f : { 100.0, 1000.0, 3500.0, 10000.0, 15000.0 })
     {
         const double a = stripMagnitudeDb (s, 44100.0, f), b = stripMagnitudeDb (s, 96000.0, f);

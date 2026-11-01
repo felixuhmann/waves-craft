@@ -117,10 +117,14 @@ private:
 class LowPassTarget
 {
 public:
-    static const LowPassTarget& get()
+    // Spec r2 3.2 / 8: per-rate targets. 44.1 kHz and 48 kHz have their own tables; 88.2 kHz and above use the 96 kHz
+    // table; in between (not specified) the nearest lower table applies.
+    static const LowPassTarget& forRate (double fs)
     {
-        static const LowPassTarget instance;
-        return instance;
+        static const LowPassTarget t44 (spec_tables::lp_target_44100, spec_tables::lp_target_44100_count);
+        static const LowPassTarget t48 (spec_tables::lp_target_48000, spec_tables::lp_target_48000_count);
+        static const LowPassTarget t96 (spec_tables::lp_target, spec_tables::lp_target_count);
+        return fs < 46000.0 ? t44 : (fs < 88200.0 ? t48 : t96);
     }
 
     const std::vector<double>& rowR() const noexcept { return rs; }
@@ -154,9 +158,9 @@ public:
     }
 
 private:
-    LowPassTarget()
+    LowPassTarget (const char* const* lines, int count)
     {
-        const auto t = parseCsv (spec_tables::lp_target, spec_tables::lp_target_count);
+        const auto t = parseCsv (lines, count);
         for (size_t c = 1; c < t.header.size(); ++c)
         {
             std::string h = t.header[c];
@@ -191,7 +195,7 @@ public:
         if (sampleRate == fsPrepared && ! rowCoeffs.empty())
             return;
         fsPrepared = sampleRate;
-        const auto& rs = LowPassTarget::get().rowR();
+        const auto& rs = LowPassTarget::forRate (sampleRate).rowR();
         denseR.clear();
         for (size_t k = 0; k + 1 < rs.size(); ++k)
             for (int j = 0; j < subdivisions; ++j)
@@ -232,7 +236,7 @@ private:
 
     static Grid makeGrid (double r, double fs)
     {
-        const auto& target = LowPassTarget::get();
+        const auto& target = LowPassTarget::forRate (fs);
         Grid g;
         const double fMax = std::min (20000.0, 0.45 * fs);
         const int n = 64;

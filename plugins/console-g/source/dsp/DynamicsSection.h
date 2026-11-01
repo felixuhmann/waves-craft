@@ -23,66 +23,60 @@ struct DynamicsSettings
     double expRelease = 0.2;    // s
 };
 
-// Structure (spec 5 "peak-sensitive" detector, 6 "same linked detector", one gain element):
-//   rectifier:  e1 = max(p, e1 * exp(-1/(tau1 fs))), p = max_c |sidechain_c| (instant attack, 0.3 ms decay);
-//   level:      e2 one-pole on e1 in the linear domain: attack = the (auto / fast) attack constant, release short;
-//               L = 20 log10 e2 - cal + delta  (cal: the mean reading of a steady 1 kHz sine, so L = sine peak dBFS)
-//   gain:       g_i = curve(L) (curve = comp_static row incl. make-up); the output gain follows g_i instantly
-//               downwards and recovers with the release constant in dB (exponential in dB, slower for the last few dB
-//               of reduction - "program dependent", spec 5).
-//   expander:   ex = one-pole (0.3 ms / 15 ms) of e1 -> level -> depth state D (attack = opening, release = closing).
-// Peak sensitivity (noise vs sine) and the timing dependence of the static gain (fast attack / long release reduce a
-// steady sine more) follow from the detector ripple held by the release stage; `delta` adds the residual measured
-// offsets of spec 9.2 (fast attack, release 4 s) as a level shift.
+// Structure (spec r2 sections 5, 5.1, 6; one linked detector, one gain element):
+//   rectifier:  e1 = max(p, e1 * exp(-1/(tau1 fs))), p = max_c |sidechain_c|;
+//   level:      e2 one-pole on e1 (linear domain, short constants). Auto: symmetric, reads the mean of e1. Fast: quick
+//               attack, slower release, reads near the peak - that reading difference is the extra static reduction
+//               of fast attack (spec 5), and its ripple is the fast-attack gain modulation (H3);
+//               L = 20 log10 e2 - cal + delta (cal: auto reading of a 1 kHz sine, so L = sine peak dBFS);
+//   gain:       g_i = curve(L) - make-up (curve = comp_static row), then a smoother IN dB: two parallel one-poles with
+//               the same attack and different releases, output = w g1 + (1-w) g2. Being linear in dB, the relative
+//               times do not depend on threshold, ratio or depth (spec 5.1).
+//   expander:   ex = one-pole (attack, short release) of e1 -> level -> depth state D.
 struct DetectorConstants
 {
-    static constexpr double stage1TauMs = 0.04;
-    static constexpr double attackScale = 2.6;            // x comp_model_fit attack constants (auto attack)
-    static constexpr double fastAttackMs = 1.8;
-    // level-stage release: a fixed fraction of the attack constant (keeps the detector's peak sensitivity the same
-    // for all auto-attack settings), fixed for fast attack
-    static constexpr double levelReleaseRatio = 0.035, levelReleaseFastMs = 5.0;
-    static double levelReleaseMs (double T, double ratio, bool fast) noexcept
-    {
-        return fast ? levelReleaseFastMs : std::max (3.0, attackMs (T, ratio, false) * levelReleaseRatio);
-    }
-    static constexpr double attackBoost = 4.0, attackBoostSpanDb = 20.0; // attack speeds up close to the target
-    static constexpr double releaseScale04 = 0.95;        // x comp_model_fit release constants (release 0.4 s)
-    // release slows for small reduction: factor 1 + K exp(g / releaseTailDb), K = tail * (release / 0.4 s)^exponent
-    static constexpr double releaseTail = 3.0, releaseTailFast = 6.0, releaseTailDb = 4.0;
-    static constexpr double releaseTailExp = 0.5, releaseTailExpFast = 1.0;
-    static double tailK (bool fast, double releaseS) noexcept
-    {
-        return fast ? releaseTailFast * std::pow (releaseS / 0.4, releaseTailExpFast)
-                    : releaseTail * std::pow (releaseS / 0.4, releaseTailExp);
-    }
-    static constexpr double release12Extra = 1.3;
-    static constexpr double fastDeltaDb = 3.3;            // residual static offsets (spec 9.2), level shift
-    static constexpr double releaseDeltaDbPerDecade = 2.1;
+    static constexpr double stage1TauMs = 0.06;
+    static constexpr double levelAutoMs = 1.0;
+    static constexpr double levelFastAttackMs = 0.8, levelFastReleaseMs = 5.0;
+    static constexpr double attackMs = 42.0, fastAttackMs = 1.7;
+    // Gain-modulation distortion (spec 5, r2 10): a small part of the detector ripple reaches the gain directly.
+    static constexpr double rippleAuto = 0.018, rippleFast = 0.33;
+    static constexpr double calTrimDb = 0.1;
+    static constexpr double fastDeltaDb = 0.8;            // residual level shift of fast attack (spec 9.2)
+    static constexpr double releaseDeltaDbPerDecade = 2.1; // level shift vs release (spec 9.2, release 4 s row)
 
-    static constexpr double expSmoothAttackMs = 0.3, expSmoothReleaseMs = 15.0;
-    static constexpr double expOpenMs = 3.0, expOpenFastMs = 0.3;
-    // Closing (release): the depth state D moves towards its full depth (a * range for the expander, floor + offset
-    // for the gate) exponentially, tau = factor * release, and stops at the level-dependent target. Small level
-    // steps therefore settle quickly while a full closing takes ~release (fitted to the exp_static staircases: the
-    // first step after silence and the closing step of the gate's down staircase).
-    static constexpr double closeFactorExp = 1.05, closeFactorGate = 1.1;
+    static constexpr double expSmoothAttackMs = 2.5, expSmoothReleaseMs = 3.0;
+    static constexpr double expOpenMs = 1.9, expOpenFastMs = 0.2;
     static constexpr double silenceLevel = 1.0e-6;        // -120 dBFS: below this the expander state holds
 
-    // Release-control scaling relative to 0.4 s (spec 5 timing table, 63 % points: 87 / 126 / 345 ms for
-    // 0.1 / 0.4 / 1.2 s; log-log extrapolation beyond) and the fast-attack release factor (66/126, 30/87 ms).
-    static double releaseScale (double releaseS) noexcept
+    // Closing of expander / gate: tau vs release (spec r2 section 6 tables: 0.2 s -> 0.205, 1 s -> 0.77, 4 s -> 2.8).
+    static double closeTauSeconds (double releaseS) noexcept
     {
-        static const std::vector<double> x { std::log (0.1), std::log (0.4), std::log (1.2) };
-        static const std::vector<double> y { std::log (87.0 / 126.0), 0.0, std::log (345.0 / 126.0 * release12Extra) };
+        static const std::vector<double> x { std::log (0.2), std::log (1.0), std::log (4.0) };
+        static const std::vector<double> y { std::log (0.205), std::log (0.77), std::log (2.8) };
         return std::exp (interpLinearExtrap (x, y, std::log (std::max (0.01, releaseS))));
     }
-    static double fastReleaseFactor (double releaseS) noexcept
+
+    struct ReleaseLaw { double w, tau1Ms, tau2Ms; };
+
+    // Two-exponential fit of the spec 5.1 release rows (t50/t63/t90), interpolated in ln(release).
+    static ReleaseLaw releaseLaw (bool fast, double releaseS) noexcept
     {
-        static const std::vector<double> x { std::log (0.1), std::log (0.4) };
-        static const std::vector<double> y { std::log (30.0 / 87.0), std::log (66.0 / 126.0) };
-        return std::exp (interpLinear (x, y, std::log (std::max (0.01, releaseS))));
+        static const std::vector<double> x { std::log (0.1), std::log (0.4), std::log (1.2), std::log (4.0) };
+        static const std::vector<double> w { 1.0, 0.643, 0.346, 0.1 };
+        static const std::vector<double> t1 { std::log (84.5), std::log (95.2), std::log (88.7), std::log (20.0) };
+        static const std::vector<double> t2 { std::log (215.1), std::log (215.1), std::log (461.2), std::log (524.0) };
+        const double lr = std::log (std::max (0.01, releaseS));
+        if (! fast)
+            return { interpLinear (x, w, lr), std::exp (interpLinear (x, t1, lr)), std::exp (interpLinear (x, t2, lr)) };
+        if (releaseS >= 0.4) // above the measured fast rows: the slow part scales like the auto law
+            return { 0.84, 44.0, 741.9 * std::exp (interpLinear (x, t2, lr)) / 215.1 };
+        static const std::vector<double> fx { std::log (0.1), std::log (0.4) };
+        static const std::vector<double> fw { 1.0, 0.84 };
+        static const std::vector<double> ft1 { std::log (22.0), std::log (44.0) };
+        return { interpLinear (fx, fw, lr), std::exp (interpLinear (fx, ft1, lr)), 741.9 };
     }
+
     static double interpLinearExtrap (const std::vector<double>& xs, const std::vector<double>& ys, double x) noexcept
     {
         if (x <= xs.front() || x >= xs.back())
@@ -95,107 +89,40 @@ struct DetectorConstants
 
     static double alpha (double tauMs, double fs) noexcept { return 1.0 - std::exp (-1000.0 / (std::max (tauMs, 1.0e-3) * fs)); }
 
-    static double attackMs (double T, double ratio, bool fast) noexcept
-    {
-        return fast ? fastAttackMs : CompressorTiming::get().autoAttackMs (T, ratio) * attackScale;
-    }
-    static double gainReleaseMs (double T, double ratio, bool fast, double releaseS) noexcept
-    {
-        double r = CompressorTiming::get().releaseMs04 (T, ratio) * releaseScale04 * releaseScale (releaseS);
-        return fast ? r * fastReleaseFactor (releaseS) : r;
-    }
     static double deltaDb (bool fast, double releaseS) noexcept
     {
         return (fast ? fastDeltaDb : 0.0) + releaseDeltaDbPerDecade * std::log10 (std::max (0.01, releaseS) / 0.4);
     }
 
-    // level stage (linear domain)
-    static double levelStep (double e2, double e1, double aA, double aR, double boostAmount = attackBoost) noexcept
-    {
-        if (e1 > e2)
-        {
-            const double gapDb = gainToDb (e1) - gainToDb (std::max (e2, 1.0e-12));
-            const double boost = 1.0 + boostAmount * std::max (0.0, 1.0 - gapDb / attackBoostSpanDb);
-            return e2 + std::min (1.0, aA * boost) * (e1 - e2);
-        }
-        return e2 + aR * (e1 - e2);
-    }
-    // gain release stage (dB domain): g <= 0 reduction excluding make-up
-    static double gainStep (double g, double gi, double aG, double tail) noexcept
-    {
-        if (gi <= g)
-            return gi;
-        return g + aG / (1.0 + tail * std::exp (g / releaseTailDb)) * (gi - g);
-    }
+    static double levelStep (double e2, double e1, double aA, double aR) noexcept { return e2 + (e1 > e2 ? aA : aR) * (e1 - e2); }
 };
 
-// Mean reading (dB re. sine peak) of the level stage for a steady 1 kHz sine.
-inline double simulateLevelReadingDb (double attackMs, double releaseMs, double boost = DetectorConstants::attackBoost,
-                                      double fs = 48000.0)
+// Mean reading (dB re. sine peak) of a level stage for a steady 1 kHz sine.
+inline double simulateLevelReadingDb (double attackMs, double releaseMs, double fs = 48000.0)
 {
     const double d1 = std::exp (-1000.0 / (DetectorConstants::stage1TauMs * fs));
     const double aA = DetectorConstants::alpha (attackMs, fs), aR = DetectorConstants::alpha (releaseMs, fs);
     double e1 = 0.0, e2 = 0.0, acc = 0.0;
-    const int settle = int (fs * std::max (0.5, 10.0 * attackMs / 1000.0)), measure = int (fs * 0.1);
+    const int settle = int (fs * 0.2), measure = int (fs * 0.1);
     for (int i = 0; i < settle + measure; ++i)
     {
         e1 = std::max (std::abs (std::sin (2.0 * pi * 1000.0 * i / fs)), e1 * d1);
-        e2 = DetectorConstants::levelStep (e2, e1, aA, aR, boost);
+        e2 = DetectorConstants::levelStep (e2, e1, aA, aR);
         if (i >= settle)
             acc += gainToDb (e2);
     }
     return acc / measure;
 }
 
-// Reading offsets on the comp_static grid (threshold x ratio) for auto attack, and for fast attack.
-class DetectorCalibration
+// Level calibration (a function of the rate only through small sampling effects, so computed once per rate).
+struct DetectorCalibration
 {
-public:
-    static const DetectorCalibration& get()
+    double comp = 0.0, expander = 0.0;
+    explicit DetectorCalibration (double fs = 48000.0)
     {
-        static const DetectorCalibration c;
-        return c;
+        comp = simulateLevelReadingDb (DetectorConstants::levelAutoMs, DetectorConstants::levelAutoMs, fs) + DetectorConstants::calTrimDb;
+        expander = simulateLevelReadingDb (DetectorConstants::expSmoothAttackMs, DetectorConstants::expSmoothReleaseMs, fs);
     }
-
-    double compOffsetDb (double T, double ratio, bool fast) const noexcept
-    {
-        if (fast)
-            return fastOffset;
-        const auto& ts = CompressorTable::get().thresholdGrid();
-        const double tc = std::min (ts.back(), std::max (ts.front(), T));
-        const size_t ti = segmentIndex (ts, tc);
-        const double tt = (tc - ts[ti]) / (ts[ti + 1] - ts[ti]);
-        const double u = std::max (us.front(), CompressorTable::uOf (ratio));
-        const size_t ui = segmentIndex (us, u);
-        const double tu = std::min (1.0, std::max (0.0, (u - us[ui]) / (us[ui + 1] - us[ui])));
-        auto v = [&] (size_t a, size_t b) { return grid[a][b]; };
-        const double g0 = v (ti, ui) + tu * (v (ti, ui + 1) - v (ti, ui));
-        const double g1 = v (ti + 1, ui) + tu * (v (ti + 1, ui + 1) - v (ti + 1, ui));
-        return g0 + tt * (g1 - g0);
-    }
-    double expanderOffsetDb() const noexcept { return expOffset; }
-
-private:
-    DetectorCalibration()
-    {
-        const auto& tab = CompressorTable::get();
-        for (double R : tab.ratioGrid())
-            us.push_back (CompressorTable::uOf (R));
-        for (double T : tab.thresholdGrid())
-        {
-            std::vector<double> row;
-            for (double R : tab.ratioGrid())
-                row.push_back (simulateLevelReadingDb (DetectorConstants::attackMs (T, R, false), DetectorConstants::levelReleaseMs (T, R, false)));
-            grid.push_back (row);
-        }
-        fastOffset = simulateLevelReadingDb (DetectorConstants::fastAttackMs, DetectorConstants::levelReleaseFastMs, 0.0);
-        // the expander smoother has the same structure (plain one-pole, no attack boost difference matters little)
-        expOffset = simulateLevelReadingDb (DetectorConstants::expSmoothAttackMs, DetectorConstants::expSmoothReleaseMs);
-    }
-
-    std::vector<double> us;
-    std::vector<std::vector<double>> grid;
-    double fastOffset = 0.0, expOffset = 0.0;
 };
 
 class DynamicsSection
@@ -205,16 +132,17 @@ public:
     {
         fs = sampleRate;
         d1 = std::exp (-1000.0 / (DetectorConstants::stage1TauMs * fs));
+        rippleAlpha = DetectorConstants::alpha (2.0, fs);
         xA = DetectorConstants::alpha (DetectorConstants::expSmoothAttackMs, fs);
         xR = DetectorConstants::alpha (DetectorConstants::expSmoothReleaseMs, fs);
-        (void) DetectorCalibration::get();
+        calibration = DetectorCalibration (fs);
         reset();
         setSettings (settings, true);
     }
 
     void reset() noexcept
     {
-        e1 = e2 = ex = gs = 0.0;
+        e1 = e2 = ex = gs1 = gs2 = giSlow = 0.0;
         depth = 0.0;
         gateOpen = true;
     }
@@ -232,13 +160,15 @@ public:
             curve = CompressorTable::get().curve (s.compThreshold, s.compRatio);
             compActive = CompressorTable::uOf (s.compRatio) > 0.0;
             makeupDb = curve[0];
-            calibDb = DetectorCalibration::get().compOffsetDb (s.compThreshold, s.compRatio, s.compFast)
-                      - DetectorConstants::deltaDb (s.compFast, s.compRelease);
-            aA = DetectorConstants::alpha (DetectorConstants::attackMs (s.compThreshold, s.compRatio, s.compFast), fs);
-            aR = DetectorConstants::alpha (DetectorConstants::levelReleaseMs (s.compThreshold, s.compRatio, s.compFast), fs);
-            tail = DetectorConstants::tailK (s.compFast, s.compRelease);
-            aG = DetectorConstants::alpha (
-                DetectorConstants::gainReleaseMs (s.compThreshold, s.compRatio, s.compFast, s.compRelease), fs);
+            calibDb = calibration.comp - DetectorConstants::deltaDb (s.compFast, s.compRelease);
+            aA = DetectorConstants::alpha (s.compFast ? DetectorConstants::levelFastAttackMs : DetectorConstants::levelAutoMs, fs);
+            aR = DetectorConstants::alpha (s.compFast ? DetectorConstants::levelFastReleaseMs : DetectorConstants::levelAutoMs, fs);
+            const auto law = DetectorConstants::releaseLaw (s.compFast, s.compRelease);
+            gW = law.w;
+            ripple = s.compFast ? DetectorConstants::rippleFast : DetectorConstants::rippleAuto;
+            gA = DetectorConstants::alpha (s.compFast ? DetectorConstants::fastAttackMs : DetectorConstants::attackMs, fs);
+            gR1 = DetectorConstants::alpha (law.tau1Ms, fs);
+            gR2 = DetectorConstants::alpha (law.tau2Ms, fs);
         }
         if (! expChanged)
             return;
@@ -261,9 +191,7 @@ public:
             depthCap = em.expanderDepthMax (s.expRange);
         }
         openAlpha = DetectorConstants::alpha (s.expFast ? DetectorConstants::expOpenFastMs : DetectorConstants::expOpenMs, fs);
-        const double rel = std::max (0.001, s.expRelease);
-        closeAlpha = DetectorConstants::alpha (
-            1000.0 * rel * (s.gate ? DetectorConstants::closeFactorGate : DetectorConstants::closeFactorExp), fs);
+        closeAlpha = DetectorConstants::alpha (1000.0 * DetectorConstants::closeTauSeconds (s.expRelease), fs);
     }
 
     // One sample: linked detector input peak (max over channels of |sidechain|) -> total dynamics gain in dB.
@@ -275,21 +203,24 @@ public:
         compDb = 0.0;
         if (compActive)
         {
-            e2 = DetectorConstants::levelStep (e2, e1, aA, aR, settings.compFast ? 0.0 : DetectorConstants::attackBoost);
+            e2 = DetectorConstants::levelStep (e2, e1, aA, aR);
             const double gi = CompressorTable::evaluate (curve, gainToDb (e2) - calibDb) - makeupDb;
-            gs = DetectorConstants::gainStep (gs, gi, aG, tail);
-            compDb = gs + makeupDb;
+            gs1 += (gi < gs1 ? gA : gR1) * (gi - gs1);
+            gs2 += (gi < gs2 ? gA : gR2) * (gi - gs2);
+            const double g = gW * gs1 + (1.0 - gW) * gs2;
+            giSlow += rippleAlpha * (gi - giSlow);
+            compDb = g + ripple * (0.2 - 0.1 * g) * (gi - giSlow) + makeupDb; // AC part only; grows with the reduction
         }
         else
         {
             e2 = e1;
-            gs = 0.0;
+            gs1 = gs2 = 0.0;
         }
 
         expDb = 0.0;
         if (e1 > DetectorConstants::silenceLevel) // digital silence: the expander state holds
         {
-            const double level = gainToDb (ex) - DetectorCalibration::get().expanderOffsetDb();
+            const double level = gainToDb (ex) - calibration.expander;
             double target;
             if (settings.gate)
             {
@@ -328,7 +259,7 @@ public:
 
     void sanitise() noexcept
     {
-        if (! std::isfinite (e1) || ! std::isfinite (e2) || ! std::isfinite (ex) || ! std::isfinite (gs) || ! std::isfinite (depth) || e1 > 1.0e6)
+        if (! std::isfinite (e1) || ! std::isfinite (e2) || ! std::isfinite (ex) || ! std::isfinite (gs1) || ! std::isfinite (gs2) || ! std::isfinite (depth) || e1 > 1.0e6)
             reset();
     }
 
@@ -338,8 +269,9 @@ private:
     CompressorTable::Curve curve {};
     bool compActive = false, expActive = false;
     double makeupDb = 0.0, calibDb = 0.0;
-    double d1 = 0.0, aA = 0.0, aR = 0.0, aG = 0.0, tail = 1.0, xA = 0.0, xR = 0.0;
-    double e1 = 0.0, e2 = 0.0, ex = 0.0, gs = 0.0;
+    double d1 = 0.0, aA = 0.0, aR = 0.0, gA = 0.0, gR1 = 0.0, gR2 = 0.0, gW = 1.0, ripple = 0.0, rippleAlpha = 0.0, giSlow = 0.0, xA = 0.0, xR = 0.0;
+    double e1 = 0.0, e2 = 0.0, ex = 0.0, gs1 = 0.0, gs2 = 0.0;
+    DetectorCalibration calibration;
     double expOnset = -48.0, expSlope = 1.2, gateOpenLevel = -45.0, gateCloseLevel = -50.0;
     double offset = 6.0, floorDb = 0.0, depthCap = 0.0, openAlpha = 0.0, closeAlpha = 0.0;
     double depth = 0.0;

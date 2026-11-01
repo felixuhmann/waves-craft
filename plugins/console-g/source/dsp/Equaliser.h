@@ -47,7 +47,7 @@ class ShelfTable
 public:
     static const ShelfTable& lf()
     {
-        static const ShelfTable t (spec_tables::lf_shelf, spec_tables::lf_shelf_count);
+        static const ShelfTable t (spec_tables::lf_shelf, spec_tables::lf_shelf_count, true);
         return t;
     }
     static const ShelfTable& hf()
@@ -99,7 +99,7 @@ private:
         }
     };
 
-    ShelfTable (const char* const* lines, int count)
+    ShelfTable (const char* const* lines, int count, bool withExtraRows = false)
     {
         const auto t = parseCsv (lines, count);
         const int cG = t.column ("gain_dB"), cF = t.column ("freq_Hz"), cB0 = t.column ("B0"), cB1 = t.column ("B1"),
@@ -113,6 +113,102 @@ private:
             pts.push_back (p);
             byFreq[p.freq][p.gain] = p.proto;
         }
+        buildRows (byFreq);
+        if (withExtraRows)
+        {
+            // Spec r2 10: measured magnitude rows at LF 450 Hz (+6.0, +11.9 dB) are fitted to prototypes and join the row.
+            const auto extra = parseCsv (spec_tables::lf_450_extra, spec_tables::lf_450_extra_count);
+            std::vector<double> freqs;
+            for (size_t c = 1; c < extra.header.size(); ++c)
+                freqs.push_back (std::strtod (extra.header[c].c_str(), nullptr));
+            for (const auto& r : extra.rows)
+            {
+                std::vector<double> db;
+                for (size_t c = 1; c < r.size(); ++c)
+                    db.push_back (parseCell (r[c]));
+                const double g = parseCell (r[0]);
+                byFreq[450.0][g] = fitToMagnitude (prototype (g, 450.0), freqs, db);
+            }
+            rows.clear();
+            rowLogF.clear();
+            buildRows (byFreq);
+        }
+    }
+
+    // Levenberg-Marquardt on q: the analog prototype magnitude against a measured magnitude row.
+    static ShelfPrototype fitToMagnitude (const ShelfPrototype& start, const std::vector<double>& f, const std::vector<double>& db)
+    {
+        auto residuals = [&] (const std::array<double, 5>& q) {
+            const auto p = ShelfPrototype::fromQ (q);
+            std::vector<double> e (f.size());
+            for (size_t i = 0; i < f.size(); ++i)
+                e[i] = gainToDb (std::abs (p.response (f[i]))) - db[i];
+            return e;
+        };
+        auto sq = [] (const std::vector<double>& e) { double a = 0; for (double v : e) a += v * v; return a; };
+        auto q = start.toQ();
+        auto e = residuals (q);
+        double cost = sq (e), lambda = 1.0e-3;
+        for (int it = 0; it < 60; ++it)
+        {
+            double A[5][6] = {};
+            std::array<std::vector<double>, 5> J;
+            for (size_t k = 0; k < 5; ++k)
+            {
+                auto qd = q;
+                qd[k] += 1.0e-5;
+                const auto ed = residuals (qd);
+                J[k].resize (e.size());
+                for (size_t i = 0; i < e.size(); ++i)
+                    J[k][i] = (ed[i] - e[i]) / 1.0e-5;
+            }
+            for (size_t a = 0; a < 5; ++a)
+            {
+                for (size_t b = 0; b < 5; ++b)
+                    for (size_t i = 0; i < e.size(); ++i)
+                        A[a][b] += J[a][i] * J[b][i];
+                A[a][a] *= 1.0 + lambda;
+                for (size_t i = 0; i < e.size(); ++i)
+                    A[a][5] -= J[a][i] * e[i];
+            }
+            for (int c = 0; c < 5; ++c)
+            {
+                int piv = c;
+                for (int r = c + 1; r < 5; ++r)
+                    if (std::abs (A[r][c]) > std::abs (A[piv][c]))
+                        piv = r;
+                for (int k = 0; k < 6; ++k)
+                    std::swap (A[c][k], A[piv][k]);
+                if (std::abs (A[c][c]) < 1.0e-300)
+                    continue;
+                for (int r = 0; r < 5; ++r)
+                    if (r != c)
+                    {
+                        const double m = A[r][c] / A[c][c];
+                        for (int k = c; k < 6; ++k)
+                            A[r][k] -= m * A[c][k];
+                    }
+            }
+            auto next = q;
+            for (size_t k = 0; k < 5; ++k)
+                next[k] += A[k][5] / A[k][k];
+            const auto en = residuals (next);
+            const double c2 = sq (en);
+            if (std::isfinite (c2) && c2 < cost)
+            {
+                q = next;
+                e = en;
+                cost = c2;
+                lambda = std::max (1.0e-9, lambda * 0.3);
+            }
+            else
+                lambda *= 5.0;
+        }
+        return ShelfPrototype::fromQ (q);
+    }
+
+    void buildRows (const std::map<double, std::map<double, ShelfPrototype>>& byFreq)
+    {
         // Gain grid of one frequency row incl. the flat point q_flat = (0, ln wp, ln zp, ln wp, ln zp) of the nearest
         // non-zero gain (ties: mean of both).
         using GainMap = std::map<double, ShelfPrototype>;
@@ -312,7 +408,7 @@ struct BellParams
             const double f = 20.0 * std::pow (fMax / 20.0, double (i) / (n - 1));
             w[i] = 2.0 * pi * f / fs;
             mag[i] = std::abs (p.response (f));
-            wt[i] = f > 20000.0 ? 0.05 : 1.0;
+            wt[i] = f > 20000.0 ? 0.02 : (f > 15000.0 ? 0.3 : 1.0);
         }
         w[n] = 2.0 * pi * fc / fs; // extra weight at the centre
         mag[n] = std::abs (p.response (fc));
@@ -320,6 +416,7 @@ struct BellParams
         BiquadCoeffs c;
         if (! MagnitudeFit::fitNumerator (a1, a2, w, mag, wt, n + 1, c))
             return p.bilinear (fs);
+        MagnitudeFit::refineRational (w, mag, wt, n + 1, c);
         return c;
     }
 };

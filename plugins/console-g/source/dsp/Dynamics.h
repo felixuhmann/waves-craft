@@ -112,63 +112,6 @@ private:
 };
 
 // ---------------------------------------------------------------------------------------------
-// Time-constant laws. The per-setting fit of tables/comp_model_fit.csv gives one-pole attack / release constants
-// for release 0.4 s (T 0/-10/-20, R 2/4/inf), which this implementation interpolates bilinearly in T and
-// u = 1 - 1/R ("auto" attack is program / setting dependent: slower for deeper reduction). The release control
-// scales the release constant along the measured 0.1 / 0.4 / 1.2 s points (spec 5 timing table) and beyond.
-class CompressorTiming
-{
-public:
-    static const CompressorTiming& get()
-    {
-        static const CompressorTiming t;
-        return t;
-    }
-
-    double autoAttackMs (double T, double ratio) const noexcept { return bilinear (attack, T, ratio); }
-    double releaseMs04 (double T, double ratio) const noexcept { return bilinear (release, T, ratio); }
-
-private:
-    CompressorTiming()
-    {
-        const auto t = parseCsv (spec_tables::comp_model_fit, spec_tables::comp_model_fit_count);
-        const int cT = t.column ("threshold_dB"), cR = t.column ("ratio"), cRel = t.column ("release_s"),
-                  cF = t.column ("fast_attack"), cA = t.column ("attack_tau_ms"), cRt = t.column ("release_tau_ms");
-        for (const auto& r : t.rows)
-        {
-            if (std::abs (parseCell (r[size_t (cRel)]) - 0.4) > 1e-9 || parseCell (r[size_t (cF)]) > 0.5)
-                continue;
-            const double T = parseCell (r[size_t (cT)]), u = CompressorTable::uOf (parseCell (r[size_t (cR)]));
-            attack[T][u] = parseCell (r[size_t (cA)]);
-            release[T][u] = parseCell (r[size_t (cRt)]);
-        }
-    }
-
-    static double bilinear (const std::map<double, std::map<double, double>>& m, double T, double ratio) noexcept
-    {
-        std::vector<double> ts;
-        for (const auto& kv : m)
-            ts.push_back (kv.first);
-        const double tc = std::min (ts.back(), std::max (ts.front(), T));
-        const size_t i = segmentIndex (ts, tc);
-        const double tt = (tc - ts[i]) / (ts[i + 1] - ts[i]);
-        auto along = [&] (const std::map<double, double>& row) {
-            std::vector<double> u, v;
-            for (const auto& kv : row)
-            {
-                u.push_back (kv.first);
-                v.push_back (kv.second);
-            }
-            return interpLinear (u, v, CompressorTable::uOf (ratio));
-        };
-        const double a = along (m.at (ts[i])), b = along (m.at (ts[i + 1]));
-        return a + tt * (b - a);
-    }
-
-    std::map<double, std::map<double, double>> attack, release;
-};
-
-// ---------------------------------------------------------------------------------------------
 // Expander / gate constants derived from tables/exp_static.csv at start-up (spec 6):
 //  - per threshold T: the slope s(T) (dB per dB, ~1.2) and the onset level Lth(T) (dBFS) of the expansion,
 //    least-squares fitted to the settled range-40 down-staircase points;

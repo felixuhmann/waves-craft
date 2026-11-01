@@ -129,6 +129,78 @@ struct MagnitudeFit
         return true;
     }
 
+    // Refines poles and numerator together: |H|^2 is a ratio of functions linear in (B0, B1, B2) and (A0 = 1, A1, A2),
+    // so with Sanathanan-Koerner weighting this is a linear least-squares problem (two passes, starting from `io`).
+    // Factorising A this way always gives a stable filter. Keeps `io` if the fit is not realisable or not better.
+    static void refineRational (const double* w, const double* mag, const double* wt, int n, BiquadCoeffs& io) noexcept
+    {
+        auto worst = [&] (const BiquadCoeffs& c) {
+            double e = 0.0;
+            for (int i = 0; i < n; ++i)
+            {
+                const auto z1 = std::polar (1.0, -w[i]);
+                const auto z2 = z1 * z1;
+                const double m = std::abs ((c.b0 + c.b1 * z1 + c.b2 * z2) / (1.0 + c.a1 * z1 + c.a2 * z2));
+                e += wt[i] * std::pow (gainToDb (m) - gainToDb (mag[i]), 2.0);
+            }
+            return e;
+        };
+        BiquadCoeffs c = io;
+        double scale = (1 + c.a1 + c.a2) * (1 + c.a1 + c.a2); // A0 normalised to 1
+        double dA1 = (1 - c.a1 + c.a2) * (1 - c.a1 + c.a2) / scale, dA2 = -4.0 * c.a2 / scale;
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            double M[5][6] = {};
+            for (int i = 0; i < n; ++i)
+            {
+                const auto p = phis (w[i]);
+                const double den = p[0] + dA1 * p[1] + dA2 * p[2];
+                const double t = mag[i] * mag[i];
+                if (! (t > 0.0) || ! (den > 0.0))
+                    continue;
+                // B . phi / t - (phi0 + A1 phi1 + A2 phi2) = 0, weighted by 1 / den
+                const double r[5] = { p[0] / (t * den), p[1] / (t * den), p[2] / (t * den), -p[1] / den, -p[2] / den };
+                const double rhs = p[0] / den;
+                for (int a = 0; a < 5; ++a)
+                {
+                    for (int b = 0; b < 5; ++b)
+                        M[a][b] += wt[i] * r[a] * r[b];
+                    M[a][5] += wt[i] * r[a] * rhs;
+                }
+            }
+            for (int col = 0; col < 5; ++col)
+            {
+                int piv = col;
+                for (int r = col + 1; r < 5; ++r)
+                    if (std::abs (M[r][col]) > std::abs (M[piv][col]))
+                        piv = r;
+                if (std::abs (M[piv][col]) < 1.0e-300)
+                    return;
+                for (int k = 0; k < 6; ++k)
+                    std::swap (M[col][k], M[piv][k]);
+                for (int r = 0; r < 5; ++r)
+                    if (r != col)
+                    {
+                        const double f = M[r][col] / M[col][col];
+                        for (int k = col; k < 6; ++k)
+                            M[r][k] -= f * M[col][k];
+                    }
+            }
+            const double x[5] = { M[0][5] / M[0][0], M[1][5] / M[1][1], M[2][5] / M[2][2], M[3][5] / M[3][3], M[4][5] / M[4][4] };
+            if (! (x[3] > 0.0) || ! (x[0] > 0.0) || ! (x[1] > 0.0) || ! std::isfinite (x[2]) || ! std::isfinite (x[4]))
+                return;
+            const auto den = factor (1.0, x[3], x[4]);
+            if (! (den.b0 > 0.0))
+                return;
+            const auto num = factor (x[0], x[1], x[2]);
+            c = { num.b0 / den.b0, num.b1 / den.b0, num.b2 / den.b0, den.b1 / den.b0, den.b2 / den.b0 };
+            dA1 = x[3];
+            dA2 = x[4];
+        }
+        if (worst (c) < worst (io))
+            io = c;
+    }
+
     // (B0, B1, B2) -> (b0, b1, b2), projecting onto the realisable set when the fit left it.
     static BiquadCoeffs factor (double B0, double B1, double B2) noexcept
     {
