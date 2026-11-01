@@ -1,4 +1,4 @@
-// Craft FET Limiter - parameter mappings and display strings (spec r1 section 2). Host independent.
+// Craft FET Limiter - parameter mappings and display strings (spec r2 section 2). Host independent.
 #pragma once
 
 #include <algorithm>

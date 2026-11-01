@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-"""Fits the gain-cell parameters (source/dsp/Dynamics.h) to the spec r1 timing and trajectory tables.
+"""Fits the gain-cell parameters (source/dsp/Dynamics.h) to the spec r2 timing, trajectory and fast-burst tables.
 
 Development aid, not shipped. Usage (from plugins/fet-limiter):
     g++ -O3 -shared -fPIC -Isource tools/simwrap.cpp -o /tmp/libfetsim.so
-    python3 tools/fit_dynamics.py /tmp/libfetsim.so > fit.txt
-
-Staged fit (each stage in parallel):
-  1. rel_4_a3 (= ratio 4, Attack 3, Release 4): all parameters.
-  2. att_1/5/7: attack parameters only (release fixed to stage 1); rel_1/2/3/5/6/7: release parameters only
-     (attack fixed to stage 1); rat_8/20/All_a3_r4 and revB_a3_r4: all parameters.
-  3. rat_8/20/All_a7_r7, revB_a7_r7, revB_a1_r1: all parameters.
-Prints residual reports and a JSON dict of the parameter vectors, which source/dsp/DynamicsMap.h transcribes.
+    python3 tools/fit_dynamics.py /tmp/libfetsim.so [previous_output] > fit.txt
+The last line of the output is the JSON that tools/emit_dynamics_map.py turns into source/dsp/DynamicsMap.h.
 """
+import csv
 import json
 import math
 import multiprocessing
@@ -22,12 +17,15 @@ from scipy.optimize import least_squares
 
 import fetfit_common as fc
 
-NAMES = ["tauA", "beta", "tauC", "tauHc", "tauKc", "tau1", "tau2", "tau3", "offset", "accel", "depthExp"]
-ATTACK = [0, 1, 2]
-RELEASE = [3, 4, 5, 6, 7, 8, 9]
-LOG = [True, False, True, True, True, True, True, True, False, False, False]
-LO = [0.01, -0.6, 0.3, 0.3, 1.0, 3.0, 3.0, 3.0, 0.0, 0.0, 0.0]
-HI = [20.0, 0.6, 300.0, 1000.0, 5000.0, 20000.0, 20000.0, 20000.0, 40.0, 10.0, 4.0]
+NAMES = ["tauA", "beta", "tauC", "tauMc", "tauMd", "tF", "tS", "knee", "depth", "pow", "depthExp", "beta2", "tauC2", "cap", "kneeS"]
+ATTACK = [0, 1, 2, 11, 12, 13]
+RELEASE = [3, 4, 5, 6, 7, 8, 9, 14]
+ALL = ATTACK + RELEASE
+LOG = [True, False, True, True, True, True, True, True, True, False, False, False, True, True, True]
+LO = [0.01, -0.6, 0.3, 0.3, 5.0, 0.2, 0.2, 0.001, 3.0, 0.0, 0.0, -0.8, 0.3, 5.0, 0.001]
+HI = [20.0, 0.6, 20000.0, 5000.0, 20000.0, 5000.0, 5000.0, 40.0, 200.0, 10.0, 4.0, 0.8, 300.0, 1000.0, 200.0]
+GIN = {("A", -12.0): 37.07, ("A", -24.0): 24.74, ("B", -12.0): 40.58}
+INIT = [0.69, -0.07, 413.0, 25.0, 500.0, 110.0, 170.0, 4.0, 35.0, 2.0, 1.74, 0.0, 10.0]
 
 
 def to_t(p):
@@ -38,150 +36,178 @@ def from_t(t):
     return np.array([math.exp(v) if l else v for v, l in zip(t, LOG)])
 
 
-def config_rows(name):
-    return [r for r in fc.load_timing() if r["config"] == name]
+TIMING = fc.load_timing()
+TIMES, TRAJ = fc.load_traj()
+with open(fc.TABLES / "fast_bursts.csv") as f:
+    BURSTS = [r for r in csv.DictReader(f) if "informative" not in r["note"]]
 
 
-def burst_x(rows):
+def soft(r):
+    """Residual in tolerances; exceeding the tolerance costs much more (we want every point inside)."""
+    return r + np.sign(r) * max(0.0, abs(r) - 0.8) * 4.0
+
+
+def cross(rel, level, fs=fc.FS):
+    idx = np.nonzero(rel <= level)[0]
+    return max(idx[0], 0.5) / fs * 1000.0 if len(idx) else 20000.0
+
+
+def x_of_config(rows):
     rev, ratio = rows[0]["revision"], rows[0]["ratio"]
+    if ratio == "All" and rev == "A":
+        return 27.07  # the +30 dB step ends at -10 dBFS, Input -12 (fast_bursts.csv); its creep is r2 13.4
     long = [r for r in rows if float(r["hold_ms"]) == 2000.0][0]
     target = -float(long["gr_end_db"])
-    if "approx" in long["note"]:  # settled GR of approx rows contradicts spec 5; use the regular burst level
+    if "approx" in long["note"]:
         target = 21.3 if rev == "A" else 22.7
-    # (All: the trajectories are relative to the resting gain, i.e. reductions without the All makeup)
     return fc.x_for_reduction(rev, ratio, target)
 
 
-def metrics(g, burst_ms, times):
-    fs = fc.FS
-    nb = int(burst_ms * 0.001 * fs)
-    gend = g[nb - 1]
-    rel = g[nb - 1:]
-    traj = np.array([rel[min(len(rel) - 1, int(t * 0.001 * fs))] for t in times])
-
-    def cross(frac):
-        idx = np.nonzero(rel <= gend * (1 - frac))[0]
-        return max(idx[0], 0.5) / fs * 1000.0 if len(idx) else 9000.0
-
-    idx = np.nonzero(g[:nb] >= 0.63 * gend)[0]
-    t_att = max(idx[0], 0.5) / fs * 1000.0 if len(idx) else 9000.0
-    return gend, traj, cross(0.63), cross(0.90), t_att
-
-
-def residuals_for(p, lib, name, times, traj_tab):
-    rows = config_rows(name)
+def timing_res(p, lib, name):
+    rows = [r for r in TIMING if r["config"] == name]
     rev, ratio = rows[0]["revision"], rows[0]["ratio"]
-    x = burst_x(rows)
+    x = x_of_config(rows)
     res = []
     for r in rows:
         h = float(r["hold_ms"])
-        g = fc.simulate(lib, p, rev, ratio, x, h)
-        gend, traj, t63, t90, tatt = metrics(g, h, times)
-        meas, valid = traj_tab[(name, h)]
+        if ratio == "All" and h == 5.0:
+            continue  # first burst of a stream, informative (r2 13.3)
+        g = fc.simulate(lib, p, rev, ratio, x, h, post_ms=9000.0 if float(r["release"]) < 2.5 else 5200.0)
+        nb = int(h * 0.001 * fc.FS)
+        gend = g[nb - 1]
+        rel = g[nb - 1:]
+        tr = np.array([rel[int(t * 0.001 * fc.FS)] for t in TIMES])
+        meas, valid = TRAJ[(name, h)]
         if valid != "yes":
-            res += list((traj / max(gend, 1e-3) - meas / meas[0]) * 21.0 / 3.0)
+            res += [soft(v) for v in (tr / max(gend, 1e-3) - meas / meas[0]) * 21.0 / 3.0]
         else:
-            res += list((-traj - meas) / 1.5)
-            res.append((-gend - float(r["gr_end_db"])) / 1.5 * 0.5)
+            res += [soft(v) for v in (-tr - meas) / 1.5]
         if r["release_t63_ms"]:
-            res.append(math.log(t63 / float(r["release_t63_ms"])) / 0.22 * 1.5)
+            res.append(soft(math.log(cross(rel, gend * 0.37) / float(r["release_t63_ms"])) / 0.22))
         if r["release_t90_ms"]:
-            res.append(math.log(t90 / float(r["release_t90_ms"])) / 0.22 * 1.5)
-        if r["attack_t63_ms"] and float(r["attack_t63_ms"]) > 0.0:
-            res.append(math.log(tatt / float(r["attack_t63_ms"])) / 0.22 * (2.0 if h == 50.0 else 0.7))
+            res.append(soft(math.log(cross(rel, gend * 0.10) / float(r["release_t90_ms"])) / 0.22))
+        if r["attack_t63_ms"] and float(r["attack_t63_ms"]) > 0 and h == 50.0:
+            idx = np.nonzero(g[:nb] >= 0.63 * gend)[0]
+            res.append(soft(math.log(max(idx[0], 0.5) / fc.FS * 1000.0 / float(r["attack_t63_ms"])) / 0.22))
     return res
 
 
-def fit(lib, name, base, free, init=None):
-    times, traj_tab = fc.load_traj()
-    base = np.array(base, float)
-    if init is not None:  # warm start of the free parameters
-        base = base.copy()
-        base[free] = np.array(init, float)[free]
+def burst_res(p, lib, rev, ratio, att, rel_, report=None):
+    res = []
+    for r in BURSTS:
+        if (r["revision"], r["ratio"], float(r["attack"]), float(r["release"])) != (rev, ratio, att, rel_):
+            continue
+        gin = GIN[(rev, float(r["input_display"]))]
+        shift = -0.25 * max(0.0, GIN[(rev, -12.0)] - gin) if ratio == "All" else 0.0  # see FetEngine.h
+        h = float(r["burst_ms"])
+        g = fc.simulate(lib, p, rev, ratio, float(r["burst_level_dbfs"]) + gin + shift, h, post_ms=900.0, x_base=-40.0 + gin + shift)
+        nb = int(h * 0.001 * fc.FS)
+        rel = g[nb - 1:]
+        at = lambda t: rel[int(t * 0.001 * fc.FS)]
+        e0 = -at(0.5) - float(r["gr_db_at_0p5ms_after_burst"])
+        res.append(soft(e0 / 1.5))
+        for t in (10, 25, 50, 100, 200, 400):
+            res.append(soft((-at(t) - float(r[f"gr_db_at_{t}ms"])) / 1.5))
+        g0 = rel[0]
+        tab_t63 = float(r["release_t63_ms"])
+        if tab_t63 > 0:
+            res.append(soft(math.log(cross(rel, g0 * 0.37) / tab_t63) / 0.22))
+            hold_tab = float(r["hold_ms_until_1db_recovered"])
+            hold = cross(rel, g0 - 1.0)
+            res.append(soft((hold - hold_tab) / max(0.3 * hold_tab, 2.0)))
+    return res
+
+
+def compose(att, rel):
+    v = list(rel)
+    for i in ATTACK:
+        v[i] = att[i]
+    return v
+
+
+def _job(job):
+    """job: name, base vector, free indices, items. item: ('t', config, mode) or ('b', rev, ratio, att, rel, mode).
+    mode 'self' uses the vector being fitted; (attVec, None) takes the release group from it, (None, relVec) the attack
+    group from it, keeping the other group fixed."""
+    lib, name, base, free, items, nfev = job
     tb = to_t(base)
     lo, hi = to_t(LO)[free], to_t(HI)[free]
 
-    def res(tf):
+    def vec(tf, mode):
         t = tb.copy()
         t[free] = tf
-        r = []
-        for n in name.split("+"):
-            r += residuals_for(from_t(t), lib, n, times, traj_tab)
-        return np.array(r)
+        p = list(from_t(t))
+        if mode == "self":
+            return p
+        fixed_att, fixed_rel = mode
+        return compose(fixed_att if fixed_att is not None else p, fixed_rel if fixed_rel is not None else p)
 
-    best = None
-    rng = np.random.default_rng(7)
-    starts = [np.clip(tb[free], lo + 1e-6, hi - 1e-6)]
-    for _ in range(2):
-        jitter = rng.normal(0, 0.5, len(free)) * np.array([0.2 if not LOG[i] else 1.0 for i in free])
-        starts.append(np.clip(tb[free] + jitter, lo + 1e-6, hi - 1e-6))
-    for s in starts:
-        sol = least_squares(res, s, bounds=(lo, hi), max_nfev=60, diff_step=1e-3)
-        if best is None or sol.cost < best.cost:
-            best = sol
+    def res(tf):
+        out = []
+        for it in items:
+            if it[0] == "t":
+                out += timing_res(vec(tf, it[2]), lib, it[1])
+            else:
+                out += burst_res(vec(tf, it[5]), lib, *it[1:5])
+        return np.array(out)
+
+    start = np.clip(tb[free], lo + 1e-6, hi - 1e-6)
+    sol = least_squares(res, start, bounds=(lo, hi), max_nfev=nfev, diff_step=2e-3)
     t = tb.copy()
-    t[free] = best.x
-    return from_t(t)
+    t[free] = sol.x
+    r = res(sol.x)
+    print(f"{name}: rms {np.sqrt(np.mean(r * r)):.2f} over-tol {int(np.sum(np.abs(r) > 1.0))}/{len(r)} "
+          + " ".join(f"{n}={v:.4g}" for n, v in zip(NAMES, from_t(t))), flush=True)
+    return name, list(from_t(t))
 
-
-def report(lib, name, p):
-    if "+" in name:
-        return "\n".join(report(lib, n, p) for n in name.split("+"))
-    times, traj_tab = fc.load_traj()
-    rows = config_rows(name)
-    rev, ratio = rows[0]["revision"], rows[0]["ratio"]
-    x = burst_x(rows)
-    out = [f"== {name}: x={x:.2f}  " + " ".join(f"{n}={v:.4g}" for n, v in zip(NAMES, p))]
-    for r in rows:
-        h = float(r["hold_ms"])
-        g = fc.simulate(lib, p, rev, ratio, x, h)
-        gend, traj, t63, t90, tatt = metrics(g, h, times)
-        meas, valid = traj_tab[(name, h)]
-        err = np.max(np.abs(-traj - meas))
-        out.append(f"  hold {h:6.0f}: gend {-gend:7.2f} ({r['gr_end_db']:>7})  att {tatt:6.3f} ({r['attack_t63_ms'] or '-':>6})"
-                   f"  t63 {t63:7.1f} ({r['release_t63_ms'] or '-':>8})  t90 {t90:7.1f} ({r['release_t90_ms'] or '-':>8})"
-                   f"  traj maxerr {err:5.2f} [{valid}]")
-    return "\n".join(out)
-
-
-def _job(args):
-    lib, name, base, free = args
-    warm = WARM.get(name)
-    if warm is not None:
-        warm = list(warm[:10]) + [base[10]]
-    p = fit(lib, name, base, free, warm)
-    return name, list(p), report(lib, name, p)
-
-
-def run_stage(pool, lib, jobs):
-    results = pool.map(_job, [(lib, n, b, f) for n, b, f in jobs])
-    for n, p, text in results:
-        print(text, flush=True)
-    return {n: p for n, p, t in results}
-
-
-WARM = {}
-if len(sys.argv) > 2:  # optional warm start: output file of a previous run (JSON on its last line)
-    WARM = json.loads(open(sys.argv[2]).read().strip().splitlines()[-1])
-    WARM = {k: (v + [0.3 if "All" in k else 0.0, 1.5])[:11] for k, v in WARM.items()}
-    WARM["rel_4_a3+lvl_in-24_a3_r4"] = WARM["rel_4_a3"]
 
 if __name__ == "__main__":
     lib = sys.argv[1]
-    ALL = list(range(11))
-    NOEXP = list(range(10))  # depthExp is global: fitted in stage 1 only
-    init = WARM.get("rel_4_a3", [0.6, 0.15, 15.0, 15.0, 40.0, 700.0, 600.0, 900.0, 1.0, 0.0, 1.5])
-    params = {}
-    with multiprocessing.Pool(16) as pool:
-        params.update(run_stage(pool, lib, [("rel_4_a3+lvl_in-24_a3_r4", init, ALL)]))
-        params["rel_4_a3"] = base = params.pop("rel_4_a3+lvl_in-24_a3_r4")
-        stage2 = [(f"att_{a}_r4", base, ATTACK) for a in (1, 5, 7)]
-        stage2 += [(f"rel_{r}_a3", base, RELEASE) for r in (1, 2, 3, 5, 6, 7)]
-        stage2 += [(n, base, NOEXP) for n in ("rat_8_a3_r4", "rat_20_a3_r4", "rat_All_a3_r4", "revB_a3_r4")]
-        params.update(run_stage(pool, lib, stage2))
-        a7 = params["att_7_r4"][:3] + params["rel_7_a3"][3:]
-        a1 = params["att_1_r4"][:3] + params["rel_1_a3"][3:]
-        stage3 = [(n, a7, NOEXP) for n in ("rat_8_a7_r7", "rat_20_a7_r7", "rat_All_a7_r7", "revB_a7_r7")]
-        stage3 += [("revB_a1_r1", a1, NOEXP)]
-        params.update(run_stage(pool, lib, stage3))
-    print(json.dumps(params))
+    P = {}
+    if len(sys.argv) > 2:
+        P = json.loads(open(sys.argv[2]).read().strip().splitlines()[-1])
+    nfev = 40
+    only = set(sys.argv[3].split(",")) if len(sys.argv) > 3 else None
+
+    def get(name, default):
+        return P.get(name, default)
+
+    with multiprocessing.Pool(20) as pool:
+        def run(jobs):
+            if only is not None:
+                nfev_local = 90
+                jobs = [j for j in jobs if j[0] in only]
+                for n, v in pool.map(_job, [(lib, *j, nfev_local) for j in jobs]):
+                    P[n] = v
+                return
+            for n, v in pool.map(_job, [(lib, *j, nfev) for j in jobs]):
+                P[n] = v
+        # 1: Attack 3 / Release 4 with the Input -24 rows (depth dependence)
+        run([("rel_4_a3", get("rel_4_a3", INIT), ALL + [10], [("t", "rel_4_a3", "self"), ("t", "lvl_in-24_a3_r4", "self")])])
+        b = P["rel_4_a3"]
+        # 2: attack / release groups of ratio 4, Attack 7 and Release 7 jointly with their fast bursts
+        jobs = [(f"att_{a}_r4", get(f"att_{a}_r4", b), ATTACK, [("t", f"att_{a}_r4", "self")]) for a in (1, 5)]
+        jobs += [(f"rel_{r}_a3", get(f"rel_{r}_a3", b), RELEASE, [("t", f"rel_{r}_a3", "self")]) for r in (1, 2, 3, 5, 6)]
+        v77 = [0.08, 0.0, 400.0, 25.0, 500.0, 6.0, 25.0, 6.0, 30.0, 2.0, b[10], -0.05, 10.0]
+        jobs.append(("a4_77", get("a4_77", v77), ALL, [("t", "att_7_r4", (None, b)), ("t", "rel_7_a3", (b, None)),
+                                                       ("b", "A", "4", 7.0, 7.0, "self")]))
+        # complete sets per ratio / revision at their measured pairs
+        for n in ("rat_8_a3_r4", "rat_20_a3_r4", "revB_a3_r4", "rat_All_a3_r4"):
+            items = [("t", n, "self")]
+            if "All" in n:
+                items.append(("b", "A", "All", 3.0, 4.0, "self"))
+            init = compose(b, b) if "All" not in n else [0.25, 0.05, 3000.0, 30.0, 500.0, 16.0, 16.0, 0.01, 18.0, 4.0, b[10], 0.0, 10.0]
+            jobs.append((n, get(n, init), ALL, items))
+        allinit = [0.1, 0.1, 4000.0, 30.0, 500.0, 2.4, 2.4, 0.01, 19.0, 3.5, b[10], -0.1, 10.0]
+        jobs.append(("rat_All_a7_r7", get("rat_All_a7_r7", allinit), ALL, [("t", "rat_All_a7_r7", "self"), ("b", "A", "All", 7.0, 7.0, "self")]))
+        jobs.append(("all_55", get("all_55", [0.2, 0.05, 3000.0, 30.0, 500.0, 10.0, 10.0, 0.01, 17.0, 4.0, b[10], 0.0, 10.0]), ALL, [("b", "A", "All", 5.0, 5.0, "self")]))
+        jobs.append(("allB_77", get("allB_77", [0.1, 0.05, 3000.0, 30.0, 500.0, 1.0, 1.0, 0.01, 19.0, 4.0, b[10], 0.0, 10.0]), ALL, [("b", "B", "All", 7.0, 7.0, "self")]))
+        for r in ("8", "20"):
+            jobs.append((f"rat_{r}_a7_r7", get(f"rat_{r}_a7_r7", v77), ALL, [("t", f"rat_{r}_a7_r7", "self"), ("b", "A", r, 7.0, 7.0, "self")]))
+        jobs.append(("revB_a7_r7", get("revB_a7_r7", v77), ALL, [("t", "revB_a7_r7", "self")]))
+        jobs.append(("revB_a1_r1", get("revB_a1_r1", b), ALL, [("t", "revB_a1_r1", "self")]))
+        run(jobs)
+        P["att_3_r4"] = P["rel_4_a3"]
+        P["att_7_r4"] = P["a4_77"]
+        P["rel_7_a3"] = P["a4_77"]
+    print(json.dumps(P))

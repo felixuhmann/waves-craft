@@ -1,4 +1,4 @@
-// Craft FET Limiter - complete processing chain (spec r1 sections 1, 3-9). Host independent.
+// Craft FET Limiter - complete processing chain (spec r2 sections 1, 3-9). Host independent.
 //
 //  x -> Input gain -> [gain cell GR(t), linked detector] -> saturation -> response filters -> Output gain
 //    -> (+ Analog noise / hum) = wet;   y = Trim (Mix wet + (1 - Mix) x)
@@ -69,6 +69,11 @@ public:
         appliedRevision = settings.revision;
         for (auto& f : filters)
             f.prepare (settings.revision, fs);
+        for (auto& f : saturators)
+        {
+            f.prepare (fs);
+            f.setRevision (settings.revision);
+        }
         prepared = true;
         applySettings (true);
         reset();
@@ -80,6 +85,8 @@ public:
         cell.reset();
         noise.reset();
         for (auto& f : filters)
+            f.reset();
+        for (auto& f : saturators)
             f.reset();
         for (auto* s : { &inGain, &outGain, &trim, &mix, &compOn, &makeup })
             s->snap();
@@ -126,7 +133,7 @@ public:
             if (env != lastEnv)
             {
                 lastEnv = env;
-                target = env > 1.0e-12 ? law.reduction (20.0 * std::log10 (env)) : 0.0;
+                target = env > 1.0e-12 ? law.reduction (20.0 * std::log10 (env) + levelShift) : 0.0;
             }
             const double g = cell.process (target);
             const double applied = g * on;
@@ -138,7 +145,7 @@ public:
                 noise.advanceFrame();
             for (int c = 0; c < numChannels; ++c)
             {
-                double w = saturate (sat, u[c] * cellGain);
+                double w = saturators[size_t (c)].process (sat, u[c] * cellGain);
                 w = filters[size_t (c)].process (w) * gOut;
                 if (analogOn)
                     w += noise.sample (c);
@@ -171,7 +178,8 @@ private:
         trim.setTarget (dbToGain (settings.trimDb));
         mix.setTarget (settings.mixPercent / 100.0);
         compOn.setTarget (settings.compOff ? 0.0 : 1.0);
-        makeup.setTarget (settings.ratio == Ratio::All && ! settings.compOff ? dbToGain (allMakeupDb (rev)) : 1.0);
+        makeup.setTarget (settings.ratio == Ratio::All ? dbToGain (allMakeupDb (rev)) : 1.0);
+        levelShift = settings.ratio == Ratio::All ? allLevelShiftDb (rev, settings.inputDisplay) : 0.0;
         cell.setParams (dynamicsFor (rev, settings.ratio, settings.attack, settings.release));
         noise.setMode (rev, settings.analog);
         if (rev != appliedRevision)
@@ -179,6 +187,8 @@ private:
             appliedRevision = rev;
             for (auto& f : filters)
                 f.setRevision (rev, fs);
+            for (auto& f : saturators)
+                f.setRevision (rev);
         }
         if (snapAll)
             for (auto* s : { &inGain, &outGain, &trim, &mix, &compOn, &makeup })
@@ -195,9 +205,10 @@ private:
     GainCell cell;
     NoiseSource noise;
     std::array<ResponseFilter, maxChannels> filters;
+    std::array<Saturator, maxChannels> saturators;
     Smoother inGain, outGain, trim, mix, compOn, makeup;
 
-    double lastEnv = -1.0, target = 0.0, grDb = 0.0;
+    double lastEnv = -1.0, target = 0.0, grDb = 0.0, levelShift = 0.0;
     double inPeak = 0.0, outPeak = 0.0, maxGrDb = 0.0;
 };
 

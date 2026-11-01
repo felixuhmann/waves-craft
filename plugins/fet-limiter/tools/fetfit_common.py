@@ -1,6 +1,6 @@
 """Shared helpers for the fet-limiter development scripts (not shipped).
 
-Loads the spec r1 tables and wraps the C++ gain-cell simulation (tools/simwrap.cpp -> libfetsim.so).
+Loads the spec r2 tables and wraps the C++ gain-cell simulation (tools/simwrap.cpp -> libfetsim.so).
 """
 import csv
 import ctypes
@@ -11,7 +11,7 @@ import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent.parent.parent
-TABLES = REPO / "spec" / "fet-limiter" / "r1" / "tables"
+TABLES = REPO / "spec" / "fet-limiter" / "r2" / "tables"
 FS = 48000.0
 
 
@@ -83,15 +83,17 @@ def lib(path):
     return _lib
 
 
-def simulate(libpath, params, rev, ratio, x_burst, burst_ms, post_ms=5200.0, pre_ms=300.0, fs=FS):
+def simulate(libpath, params, rev, ratio, x_burst, burst_ms, post_ms=5200.0, pre_ms=300.0, fs=FS, x_base=None):
+    x_base = x_burst - 30.0 if x_base is None else x_base
     sx, sr = reduction_curve(rev, ratio)
     n = int((burst_ms + post_ms) * 0.001 * fs) + 4
     out = np.zeros(n)
     p = np.ascontiguousarray(params, dtype=np.float64)
     dp = ctypes.POINTER(ctypes.c_double)
-    w = lib(libpath).fet_sim(p.ctypes.data_as(dp), ctypes.c_double(fs), sx.ctypes.data_as(dp), sr.ctypes.data_as(dp),
-                             ctypes.c_int(len(sx)), ctypes.c_double(x_burst), ctypes.c_double(burst_ms),
-                             ctypes.c_double(pre_ms), ctypes.c_double(post_ms), out.ctypes.data_as(dp), ctypes.c_int(n))
+    d = ctypes.c_double
+    w = lib(libpath).fet_sim(p.ctypes.data_as(dp), d(fs), sx.ctypes.data_as(dp), sr.ctypes.data_as(dp),
+                             ctypes.c_int(len(sx)), d(x_burst), d(x_base), d(burst_ms), d(pre_ms), d(post_ms),
+                             out.ctypes.data_as(dp), ctypes.c_int(n))
     return out[:w]
 
 
@@ -103,16 +105,3 @@ def x_for_reduction(rev, ratio, target):
             t = (target - r[i - 1]) / (r[i] - r[i - 1]) if r[i] != r[i - 1] else 0.0
             return x[i - 1] + t * (x[i] - x[i - 1])
     return x[-1]
-
-
-def crossing_time(g, frac, start_index, fs=FS, rising=False):
-    """Time (ms) after start_index where g crosses frac * g[ref]."""
-    seg = g[start_index:]
-    if rising:
-        ref = seg[-1] if False else None
-    ref = g[start_index]
-    thr = ref * frac
-    idx = np.nonzero(seg <= thr)[0]
-    if len(idx) == 0:
-        return math.inf
-    return idx[0] / fs * 1000.0

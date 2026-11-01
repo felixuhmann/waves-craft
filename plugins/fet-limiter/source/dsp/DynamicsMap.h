@@ -4,9 +4,9 @@
 //
 // The parameters of dsp/Dynamics.h were fitted (least squares, tools/fit_dynamics.py) to every configuration of
 // tables/timing.csv and tables/release_trajectories.csv:
-//   - attack group (tauAttack, beta, tauC; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
-//   - release group (tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel) for revision A ratio 4 at Release 1 .. 7,
-//   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), and for revision B
+//   - attack group (tauAttack, beta, tauC; beta2, tauC2; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
+//   - release group (tauMCharge, tauMDecay, msPerDbFast, msPerDbSlow, knee, depth, depthPower) for revision A ratio 4 at Release 1 .. 7,
+//   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), All also at (5, 5), and for revision B
 //     (ratio 4) at (1, 1), (3, 4), (7, 7).
 // Between anchors parameters are interpolated linearly in the setting (times geometrically, i.e. linearly in log,
 // as spec 6.2 asks for the attack). Other ratios / revision B are expressed as modifiers relative to revision A
@@ -27,36 +27,38 @@ namespace craft::fet_limiter::dsp
 
 namespace dynmap
 {
-    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset, accel, depthExp
-    inline constexpr int numParams = 11;
+    // parameter vector: tauA, beta, tauC, tauMc, tauMd, msPerDbFast, msPerDbSlow, knee, depth, depthPower, depthExp, beta2, tauC2, overshootCap, kneeSlow
+    inline constexpr int numParams = 15;
     using Vec = std::array<double, numParams>;
-    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, false, false, false };
+    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, true, false, false, false, true, true, true };
 
     inline constexpr Vec attackA4[4] = { // Attack 1, 3, 5, 7 (attack group used)
-        Vec { 1.10727, 0.198387, 22.2691, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
-        Vec { 0.248676, 0.18414, 9.15944, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
-        Vec { 0.118393, 0.226996, 3.43429, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
+        Vec { 0.515688, -0.0259259, 1200.27, 103.899, 2677.99, 75.4256, 104.242, 5.14949, 26.5793, 2.31651, 2.73332, 0.295989, 15.0269, 200, 5.14949 },
+        Vec { 0.515579, -0.0213669, 231.159, 52.3479, 11430.8, 78.8137, 78.9398, 4.22913, 20.8407, 2.9972, 2.5888, 0.238253, 15.5857, 973.856, 7.29676 },
+        Vec { 0.446391, -0.0265063, 802.594, 103.899, 2677.99, 75.4256, 104.242, 5.14949, 26.5793, 2.31651, 2.73332, 0.180161, 14.0586, 200, 5.14949 },
+        Vec { 0.0262493, 0.068781, 15.7146, 19.6985, 19891.7, 2.9657, 10.0346, 6.06097, 96.2133, 0.894782, 2.73332, -0.370429, 19.3832, 5.07519, 28.064 },
     };
     inline constexpr double attackAnchors[4] = { 1.0, 3.0, 5.0, 7.0 };
     inline constexpr Vec releaseA4[7] = { // Release 1 .. 7 (release group used)
-        Vec { 0.5631, 0.18946, 13.1147, 999.999, 8.31424, 296.966, 4.91409, 13269.6, 28.8976, 0.791554, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 270.196, 17.1354, 1331.71, 15.9778, 2258.85, 3.50252, 9.99999e-07, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 0.481745, 17.1584, 1005.93, 60.1417, 3253.22, 6.84149, 2.87946e-08, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 10.1312, 9.62167, 69.8902, 8.95512, 6989.13, 31.7953, 0.0424822, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 1000, 29.772, 575.513, 7.22374, 1448.95, 3.92316, 7.78866e-11, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 20.4119, 43.7014, 151.73, 3.00006, 1059.82, 5.11162, 1.30507e-13, 1.90524 },
-        Vec { 0.5631, 0.18946, 13.1147, 10.4038, 38.8509, 29.4858, 3.2727, 1023.55, 12.7425, 6.67354e-06, 1.90524 },
+        Vec { 0.460637, -0.0186151, 810.558, 0.300038, 99.4287, 270.82, 95.8302, 1.72086, 21.4855, 9.74614, 2.73332, 0.236669, 16.7392, 200, 0.00100099 },
+        Vec { 0.460637, -0.0186151, 810.558, 13.0783, 19838.1, 67.0476, 214.47, 15.9942, 25.8002, 2.07281, 2.73332, 0.236669, 16.7392, 200, 0.258094 },
+        Vec { 0.460637, -0.0186151, 810.558, 2.37334, 18741, 5.83759, 189.978, 14.9363, 27.8542, 0.93347, 2.73332, 0.236669, 16.7392, 200, 26.5076 },
+        Vec { 0.515579, -0.0213669, 231.159, 52.3479, 11430.8, 78.8137, 78.9398, 4.22913, 20.8407, 2.9972, 2.5888, 0.238253, 15.5857, 973.856, 7.29676 },
+        Vec { 0.460637, -0.0186151, 810.558, 36.8342, 4789.18, 15.2622, 16.9279, 7.81785, 3.00188, 0.669069, 2.73332, 0.236669, 16.7392, 200, 18.3111 },
+        Vec { 0.460637, -0.0186151, 810.558, 30.5524, 9557.27, 17.2162, 31.9922, 5.52815, 163.502, 5.82269, 2.73332, 0.236669, 16.7392, 200, 19.3625 },
+        Vec { 0.0262493, 0.068781, 15.7146, 19.6985, 19891.7, 2.9657, 10.0346, 6.06097, 96.2133, 0.894782, 2.73332, -0.370429, 19.3832, 5.07519, 28.064 },
     };
-    inline constexpr Vec fit8A3R4 = { 0.352013, 0.152156, 15.4312, 17.5034, 27.8116, 941.369, 3.30363, 1541.57, 4.19717, 8.19863e-07, 1.90524 };
-    inline constexpr Vec fit8A7R7 = { 0.113041, 0.0538876, 183.256, 5.34353, 38.7901, 30.5979, 9.382, 1196.57, 16.7526, 0.000516591, 1.90524 };
-    inline constexpr Vec fit20A3R4 = { 0.179841, 0.0927136, 5.53509, 7.27132, 29.0809, 1051.3, 3.25958, 1101.74, 2.43306, 6.24043e-08, 1.90524 };
-    inline constexpr Vec fit20A7R7 = { 0.0925503, -0.297838, 0.334758, 3.09755, 72.2631, 16.9473, 24.1009, 919.175, 11.0726, 9.91021e-07, 1.90524 };
-    inline constexpr Vec fitAllA3R4 = { 0.31466, 0.108916, 296.533, 1.72551, 34.1047, 103.768, 97.4928, 962.093, 21.4451, 2.09335, 1.90524 };
-    inline constexpr Vec fitAllA7R7 = { 0.143601, -0.157454, 4.81594, 0.3128, 1.44906, 21.1872, 8.5858, 85.2843, 18.3666, 0.0346889, 1.90524 };
-    inline constexpr Vec fitBA1R1 = { 1.24865, 0.304186, 48.6068, 626.282, 27.8887, 1240.26, 24.7948, 4512.26, 8.99477, 9.86708e-07, 1.90524 };
-    inline constexpr Vec fitBA3R4 = { 0.739249, 0.241681, 29.9945, 21.9014, 32.6284, 508.26, 3.66755, 4129.09, 21.2377, 0.0225696, 1.90524 };
-    inline constexpr Vec fitBA7R7 = { 0.351729, 0.0263139, 103.921, 3.51799, 6.76761, 4.43486, 4.33814, 818.648, 32.3424, 0.179915, 1.90524 };
+    inline constexpr Vec fit8A3R4 = { 0.390753, -0.0130179, 9048.67, 40.0062, 12118.7, 48.7057, 50.944, 6.84667, 17.261, 1.50814, 2.73332, 0.173524, 13.8157, 5.19424, 12.3625 };
+    inline constexpr Vec fit8A7R7 = { 0.0277698, -0.0223896, 2629.63, 21.5246, 20000, 2.73953, 13.6518, 5.5394, 66.5823, 0.806211, 2.73332, 0.0917432, 8.71936, 218.263, 14.6951 };
+    inline constexpr Vec fit20A3R4 = { 0.18334, -0.0115944, 19999.9, 62.7077, 4366.65, 14.5391, 8.36803, 9.18551, 3.00107, 0.920491, 2.73332, 0.09542, 9.01564, 152.312, 44.5733 };
+    inline constexpr Vec fit20A7R7 = { 0.0219608, -0.0231206, 312.14, 30.078, 19897.6, 2.82478, 9.05311, 3.18309, 111.988, 0.99321, 2.73332, -0.0598243, 5.79769, 5.52067, 43.557 };
+    inline constexpr Vec fitAllA3R4 = { 0.11005, 0.0860801, 128.543, 6.54766, 1256.04, 12.3126, 16.4657, 0.0224775, 20.0548, 4.54741, 2.73332, -0.00441914, 6.44002, 200, 0.0226995 };
+    inline constexpr Vec fitAllA7R7 = { 0.118432, 0.0997915, 4515.99, 554.957, 132.764, 2.01326, 2.66638, 0.264455, 17.1451, 2.97254, 2.73332, -0.337322, 4.68201, 23.9145, 0.255778 };
+    inline constexpr Vec fitBA1R1 = { 0.6376, -0.0270439, 827.981, 53.5979, 3365.84, 113.212, 146.567, 6.03213, 21.3065, 2.19362, 2.73332, 0.385151, 22.0365, 200, 6.22067 };
+    inline constexpr Vec fitBA3R4 = { 0.602114, 0.010026, 338.745, 33.4418, 10030.4, 75.7674, 168.425, 2.13186, 55.9031, 2.99261, 2.73332, 0.241826, 24.1974, 973.856, 0.472764 };
+    inline constexpr Vec fitBA7R7 = { 0.337734, 0.000701796, 51.9421, 8.00472, 2762.77, 9.80936, 17.5825, 2.51782, 99.236, 3.40145, 2.73332, 0.0700151, 16.5311, 5.12782, 1.03601 };
+    inline constexpr Vec fitAllA5R5 = { 0.0607543, 0.0660661, 11422.1, 39.3575, 85.0698, 9.2286, 9.16689, 0.00708376, 19.2944, 4.75218, 2.73332, 0.0104562, 16.6648, 200, 0.00708376 };
+    inline constexpr Vec fitAllBA7R7 = { 0.123932, 0.0206687, 34.8696, 11.5377, 190.402, 0.949118, 0.782074, 0.00381686, 20.2483, 6.35534, 2.73332, -0.000673483, 164.195, 200, 0.00266324 };
 
     inline double lerp (double a, double b, double t) noexcept { return a + (b - a) * t; }
 
@@ -74,7 +76,7 @@ namespace dynmap
         const double tr = r - 1.0 - double (j);
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3 || k == 10;
+            const bool att = k < 3 || (k >= 10 && k < 14);
             const double x0 = att ? attackA4[i][size_t (k)] : releaseA4[j][size_t (k)];
             const double x1 = att ? attackA4[i + 1][size_t (k)] : releaseA4[j + 1][size_t (k)];
             const double t = att ? ta : tr;
@@ -107,7 +109,7 @@ namespace dynmap
         Vec m {};
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3 || k == 10;
+            const bool att = k < 3 || (k >= 10 && k < 14);
             const double s = att ? attack : release;
             auto key = [att] (const Anchor& an) { return att ? an.attack : an.release; };
             double value;
@@ -130,16 +132,21 @@ namespace dynmap
 
     struct Modifiers
     {
-        std::array<Anchor, 2> r8, r20, all;
-        std::array<Anchor, 3> revB;
+        std::array<Anchor, 2> r8, r20;
+        std::array<Anchor, 3> all, revB;
+        Vec allBDelta {}; // rev B All at (7, 7) relative to the composed modifiers
 
         Modifiers()
         {
             r8 = { Anchor { 3.0, 4.0, modifier (fit8A3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fit8A7R7, 7.0, 7.0) } };
             r20 = { Anchor { 3.0, 4.0, modifier (fit20A3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fit20A7R7, 7.0, 7.0) } };
-            all = { Anchor { 3.0, 4.0, modifier (fitAllA3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fitAllA7R7, 7.0, 7.0) } };
+            all = { Anchor { 3.0, 4.0, modifier (fitAllA3R4, 3.0, 4.0) }, Anchor { 5.0, 5.0, modifier (fitAllA5R5, 5.0, 5.0) },
+                    Anchor { 7.0, 7.0, modifier (fitAllA7R7, 7.0, 7.0) } };
             revB = { Anchor { 1.0, 1.0, modifier (fitBA1R1, 1.0, 1.0) }, Anchor { 3.0, 4.0, modifier (fitBA3R4, 3.0, 4.0) },
                      Anchor { 7.0, 7.0, modifier (fitBA7R7, 7.0, 7.0) } };
+            const Vec mB = modifier (fitAllBA7R7, 7.0, 7.0);
+            for (size_t k = 0; k < size_t (numParams); ++k)
+                allBDelta[k] = mB[k] - all[2].mod[k] - revB[2].mod[k];
         }
     };
 
@@ -175,6 +182,12 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
         const Vec b = interpolate (M.revB, attack, release);
         for (size_t k = 0; k < size_t (numParams); ++k)
             mod[k] += b[k];
+        if (ratio == Ratio::All) // measured at (7, 7) only; fades towards the composed modifiers at slower settings
+        {
+            const double w = std::clamp ((std::min (attack, release) - 3.0) / 4.0, 0.0, 1.0);
+            for (size_t k = 0; k < size_t (numParams); ++k)
+                mod[k] += w * M.allBDelta[k];
+        }
     }
     for (size_t k = 0; k < size_t (numParams); ++k)
         v[k] = isLog[k] ? v[k] * std::exp (mod[k]) : v[k] + mod[k];
@@ -183,14 +196,18 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
     p.tauAttackMs = v[0];
     p.beta = std::clamp (v[1], -0.6, 0.6);
     p.tauCMs = v[2];
-    p.tauHChargeMs = v[3];
-    p.tauKChargeMs = v[4];
-    p.tau1Ms = v[5];
-    p.tau2Ms = v[6];
-    p.tau3Ms = v[7];
-    p.releaseOffsetDb = std::max (0.0, v[8]);
-    p.accel = std::max (0.0, v[9]);
+    p.tauMChargeMs = v[3];
+    p.tauMDecayMs = v[4];
+    p.msPerDbFast = v[5];
+    p.msPerDbSlow = v[6];
+    p.kneeDb = v[7];
+    p.depthDb = v[8];
+    p.depthPower = std::max (0.0, v[9]);
     p.depthExp = v[10];
+    p.beta2 = v[11];
+    p.tauC2Ms = v[12];
+    p.overshootCapDb = v[13];
+    p.kneeSlowDb = v[14];
     return p;
 }
 

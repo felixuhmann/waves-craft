@@ -61,7 +61,7 @@ TEST_CASE ("Static GR matches tables/static_gr.csv per revision and ratio (+-1.0
     {
         const Revision rev = Revision (key.first);
         const Ratio ratio = Ratio (key.second);
-        const double tol = ratio == Ratio::All ? 2.5 : 1.0;
+        const double tolSettled = ratio == Ratio::All ? 2.5 : 1.0;
         // E rows take precedence over A rows at the same x and define the settled curve; A rows are checked where no
         // E row covers their x (assumption S1).
         double eLo = 1e9, eHi = -1e9;
@@ -82,7 +82,7 @@ TEST_CASE ("Static GR matches tables/static_gr.csv per revision and ratio (+-1.0
             const double g = measureGr (rev, ratio, r.x);
             INFO ("rev " << (rev == Revision::A ? "A" : "B") << " ratio " << ratioName (ratio) << " x " << r.x << " expected "
                          << expected << " measured " << g);
-            CHECK (std::abs (g - expected) <= tol);
+            CHECK (std::abs (g - expected) <= tolSettled);
             ++checked;
         }
         CHECK (checked > 10);

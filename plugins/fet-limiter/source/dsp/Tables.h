@@ -138,7 +138,7 @@ struct SpecTables
     Curve gainIn[2], gainOut[2];
     // Settled static gain change GR(x) <= 0 (dB) per revision index and ratio (spec 5), All including its makeup.
     Curve staticGr[2][5];
-    CsvTable timing, trajectories, freqResponse, harmonics, noise;
+    CsvTable timing, trajectories, freqResponse, harmonics, noise, fastBursts;
 
     SpecTables()
     {
@@ -191,6 +191,7 @@ struct SpecTables
         freqResponse = parseCsv (freqResponseCsv);
         harmonics = parseCsv (harmonicsCsv);
         noise = parseCsv (noiseCsv);
+        fastBursts = parseCsv (fastBurstsCsv);
     }
 };
 

@@ -1,28 +1,21 @@
-// Craft FET Limiter - level detector and gain-cell dynamics (spec r1 section 6). Host independent.
+// Craft FET Limiter - level detector and gain-cell dynamics (spec r2 section 6). Host independent.
 //
 // The detector measures the sine-peak level of the internal (post Input gain) signal; the static law (spec 5)
-// turns it into a target gain reduction T (dB, >= 0). The gain cell follows T through a small network of
-// "charge" states that reproduces the measured attack, the program-dependent release and its shapes:
+// turns it into a target gain reduction T (dB, >= 0). The gain cell has one output state F and three memories:
 //
-//   C  level memory     follows T with tauC (one pole); the attack aims at Teff = T - beta (T - C), so a level
-//                       step first settles at (1 - beta) T and then creeps to T (beta > 0), or overshoots and
-//                       settles back (beta < 0, the "feedback" overshoot of spec 6.1)
-//   F  output state     attacks towards Teff with tauAttack * (21 dB / T)^depthExp (feedback-style: a deeper
-//                       step attacks faster, light compression slower; factor limited to 0.25 .. 30), releases
-//                       towards max(H, Teff) with tau1
-//   H  intermediate     charges towards T with tauHCharge, releases towards max(K, T) with tau2
-//   K  program memory   charges towards T with tauKCharge, releases towards T - offset with tau3 (floored at T);
-//                       with accel > 0 the release speeds up as K falls below its recent peak M (a slowly
-//                       decaying peak hold of K), giving the accelerating, nearly linear recovery of the All ratio
+//   C, C2  level memories  one-pole followers of T (tauC slow, tauC2 fast). The attack aims at
+//                          Teff = T - beta (T - C) - beta2 (T - C2): beta > 0 is the slow deepening of the reduction
+//                          with hold time (r2 13.4), beta2 < 0 the overshoot of a short burst (spec 6.1)
+//   M      program memory  0 .. 1, charges with tauMCharge while the cell is compressing, decays with tauMDecay
+//   F      output          attacks towards Teff with tauAttack * (21 dB / T)^depthExp; recovers at a rate in dB/ms
 //
-//   GR = F  (dB reduction)
+//     rate = ((1 - M) / msPerDbFast * E^2 / (E^2 + kneeDb^2) + M / msPerDbSlow * E / (E + kneeSlowDb))
+//            / (1 + (F / depthDb)^depthPower),   E = F - T
 //
-// A short burst charges F (and partly H) but leaves K nearly empty, so the release is fast and mostly exponential;
-// a long hold also charges K and the recovery becomes a slower, three-stage, nearly linear one (spec 6.3 "short
-// bursts recover roughly exponentially, long holds closer to linearly"). A positive offset makes the last stage
-// aim below the target so the recovery reaches it with a finite slope (the "almost linear in dB" release of the
-// All ratio and of revision B). In steady state C = F = H = K = T, so the static law is exact.
-// All parameters are physical times, so behaviour does not depend on the sample rate (spec 9).
+// The last factor makes deep reduction recover slowly: that is the hold of r2 13.2 (the time to recover the first dB
+// follows from the initial rate) and the acceleration towards the end. The knees give the tails of the ordinary
+// ratios (All: both ~ 0, it reaches the target with a finite slope). M is the program dependence of spec 6.3.
+// In steady state F = T, so the static law is exact. All parameters are physical times (spec 9).
 #pragma once
 
 #include <algorithm>
@@ -34,16 +27,20 @@ namespace craft::fet_limiter::dsp
 struct DynParams
 {
     double tauAttackMs = 0.7;
-    double beta = 0.15;
-    double tauCMs = 15.0;
-    double tauHChargeMs = 10.0;
-    double tauKChargeMs = 60.0;
-    double tau1Ms = 300.0;
-    double tau2Ms = 600.0;
-    double tau3Ms = 600.0;
-    double releaseOffsetDb = 0.0;
-    double accel = 0.0;
+    double beta = 0.0;
+    double tauCMs = 2000.0;
+    double tauMChargeMs = 30.0;
+    double tauMDecayMs = 500.0;
+    double msPerDbFast = 100.0;
+    double msPerDbSlow = 200.0;
+    double kneeDb = 5.0;
+    double depthDb = 30.0;
+    double depthPower = 2.0;
     double depthExp = 0.0;
+    double beta2 = 0.0;
+    double tauC2Ms = 10.0;
+    double kneeSlowDb = 5.0;
+    double overshootCapDb = 200.0; // an overshoot (beta2 < 0) does not lift Teff above this
 };
 
 // Coefficient of a one-pole smoother with time constant tau (ms) at sample rate fs.
@@ -59,8 +56,8 @@ inline double onePoleCoeff (double tauMs, double fs) noexcept
 class PeakDetector
 {
 public:
-    static constexpr double holdMs = 6.0;
-    static constexpr double decayMs = 4.0;
+    static constexpr double holdMs = 2.0;
+    static constexpr double decayMs = 1.0;
 
     void prepare (double fs) noexcept
     {
@@ -104,7 +101,6 @@ private:
 class GainCell
 {
 public:
-    static constexpr double peakMemoryMs = 3000.0;
     static constexpr double referenceDepthDb = 21.0;
 
     void prepare (double sampleRate) noexcept
@@ -114,7 +110,7 @@ public:
         reset();
     }
 
-    void reset() noexcept { c = f = h = k = m = 0.0; }
+    void reset() noexcept { c = c2State = f = m = 0.0; }
 
     void setParams (const DynParams& p) noexcept
     {
@@ -128,36 +124,33 @@ public:
     double process (double target) noexcept
     {
         c += (target - c) * cC;
-        const double teff = target - params.beta * (target - c);
+        c2State += (target - c2State) * cC2;
+        const double settled = target - params.beta * (target - c);
+        const double over = settled - params.beta2 * (target - c2State);
+        const double teff = over > settled ? std::max (settled, std::min (over, params.overshootCapDb)) : over;
 
-        // K: program memory (M: slowly decaying peak hold of K)
-        if (target > k)
-            k += (target - k) * cKc;
+        if (target >= 1.0 && target >= f - 0.5)
+            m += (1.0 - m) * cMc;
         else
-            k = std::max (target, k + (target - params.releaseOffsetDb - k - params.accel * (m - k)) * c3);
-        if (k >= m)
-            m = k;
-        else
-            m += (k - m) * cM;
+            m -= m * cMd;
 
-        // H: intermediate stage
-        if (target > h)
-            h += (target - h) * cHc;
-        else
-            h += (std::max (k, target) - h) * c2;
-
-        // F: output stage
-        if (target != lastTarget)
-        {
-            lastTarget = target;
-            const double factor = std::clamp (std::pow (referenceDepthDb / std::max (target, 0.01), params.depthExp), 0.25, 30.0);
-            cA = onePoleCoeff (params.tauAttackMs * factor, fs);
-        }
         if (teff > f)
+        {
+            if (target != lastTarget)
+            {
+                lastTarget = target;
+                const double factor = std::clamp (std::pow (referenceDepthDb / std::max (target, 0.01), params.depthExp), 0.25, 30.0);
+                cA = onePoleCoeff (params.tauAttackMs * factor, fs);
+            }
             f += (teff - f) * cA;
+        }
         else
-            f += (std::max (h, teff) - f) * c1;
-
+        {
+            const double e = f - teff;
+            const double rate = ((1.0 - m) * rFast * e * e / (e * e + params.kneeDb * params.kneeDb) + m * rSlow * e / (e + params.kneeSlowDb))
+                                / (1.0 + std::pow (f / params.depthDb, params.depthPower));
+            f = std::max (teff, f - rate * msPerSample);
+        }
         return f;
     }
 
@@ -166,20 +159,20 @@ public:
 private:
     void updateCoefficients() noexcept
     {
-        lastTarget = -1.0; // attack coefficient follows the target (see process)
+        lastTarget = -1.0; // the attack coefficient follows the target (see process)
         cC = onePoleCoeff (params.tauCMs, fs);
-        cHc = onePoleCoeff (params.tauHChargeMs, fs);
-        cKc = onePoleCoeff (params.tauKChargeMs, fs);
-        c1 = onePoleCoeff (params.tau1Ms, fs);
-        c2 = onePoleCoeff (params.tau2Ms, fs);
-        c3 = onePoleCoeff (params.tau3Ms, fs);
-        cM = onePoleCoeff (peakMemoryMs, fs);
+        cC2 = onePoleCoeff (params.tauC2Ms, fs);
+        cMc = onePoleCoeff (params.tauMChargeMs, fs);
+        cMd = onePoleCoeff (params.tauMDecayMs, fs);
+        rFast = 1.0 / params.msPerDbFast;
+        rSlow = 1.0 / params.msPerDbSlow;
+        msPerSample = 1000.0 / fs;
     }
 
     DynParams params;
-    double fs = 48000.0;
-    double cM = 1.0, cA = 1.0, cC = 1.0, cHc = 1.0, cKc = 1.0, c1 = 1.0, c2 = 1.0, c3 = 1.0;
-    double c = 0.0, f = 0.0, h = 0.0, k = 0.0, m = 0.0, lastTarget = -1.0;
+    double fs = 48000.0, msPerSample = 1000.0 / 48000.0;
+    double cA = 1.0, cC = 1.0, cC2 = 1.0, cMc = 1.0, cMd = 1.0, rFast = 0.01, rSlow = 0.01;
+    double c = 0.0, c2State = 0.0, f = 0.0, m = 0.0, lastTarget = -1.0;
 };
 
 } // namespace craft::fet_limiter::dsp

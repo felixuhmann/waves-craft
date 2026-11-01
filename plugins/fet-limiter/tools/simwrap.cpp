@@ -16,21 +16,22 @@ static double interp (const double* xs, const double* ys, int n, double x)
     return ys[i] + t * (ys[i + 1] - ys[i]);
 }
 
-// p: tauAttack, beta, tauC, tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel, depthExp
-// Simulates: preMs at xBurst-30, burstMs at xBurst, postMs at xBurst-30 (peak envelope of a carrier). Writes the
+// p: tauAttack, beta, tauC, tauMCharge, tauMDecay, msPerDbFast, msPerDbSlow, knee, depth, depthPower, depthExp, beta2, tauC2
+// Simulates: preMs at xBase, burstMs at xBurst, postMs at xBase (peak envelope of a carrier). Writes the
 // gain reduction (dB, >= 0) for every sample from the burst start on (burst + post) into out.
-extern "C" int fet_sim (const double* p, double fs, const double* sx, const double* sr, int ns, double xBurst,
+extern "C" int fet_sim (const double* p, double fs, const double* sx, const double* sr, int ns, double xBurst, double xBase,
                         double burstMs, double preMs, double postMs, double* out, int outLen)
 {
     DynParams d;
-    d.tauAttackMs = p[0]; d.beta = p[1]; d.tauCMs = p[2]; d.tauHChargeMs = p[3]; d.tauKChargeMs = p[4];
-    d.tau1Ms = p[5]; d.tau2Ms = p[6]; d.tau3Ms = p[7]; d.releaseOffsetDb = p[8]; d.accel = p[9]; d.depthExp = p[10];
+    d.tauAttackMs = p[0]; d.beta = p[1]; d.tauCMs = p[2]; d.tauMChargeMs = p[3]; d.tauMDecayMs = p[4];
+    d.msPerDbFast = p[5]; d.msPerDbSlow = p[6]; d.kneeDb = p[7]; d.depthDb = p[8]; d.depthPower = p[9];
+    d.depthExp = p[10]; d.beta2 = p[11]; d.tauC2Ms = p[12]; d.overshootCapDb = p[13]; d.kneeSlowDb = p[14];
     GainCell cell;
     cell.prepare (fs);
     cell.setParams (d);
     PeakDetector det;
     det.prepare (fs);
-    const double aHi = std::pow (10.0, xBurst / 20.0), aLo = std::pow (10.0, (xBurst - 30.0) / 20.0);
+    const double aHi = std::pow (10.0, xBurst / 20.0), aLo = std::pow (10.0, xBase / 20.0);
     const int nPre = int (preMs * 0.001 * fs), nBurst = int (burstMs * 0.001 * fs), nPost = int (postMs * 0.001 * fs);
     int w = 0;
     double lastEnv = -1.0, target = 0.0;

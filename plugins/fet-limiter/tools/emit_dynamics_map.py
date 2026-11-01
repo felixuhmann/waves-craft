@@ -14,10 +14,12 @@ def vec(v):
     return "{ " + ", ".join(f"{x:.6g}" for x in v) + " }"
 
 
-attack_a4 = [P["att_1_r4"], P["rel_4_a3"], P["att_5_r4"], P["att_7_r4"]]
-release_a4 = [P[f"rel_{r}_a3"] for r in range(1, 8)]
+attack_a4 = [P["att_1_r4"], P["rel_4_a3"], P["att_5_r4"], P["a4_77"]]
+release_a4 = [P[f"rel_{r}_a3"] for r in range(1, 7)] + [P["a4_77"]]
 fits = {k: P[k] for k in ("rat_8_a3_r4", "rat_8_a7_r7", "rat_20_a3_r4", "rat_20_a7_r7", "rat_All_a3_r4", "rat_All_a7_r7",
                           "revB_a1_r1", "revB_a3_r4", "revB_a7_r7")}
+fits["rat_All_a5_r5"] = P["all_55"]
+fits["allB_a7_r7"] = P["allB_77"]
 
 out = []
 out.append("""// Craft FET Limiter - gain-cell parameters per Revision / Ratio / Attack / Release (spec 6). Host independent.
@@ -26,9 +28,9 @@ out.append("""// Craft FET Limiter - gain-cell parameters per Revision / Ratio /
 //
 // The parameters of dsp/Dynamics.h were fitted (least squares, tools/fit_dynamics.py) to every configuration of
 // tables/timing.csv and tables/release_trajectories.csv:
-//   - attack group (tauAttack, beta, tauC; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
-//   - release group (tauHCharge, tauKCharge, tau1, tau2, tau3, offset, accel) for revision A ratio 4 at Release 1 .. 7,
-//   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), and for revision B
+//   - attack group (tauAttack, beta, tauC; beta2, tauC2; depthExp is common to all) for revision A ratio 4 at Attack 1 / 3 / 5 / 7,
+//   - release group (tauMCharge, tauMDecay, msPerDbFast, msPerDbSlow, knee, depth, depthPower) for revision A ratio 4 at Release 1 .. 7,
+//   - complete sets for ratios 8 / 20 / All at (Attack 3, Release 4) and (Attack 7, Release 7), All also at (5, 5), and for revision B
 //     (ratio 4) at (1, 1), (3, 4), (7, 7).
 // Between anchors parameters are interpolated linearly in the setting (times geometrically, i.e. linearly in log,
 // as spec 6.2 asks for the attack). Other ratios / revision B are expressed as modifiers relative to revision A
@@ -49,10 +51,10 @@ namespace craft::fet_limiter::dsp
 
 namespace dynmap
 {
-    // parameter vector: tauA, beta, tauC, tauHc, tauKc, tau1, tau2, tau3, offset, accel, depthExp
-    inline constexpr int numParams = 11;
+    // parameter vector: tauA, beta, tauC, tauMc, tauMd, msPerDbFast, msPerDbSlow, knee, depth, depthPower, depthExp, beta2, tauC2, overshootCap, kneeSlow
+    inline constexpr int numParams = 15;
     using Vec = std::array<double, numParams>;
-    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, false, false, false };
+    inline constexpr bool isLog[numParams] = { true, false, true, true, true, true, true, true, true, false, false, false, true, true, true };
 """)
 out.append("    inline constexpr Vec attackA4[4] = { // Attack 1, 3, 5, 7 (attack group used)")
 out += [f"        Vec {vec(v)}," for v in attack_a4]
@@ -62,7 +64,7 @@ out.append("    inline constexpr Vec releaseA4[7] = { // Release 1 .. 7 (release
 out += [f"        Vec {vec(v)}," for v in release_a4]
 out.append("    };")
 for k, v in fits.items():
-    name = k.replace("rat_", "fit").replace("revB_", "fitB_").replace("_a", "A").replace("_r", "R")
+    name = k.replace("rat_", "fit").replace("revB_", "fitB_").replace("allB_", "fitAllB_").replace("_a", "A").replace("_r", "R")
     out.append(f"    inline constexpr Vec {name} = {vec(v)};")
 out.append("""
     inline double lerp (double a, double b, double t) noexcept { return a + (b - a) * t; }
@@ -81,7 +83,7 @@ out.append("""
         const double tr = r - 1.0 - double (j);
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3 || k == 10;
+            const bool att = k < 3 || (k >= 10 && k < 14);
             const double x0 = att ? attackA4[i][size_t (k)] : releaseA4[j][size_t (k)];
             const double x1 = att ? attackA4[i + 1][size_t (k)] : releaseA4[j + 1][size_t (k)];
             const double t = att ? ta : tr;
@@ -114,7 +116,7 @@ out.append("""
         Vec m {};
         for (int k = 0; k < numParams; ++k)
         {
-            const bool att = k < 3 || k == 10;
+            const bool att = k < 3 || (k >= 10 && k < 14);
             const double s = att ? attack : release;
             auto key = [att] (const Anchor& an) { return att ? an.attack : an.release; };
             double value;
@@ -137,16 +139,21 @@ out.append("""
 
     struct Modifiers
     {
-        std::array<Anchor, 2> r8, r20, all;
-        std::array<Anchor, 3> revB;
+        std::array<Anchor, 2> r8, r20;
+        std::array<Anchor, 3> all, revB;
+        Vec allBDelta {}; // rev B All at (7, 7) relative to the composed modifiers
 
         Modifiers()
         {
             r8 = { Anchor { 3.0, 4.0, modifier (fit8A3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fit8A7R7, 7.0, 7.0) } };
             r20 = { Anchor { 3.0, 4.0, modifier (fit20A3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fit20A7R7, 7.0, 7.0) } };
-            all = { Anchor { 3.0, 4.0, modifier (fitAllA3R4, 3.0, 4.0) }, Anchor { 7.0, 7.0, modifier (fitAllA7R7, 7.0, 7.0) } };
+            all = { Anchor { 3.0, 4.0, modifier (fitAllA3R4, 3.0, 4.0) }, Anchor { 5.0, 5.0, modifier (fitAllA5R5, 5.0, 5.0) },
+                    Anchor { 7.0, 7.0, modifier (fitAllA7R7, 7.0, 7.0) } };
             revB = { Anchor { 1.0, 1.0, modifier (fitBA1R1, 1.0, 1.0) }, Anchor { 3.0, 4.0, modifier (fitBA3R4, 3.0, 4.0) },
                      Anchor { 7.0, 7.0, modifier (fitBA7R7, 7.0, 7.0) } };
+            const Vec mB = modifier (fitAllBA7R7, 7.0, 7.0);
+            for (size_t k = 0; k < size_t (numParams); ++k)
+                allBDelta[k] = mB[k] - all[2].mod[k] - revB[2].mod[k];
         }
     };
 
@@ -182,6 +189,12 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
         const Vec b = interpolate (M.revB, attack, release);
         for (size_t k = 0; k < size_t (numParams); ++k)
             mod[k] += b[k];
+        if (ratio == Ratio::All) // measured at (7, 7) only; fades towards the composed modifiers at slower settings
+        {
+            const double w = std::clamp ((std::min (attack, release) - 3.0) / 4.0, 0.0, 1.0);
+            for (size_t k = 0; k < size_t (numParams); ++k)
+                mod[k] += w * M.allBDelta[k];
+        }
     }
     for (size_t k = 0; k < size_t (numParams); ++k)
         v[k] = isLog[k] ? v[k] * std::exp (mod[k]) : v[k] + mod[k];
@@ -190,14 +203,18 @@ inline DynParams dynamicsFor (Revision rev, Ratio ratio, double attack, double r
     p.tauAttackMs = v[0];
     p.beta = std::clamp (v[1], -0.6, 0.6);
     p.tauCMs = v[2];
-    p.tauHChargeMs = v[3];
-    p.tauKChargeMs = v[4];
-    p.tau1Ms = v[5];
-    p.tau2Ms = v[6];
-    p.tau3Ms = v[7];
-    p.releaseOffsetDb = std::max (0.0, v[8]);
-    p.accel = std::max (0.0, v[9]);
+    p.tauMChargeMs = v[3];
+    p.tauMDecayMs = v[4];
+    p.msPerDbFast = v[5];
+    p.msPerDbSlow = v[6];
+    p.kneeDb = v[7];
+    p.depthDb = v[8];
+    p.depthPower = std::max (0.0, v[9]);
     p.depthExp = v[10];
+    p.beta2 = v[11];
+    p.tauC2Ms = v[12];
+    p.overshootCapDb = v[13];
+    p.kneeSlowDb = v[14];
     return p;
 }
 

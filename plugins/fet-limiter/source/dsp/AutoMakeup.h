@@ -23,7 +23,7 @@ inline double steadyStateGainDb (Revision rev, Ratio ratio, bool compOff, double
     const double gin = inputGainDb (rev, inputDisplay);
     if (! std::isfinite (gin))
         return gin;
-    const double gr = compOff ? 0.0 : staticGainChangeDb (rev, ratio, levelDb + gin);
+    const double gr = compOff ? 0.0 : staticGainChangeDb (rev, ratio, levelDb + gin + (ratio == Ratio::All ? allLevelShiftDb (rev, inputDisplay) : 0.0));
     return gin + gr;
 }
 

@@ -54,6 +54,12 @@ inline double allMakeupDb (Revision rev) noexcept
     return 0.6;
 }
 
+// All: the curve shifts with the Input setting at the same internal level (spec 5; fast_bursts.csv, Input -24).
+inline double allLevelShiftDb (Revision rev, double inputDisplay) noexcept
+{
+    return -0.25 * std::max (0.0, inputGainDb (rev, -12.0) - std::max (inputGainDb (rev, inputDisplay), 0.0));
+}
+
 // Static law as a positive gain-cell reduction R(x) >= 0 (dB) at internal sine-peak level x (dB). The steady-state
 // gain change is  -R(x) (+ allMakeupDb for the All ratio), i.e. the table value GR(x).
 class StaticLaw

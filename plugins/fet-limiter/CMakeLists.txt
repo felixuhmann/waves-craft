@@ -1,11 +1,11 @@
-# Craft FET limiter (spec r1): Craft FET Limiter (stereo with linked detector, mono via bus layout).
+# Craft FET limiter (spec r2): Craft FET Limiter (stereo with linked detector, mono via bus layout).
 # Added automatically by the root CMakeLists.txt; JUCE, clap-juce-extensions and Catch2 are fetched there.
 project (CraftFetLimiter VERSION 0.1.0 LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------------------------
 # Normative spec tables, embedded as a generated header (no files are read at run time).
 include (${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbedTables.cmake)
-set (FET_LIMITER_TABLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../spec/fet-limiter/r1/tables)
+set (FET_LIMITER_TABLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../spec/fet-limiter/r2/tables)
 set (FET_LIMITER_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
 fet_limiter_embed_tables (${FET_LIMITER_GENERATED_DIR}/fet_limiter/SpecTables.h
     gainInputCsv=${FET_LIMITER_TABLE_DIR}/gain_input.csv
@@ -15,7 +15,8 @@ fet_limiter_embed_tables (${FET_LIMITER_GENERATED_DIR}/fet_limiter/SpecTables.h
     releaseTrajectoriesCsv=${FET_LIMITER_TABLE_DIR}/release_trajectories.csv
     freqResponseCsv=${FET_LIMITER_TABLE_DIR}/freq_response.csv
     harmonicsCsv=${FET_LIMITER_TABLE_DIR}/harmonics.csv
-    noiseCsv=${FET_LIMITER_TABLE_DIR}/noise.csv)
+    noiseCsv=${FET_LIMITER_TABLE_DIR}/noise.csv
+    fastBurstsCsv=${FET_LIMITER_TABLE_DIR}/fast_bursts.csv)
 
 # ---------------------------------------------------------------------------------------------
 # Host-independent DSP core (header only)
