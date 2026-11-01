@@ -1,0 +1,163 @@
+# Converts the normative Markdown tables of the spec (TABLES.md, TABLES_extra.md) into a C++ header.
+# Run in script mode:  cmake -DOUT=<header> -DINPUTS="<md1>;<md2>" -P EmbedSpecTables.cmake
+#
+# Every Markdown table below a "### <Id>. ..." heading becomes one spec::Table. The first table under a heading is
+# named <Id>, further tables under the same heading <Id>_1, <Id>_2, ... (e.g. T3 = attack, T3_1 = release;
+# T0 = Gain taper, T0_1 = Peak Reduction taper). Every cell is kept as text and, when it is a plain number, as a
+# double (NaN otherwise, e.g. the "—" placeholders). Header cells get the first number they contain
+# ("A 0.001" -> 0.001, "100 (Limit)" -> 100), so the column axes are available numerically.
+
+if (NOT DEFINED OUT OR NOT DEFINED INPUTS)
+    message (FATAL_ERROR "EmbedSpecTables: OUT and INPUTS are required")
+endif()
+
+set (body "")
+set (index "")
+set (count 0)
+
+function (craft_opto_number text outVar)
+    string (STRIP "${text}" t)
+    if (t MATCHES "^[-+]?[0-9]+(\\.[0-9]+)?$")
+        set (${outVar} "${t}" PARENT_SCOPE)
+    else()
+        set (${outVar} "NaN" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function (craft_opto_first_number text outVar)
+    if (text MATCHES "([-+]?[0-9]+(\\.[0-9]+)?)")
+        set (${outVar} "${CMAKE_MATCH_1}" PARENT_SCOPE)
+    else()
+        set (${outVar} "NaN" PARENT_SCOPE)
+    endif()
+endfunction()
+
+function (craft_opto_escape text outVar)
+    string (STRIP "${text}" t)
+    string (REPLACE "\\" "\\\\" t "${t}")
+    string (REPLACE "\"" "\\\"" t "${t}")
+    set (${outVar} "${t}" PARENT_SCOPE)
+endfunction()
+
+foreach (input IN LISTS INPUTS)
+    file (STRINGS "${input}" lines ENCODING UTF-8)
+    set (heading "")
+    set (tableNo 0)
+    set (inTable FALSE)
+    set (rowNo 0)
+    list (APPEND lines "END") # sentinel: closes a table at the end of the file
+    foreach (line IN LISTS lines)
+        string (STRIP "${line}" line)
+        if (line MATCHES "^### (T[0-9]+[A-Za-z]*)\\.")
+            set (heading "${CMAKE_MATCH_1}")
+            set (tableNo 0)
+        endif()
+        if (line MATCHES "^\\|")
+            if (heading STREQUAL "")
+                continue()
+            endif()
+            # split the cells (no escaped pipes in the spec tables); semicolons would break CMake lists
+            string (REPLACE ";" "," line "${line}")
+            string (REGEX REPLACE "^\\|(.*)\\|$" "\\1" inner "${line}")
+            string (REPLACE "|" ";" cells "${inner}")
+            if (NOT inTable)
+                set (inTable TRUE)
+                set (rowNo 0)
+                set (header "${cells}")
+                list (LENGTH cells numCols)
+                set (texts "")
+                set (values "")
+                continue()
+            endif()
+            if (line MATCHES "^\\|[-| :]+\\|$")
+                continue() # separator row
+            endif()
+            list (LENGTH cells n)
+            if (NOT n EQUAL numCols)
+                message (FATAL_ERROR "EmbedSpecTables: ${input}: ragged row in ${heading}: ${line}")
+            endif()
+            foreach (c IN LISTS cells)
+                craft_opto_escape ("${c}" e)
+                craft_opto_number ("${c}" v)
+                string (APPEND texts "\"${e}\", ")
+                string (APPEND values "${v}, ")
+            endforeach()
+            math (EXPR rowNo "${rowNo} + 1")
+        elseif (inTable)
+            # end of a table: emit it
+            set (inTable FALSE)
+            if (tableNo EQUAL 0)
+                set (name "${heading}")
+            else()
+                set (name "${heading}_${tableNo}")
+            endif()
+            math (EXPR tableNo "${tableNo} + 1")
+            set (htexts "")
+            set (hvalues "")
+            foreach (c IN LISTS header)
+                craft_opto_escape ("${c}" e)
+                craft_opto_first_number ("${c}" v)
+                string (APPEND htexts "\"${e}\", ")
+                string (APPEND hvalues "${v}, ")
+            endforeach()
+            string (REPLACE "NaN" "nan_" values "${values}")
+            string (REPLACE "NaN" "nan_" hvalues "${hvalues}")
+            string (APPEND body
+                "namespace detail_${name}\n{\n"
+                "    inline constexpr const char* header[] = { ${htexts}};\n"
+                "    inline constexpr double headerValue[] = { ${hvalues}};\n"
+                "    inline constexpr const char* text[] = { ${texts}};\n"
+                "    inline constexpr double value[] = { ${values}};\n"
+                "} // namespace detail_${name}\n"
+                "inline constexpr Table ${name} { \"${name}\", ${rowNo}, ${numCols}, detail_${name}::header, "
+                "detail_${name}::headerValue, detail_${name}::text, detail_${name}::value };\n\n")
+            string (APPEND index "&${name}, ")
+            math (EXPR count "${count} + 1")
+        endif()
+    endforeach()
+endforeach()
+
+if (count EQUAL 0)
+    message (FATAL_ERROR "EmbedSpecTables: no tables found in ${INPUTS}")
+endif()
+
+set (content
+"// GENERATED by plugins/opto-leveler/cmake/EmbedSpecTables.cmake from the spec tables - do not edit.
+#pragma once
+
+#include <limits>
+
+namespace craft::opto_leveler::spec
+{
+
+// One Markdown table: numRows data rows x numCols columns, row-major. value is NaN for non-numeric cells.
+struct Table
+{
+    const char* name;
+    int numRows;
+    int numCols;
+    const char* const* header;
+    const double* headerValue;
+    const char* const* text;
+    const double* value;
+
+    constexpr double at (int row, int col) const { return value[row * numCols + col]; }
+    constexpr const char* textAt (int row, int col) const { return text[row * numCols + col]; }
+};
+
+inline constexpr double nan_ = std::numeric_limits<double>::quiet_NaN();
+
+${body}inline constexpr const Table* allTables[] = { ${index}};
+inline constexpr int numTables = ${count};
+
+} // namespace craft::opto_leveler::spec
+")
+
+# only touch the header when it changes (keeps incremental builds quiet)
+if (EXISTS "${OUT}")
+    file (READ "${OUT}" old)
+    if (old STREQUAL content)
+        return()
+    endif()
+endif()
+file (WRITE "${OUT}" "${content}")
