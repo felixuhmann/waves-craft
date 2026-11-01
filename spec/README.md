@@ -20,3 +20,4 @@ Specs live in `spec/<slug>/r<N>/SPEC.md`, where `<slug>` is the plugin's directo
 | `flanger` | [r1](flanger/r1/SPEC.md) | Flanger (sine/triangle LFO, tape mode, feedback, FIR filter) | Approved 2026-10-29 | 44cd458b9febc279b66539c1cf390e2c48bc5ebfe1846dcc3e6612808aeab2b9 |
 | `level-rider` | [r1](level-rider/r1/SPEC.md) | Automatic vocal level rider (static law, ballistics, activity gate, idle, music sidechain) | Approved 2026-10-29 | 7479a9b2d903ca102e03d82c13787132f230e28c062ea855cfb32a967dc04212 |
 | `level-rider` | [r2](level-rider/r2/SPEC.md) | Automatic vocal level rider — r2: detector after Idle (§7.2), new T7 large-drop table | Approved 2026-10-29 | 0decea38127c4b10eac672fa34074da812067b447927a8333882fc4f8d172d78 |
+| `level-rider` | [r3](level-rider/r3/SPEC.md) (+fixtures) | Automatic vocal level rider — r3: speech-like target T8, T4 stimulus stated | Approved 2026-11-01 | 12d8ab7a94de4439b24c5917650c5d612b3ed62fc18b4b4082e0c7afbed2c6b1 |
