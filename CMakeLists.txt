@@ -10,6 +10,7 @@ set (CMAKE_CXX_STANDARD_REQUIRED ON)
 option (CRAFT_BUILD_PLUGINS "Build the JUCE plugins (VST3 + CLAP + Standalone)" ON)
 option (CRAFT_BUILD_TESTS "Build the unit tests" ON)
 option (CRAFT_BUILD_SNAPSHOT "Build the editor snapshot tools (development aid, needs CRAFT_BUILD_PLUGINS)" OFF)
+option (CRAFT_BUILD_HOSTSTRESS "Build the headless plug-in stress host tools/hoststress (development aid, needs CRAFT_BUILD_PLUGINS)" OFF)
 
 if (MSVC)
     # static runtime: the plug-ins and the tests do not depend on an installed VC++ redistributable
@@ -58,3 +59,9 @@ foreach (pluginList IN LISTS CRAFT_PLUGIN_LISTS)
     message (STATUS "Craft Audio: adding plug-in '${pluginSlug}'")
     add_subdirectory (${pluginDir} plugins/${pluginSlug})
 endforeach()
+
+# ---------------------------------------------------------------------------------------------
+# Shared development tools
+if (CRAFT_BUILD_PLUGINS AND CRAFT_BUILD_HOSTSTRESS)
+    add_subdirectory (tools/hoststress)
+endif()
