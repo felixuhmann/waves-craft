@@ -1,0 +1,22 @@
+case,description,gr_during_db,t63_ms,t90_ms,t99_ms
+tstep1k_Adaptive,"1 kHz (band 3), Adaptive",-12.0,233,415,499
+tstep1k_Aggressive,"1 kHz (band 3), Aggressive",-12.0,227,403,475
+tstep1k_Warm,"1 kHz (band 3), Warm",-12.0,249,459,589
+tstep1k_Scaled,"1 kHz (band 3), Scaled",-12.0,247,459,589
+tstep1k_Manual,"1 kHz (band 3), Manual",-12.0,309,503,647
+tstep100_Adaptive,"100 Hz (band 2), Adaptive",-11.93,345,555,665
+tstep100_Manual,"100 Hz (band 2), Manual",-12.0,375,605,745
+tstep100_Warm,"100 Hz (band 2), Warm",-11.9,455,755,1175
+tstep100_Scaled,"100 Hz (band 2), Scaled",-11.96,455,755,1185
+tstep100_Aggressive,"100 Hz (band 2), Aggressive",-11.88,315,505,565
+tstep8k_Adaptive,"8 kHz (band 5), Adaptive",-10.75,141,215,255
+tstep8k_Aggressive,"8 kHz (band 5), Aggressive",-10.75,149,233,289
+tstep8k_Warm,"8 kHz (band 5), Warm",-10.75,135,205,233
+tstep8k_Scaled,"8 kHz (band 5), Scaled",-10.75,133,203,233
+tstep8k_Manual,"8 kHz (band 5), Manual",-10.75,215,329,463
+tstep1k_Manual_r3_10,"1 kHz, Manual, band-3 release 10 ms",-12.0,81,253,455
+tstep1k_Manual_r3_100,"1 kHz, Manual, band-3 release 100 ms",-12.0,157,289,461
+tstep1k_Manual_r3_1000,"1 kHz, Manual, band-3 release 1000 ms",-12.0,467,1051,1229
+LL_tstep1k,"LOW-LATENCY 1 kHz, defaults",-12.0,1,1,1
+LL_tstep1k_r3_10,"LOW-LATENCY 1 kHz, band-3 release 10 ms",-12.0,1,1,1
+LL_tstep1k_r3_1000,"LOW-LATENCY 1 kHz, band-3 release 1000 ms",-12.0,1,1,1

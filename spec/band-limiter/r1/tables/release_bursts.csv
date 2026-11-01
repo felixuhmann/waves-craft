@@ -1,0 +1,5 @@
+case,description,gr_5ms,gr_20ms,gr_50ms,gr_100ms,gr_200ms,gr_300ms,gr_500ms,gr_800ms
+cb1k_Adaptive_20,"1 kHz carrier -24 dBFS, 0 dBFS burst 20 ms, T-12",-7.35,-5.06,-4.6,-3.62,-1.43,-0.11,-0.0,0.0
+cb1k_Manual_20,"1 kHz carrier -24 dBFS, 0 dBFS burst 20 ms, T-12",-15.14,-14.76,-13.52,-11.0,-7.1,-4.55,-1.2,-0.01
+cb1k_Adaptive_200,"1 kHz carrier -24 dBFS, 0 dBFS burst 200 ms, T-12",-12.31,-11.82,-10.62,-8.43,-5.22,-2.71,-0.11,-0.0
+cb1k_Manual_200,"1 kHz carrier -24 dBFS, 0 dBFS burst 200 ms, T-12",-15.3,-14.95,-13.68,-11.11,-7.16,-4.59,-1.22,-0.01
