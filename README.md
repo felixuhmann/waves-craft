@@ -83,6 +83,7 @@ Every reimplementation lives in its own directory under [`plugins/`](plugins) an
 | [`vocal-compressor`](plugins/vocal-compressor) | Craft Vocal Compressor (stereo / mono, gate + compressor, look-ahead 64/128/256 samples) | [r2](spec/vocal-compressor/r2/SPEC.md) | [notes](plugins/vocal-compressor/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/vocal-compressor-r1.md) |
 | [`dynamics`](plugins/dynamics) | Craft Dynamics, Craft Compressor, Craft Gate, Craft Compressor SC | [r3](spec/dynamics/r3/SPEC.md) | [notes](plugins/dynamics/IMPLEMENTATION_NOTES.md), verification [r1](docs/verification/dynamics-r1.md), [r2](docs/verification/dynamics-r2.md) |
 | [`mastering-limiter`](plugins/mastering-limiter) | Craft Mastering Limiter | [r1](spec/mastering-limiter/r1/SPEC.md) | [notes](plugins/mastering-limiter/IMPLEMENTATION_NOTES.md) |
+| [`fet-limiter`](plugins/fet-limiter) | Craft FET Limiter (stereo linked / mono, revisions A / B) | [r1](spec/fet-limiter/r1/SPEC.md) | [notes](plugins/fet-limiter/IMPLEMENTATION_NOTES.md) |
 
 The first clean-room implementation, built only from [spec r1](spec/stereo-imager/r1/SPEC.md): **Craft Shuffler**,
 **Craft Imager** and **Craft MS Matrix** by *Craft Audio* — a stereo width / rotation / asymmetry matrix with a
